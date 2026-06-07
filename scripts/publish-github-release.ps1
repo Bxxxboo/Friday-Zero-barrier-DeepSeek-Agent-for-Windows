@@ -2,7 +2,8 @@ param(
     [string]$RepoOwner = "Bxxxboo",
     [string]$RepoName = "Friday-Zero-barrier-DeepSeek-Agent-for-Windows",
     [string]$GitHubToken = $env:GITHUB_TOKEN,
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [switch]$SkipUpload
 )
 
 $ErrorActionPreference = "Stop"
@@ -13,53 +14,31 @@ if (-not $GitHubToken) {
     throw "Set GITHUB_TOKEN first. Create at https://github.com/settings/tokens (scope: repo)"
 }
 
-$VersionLine = Select-String -Path "friday\version.py" -Pattern '__version__ = "(.+)"' | Select-Object -First 1
-if (-not $VersionLine) { throw "Cannot read version" }
-$Version = $VersionLine.Matches[0].Groups[1].Value
-$Tag = "v$Version"
-$Repo = "$RepoOwner/$RepoName"
+$env:GITHUB_TOKEN = $GitHubToken
 
 if (-not $SkipBuild) {
     powershell -ExecutionPolicy Bypass -File scripts\make-release.ps1
 }
 
 $Zip = Join-Path $PWD "release\Friday-Windows.zip"
-if (-not (Test-Path $Zip)) { throw "release/Friday-Windows.zip not found" }
-
-$ReleaseNotes = & (Join-Path $Root "scripts\release-notes.ps1") | Out-String
-$ReleaseNotes = $ReleaseNotes.Trim()
-
-$Headers = @{
-    Authorization = "Bearer $GitHubToken"
-    Accept = "application/vnd.github+json"
-    "X-GitHub-Api-Version" = "2022-11-28"
+if (-not $SkipUpload -and -not (Test-Path $Zip)) {
+    throw "release/Friday-Windows.zip not found"
 }
 
-$ReleaseId = $null
-try {
-    $existing = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/tags/$Tag" -Headers $Headers
-    $ReleaseId = $existing.id
-    Write-Host "GitHub release $Tag exists (id $ReleaseId)" -ForegroundColor Yellow
-} catch {
-    Write-Host "Creating GitHub release $Tag on $Repo ..." -ForegroundColor Cyan
-    $Body = @{
-        tag_name = $Tag
-        name = "星期五 v$Version"
-        body = $ReleaseNotes
-    } | ConvertTo-Json
-    $Release = Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/$Repo/releases" -Headers $Headers -Body $Body -ContentType "application/json; charset=utf-8"
-    $ReleaseId = $Release.id
-}
+$Python = Join-Path $Root ".venv\Scripts\python.exe"
+if (-not (Test-Path $Python)) { $Python = "python" }
 
-Write-Host "Uploading Friday-Windows.zip to GitHub ..." -ForegroundColor Cyan
-$UploadHeaders = @{
-    Authorization = "Bearer $GitHubToken"
-    Accept = "application/vnd.github+json"
-    "Content-Type" = "application/zip"
-}
-$ZipBytes = [System.IO.File]::ReadAllBytes($Zip)
-Invoke-RestMethod -Method Post -Uri "https://uploads.github.com/repos/$Repo/releases/$ReleaseId/assets?name=Friday-Windows.zip" -Headers $UploadHeaders -Body $ZipBytes | Out-Null
+$pyArgs = @(
+    (Join-Path $Root "scripts\publish_github_release.py"),
+    "--repo", "$RepoOwner/$RepoName"
+)
+if ($SkipUpload) { $pyArgs += "--skip-upload" }
 
+& $Python @pyArgs
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+$VersionLine = Select-String -Path "friday\version.py" -Pattern '__version__ = "(.+)"' | Select-Object -First 1
+$Version = $VersionLine.Matches[0].Groups[1].Value
 Write-Host ""
 Write-Host "GitHub release done!" -ForegroundColor Green
-Write-Host "  https://github.com/$Repo/releases/tag/$Tag"
+Write-Host "  https://github.com/$RepoOwner/$RepoName/releases/tag/v$Version"

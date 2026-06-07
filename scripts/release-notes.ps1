@@ -3,6 +3,7 @@ param(
     [switch]$All
 )
 
+$OutputEncoding = [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 $ChangelogPath = Join-Path $Root "assets\changelog.json"

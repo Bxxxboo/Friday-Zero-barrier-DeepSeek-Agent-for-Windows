@@ -21,6 +21,7 @@ coverage.xml
 
 release/*.zip
 release/stage/
+release/.release-notes.md
 
 openclaw-weixin/
 openclaw-weixin-*.tgz

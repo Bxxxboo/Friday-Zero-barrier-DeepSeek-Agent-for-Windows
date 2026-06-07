@@ -2,8 +2,9 @@ $ErrorActionPreference = "Stop"
 
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $DistDir = Join-Path $ProjectRoot "dist"
-$AppFolder = -join ([char]0x661F, [char]0x671F, [char]0x4E94)
-$Exe = Get-ChildItem (Join-Path $DistDir $AppFolder) -Filter "*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+. (Join-Path $PSScriptRoot "friday-dist.ps1")
+$DistApp = Get-FridayDistDir -Root $ProjectRoot
+$Exe = Get-FridayExe -DistDir $DistApp
 if (-not $Exe) {
     $Exe = Get-ChildItem $DistDir -Filter "*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
 }

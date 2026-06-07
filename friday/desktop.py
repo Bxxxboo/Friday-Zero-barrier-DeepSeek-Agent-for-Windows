@@ -273,7 +273,9 @@ def main() -> None:
     main_url: str | None = None
     failure_html: str | None = None
     if port is not None:
-        main_url = f"http://127.0.0.1:{port}/?desktop=1&boot={boot_theme}"
+        token = _startup_state.get("token") or ""
+        token_q = f"&token={token}" if token else ""
+        main_url = f"http://127.0.0.1:{port}/?desktop=1&boot={boot_theme}{token_q}"
         _log.info("后端就绪 port=%d，准备加载主界面", port)
         _prefetch_url(main_url)
     else:

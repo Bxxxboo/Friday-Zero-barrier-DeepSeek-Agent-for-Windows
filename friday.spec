@@ -1,20 +1,38 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller 打包配置 —— 生成 dist/星期五.exe"""
+"""PyInstaller 打包配置 —— 生成 dist/Friday/星期五.exe"""
 
 from pathlib import Path
 
+import certifi
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
+
 ROOT = Path(SPECPATH)
+
+import pythonnet
+
+_pn_runtime = Path(pythonnet.__file__).resolve().parent / "runtime"
+_pn_runtime_files = [
+    (str(path), "pythonnet/runtime")
+    for path in sorted(_pn_runtime.iterdir())
+    if path.is_file()
+]
+
+_clr_loader_binaries = collect_dynamic_libs("clr_loader")
+_pythonnet_datas = collect_data_files("pythonnet")
 
 a = Analysis(
     ["run.py"],
     pathex=[str(ROOT)],
-    binaries=[],
+    binaries=_clr_loader_binaries,
     datas=[
         (str(ROOT / "web"), "web"),
         (str(ROOT / "assets"), "assets"),
         (str(ROOT / "extensions"), "extensions"),
         (str(ROOT / "requirements-python.txt"), "."),
-    ],
+        (str(Path(certifi.where())), "certifi"),
+    ]
+    + _pythonnet_datas
+    + _pn_runtime_files,
     hiddenimports=[
         "friday",
         "friday.agent",
@@ -86,6 +104,7 @@ a = Analysis(
         "webview",
         "clr_loader",
         "pythonnet",
+        "clr",
         "tiktoken",
         "multipart",
         "anyio",
@@ -99,10 +118,16 @@ a = Analysis(
         "cryptography",
         "cryptography.fernet",
         "cryptography.hazmat.primitives.kdf.pbkdf2",
+        "openai",
+        "httpx",
+        "certifi",
     ],
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[str(ROOT / "scripts" / "pyi_rth_single_instance.py")],
+    runtime_hooks=[
+        str(ROOT / "scripts" / "pyi_rth_single_instance.py"),
+        str(ROOT / "scripts" / "pyi_rth_pythonnet.py"),
+    ],
     excludes=["tkinter"],
     noarchive=False,
     optimize=0,
@@ -142,5 +167,5 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name="星期五",
+    name="Friday",
 )

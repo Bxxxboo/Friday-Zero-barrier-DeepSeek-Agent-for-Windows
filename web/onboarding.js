@@ -88,18 +88,43 @@
     result.textContent = "测试连接中...";
 
     try {
-      const res = await F.apiFetch("/api/settings/test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ api_key: key }),
-      });
-      const data = await res.json();
+      const res = await F.apiFetchWithTimeout(
+        "/api/settings/test",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ api_key: key }),
+        },
+        60000
+      );
+      let data = {};
+      try {
+        data = await res.json();
+      } catch {
+        result.className = "settings-result error";
+        result.textContent = `服务响应异常 (${res.status})，请重启应用后重试。`;
+        return false;
+      }
+      if (!res.ok) {
+        const detail = data.detail || data.message || `HTTP ${res.status}`;
+        result.className = "settings-result error";
+        result.textContent =
+          res.status === 401
+            ? "本地认证失败，请完全关闭后重新打开应用。"
+            : String(detail);
+        return false;
+      }
       result.className = data.ok ? "settings-result ok" : "settings-result error";
-      result.textContent = data.message;
-      return data.ok;
-    } catch {
+      result.textContent = data.message || (data.ok ? "连接成功" : "连接失败");
+      return !!data.ok;
+    } catch (err) {
       result.className = "settings-result error";
-      result.textContent = "网络错误，请重试。";
+      if (err?.name === "AbortError") {
+        result.textContent = "测试超时（60 秒）。请检查网络或 API Key 是否正确。";
+      } else {
+        result.textContent =
+          "无法连接本地服务。请确认应用未被杀毒软件拦截，并查看 %APPDATA%\\Friday\\friday.log。";
+      }
       return false;
     }
   }

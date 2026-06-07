@@ -1,7 +1,10 @@
 $ErrorActionPreference = "Stop"
 
 $ReleaseRoot = $PSScriptRoot
-$AppFolder = Join-Path $ReleaseRoot (-join ([char]0x661F, [char]0x671F, [char]0x4E94))
+$AppFolder = Join-Path $ReleaseRoot "Friday"
+if (-not (Test-Path $AppFolder)) {
+    $AppFolder = Join-Path $ReleaseRoot (-join ([char]0x661F, [char]0x671F, [char]0x4E94))
+}
 $Exe = Get-ChildItem $AppFolder -Filter "*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
 
 if (-not $Exe) {

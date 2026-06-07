@@ -1,9 +1,10 @@
 $ErrorActionPreference = "Stop"
 Set-Location (Split-Path -Parent $PSScriptRoot)
 
-$AppFolder = -join ([char]0x661F, [char]0x671F, [char]0x4E94)
-$DistApp = Join-Path (Join-Path $PWD "dist") $AppFolder
-$Exe = Get-ChildItem $DistApp -Filter "*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+. (Join-Path $PSScriptRoot "friday-dist.ps1")
+
+$DistApp = Get-FridayDistDir -Root $PWD
+$Exe = Get-FridayExe -DistDir $DistApp
 
 if (-not $Exe) {
     Write-Host "Building exe..." -ForegroundColor Yellow
@@ -27,7 +28,7 @@ New-Item -ItemType Directory -Path $Stage -Force | Out-Null
 
 Copy-Item (Join-Path $ReleaseRoot $GuideName) $Stage -Force
 Copy-Item (Join-Path $ReleaseRoot $ShortcutName) $Stage -Force
-Copy-Item $DistApp (Join-Path $Stage $AppFolder) -Recurse -Force
+Copy-Item $DistApp (Join-Path $Stage "Friday") -Recurse -Force
 
 $ZipPath = Join-Path $ReleaseRoot $ZipName
 if (Test-Path $ZipPath) {
