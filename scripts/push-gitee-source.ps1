@@ -54,7 +54,8 @@ if (-not $Check) {
 }
 
 $RemoteUrl = "https://oauth2:${GiteeToken}@gitee.com/$GiteeUser/$RepoName.git"
-& $Git remote remove gitee 2>$null
+$remotes = & $Git remote
+if ($remotes -contains "gitee") { & $Git remote remove gitee }
 & $Git remote add gitee $RemoteUrl
 & $Git push -u gitee main --force
 
