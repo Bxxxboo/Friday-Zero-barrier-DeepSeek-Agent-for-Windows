@@ -3,6 +3,8 @@ param(
     [string]$RepoName = "friday",
     [ValidateSet("public", "private")]
     [string]$Visibility = "public",
+    [ValidateSet("", "patch", "minor", "major")]
+    [string]$Bump = "",
     [switch]$SkipRelease
 )
 
@@ -17,6 +19,10 @@ function Require-Command([string]$Name) {
 
 Require-Command git
 Require-Command gh
+
+if ($Bump) {
+    powershell -ExecutionPolicy Bypass -File scripts\bump-version.ps1 -Part $Bump
+}
 
 $Repo = "$RepoOwner/$RepoName"
 Write-Host "Target repo: $Repo" -ForegroundColor Cyan

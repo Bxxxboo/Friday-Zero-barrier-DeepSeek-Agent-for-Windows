@@ -1,0 +1,39 @@
+---
+description: 推送 GitHub 前必须同步 semver 版本号
+alwaysApply: true
+---
+
+# 版本号与 GitHub 同步
+
+向 GitHub 推送项目更新时，**必须先 bump 版本号**，再 commit / push。
+
+## 版本源（两处保持一致）
+
+- `friday/version.py` — `__version__` 与 `__version_tuple__`
+- `scripts/version_info.py` — PyInstaller exe 元数据
+
+##  semver 规则（自行判断改动大小）
+
+| 级别 | 何时用 | 示例 |
+|------|--------|------|
+| **patch** | 修复 bug、文案/UI 微调、脚本/CI 小改 | 1.0.0 → 1.0.1 |
+| **minor** | 新功能、较大 UI 重构、新工具/设置项（向后兼容） | 1.0.1 → 1.1.0 |
+| **major** | 破坏性变更、数据格式不兼容、大幅架构调整 | 1.1.0 → 2.0.0 |
+
+## 操作命令
+
+```powershell
+# 按级别递增
+scripts\bump-version.cmd -Part patch   # 或 minor / major
+# 指定版本
+scripts\bump-version.cmd -Set 1.2.0
+
+# bump + commit + push（自动读 origin 仓库名）
+scripts\push-github.cmd -Bump patch
+```
+
+## 提交约定
+
+- 含版本 bump 的推送：commit message 用 `chore: release vX.Y.Z` 或 `feat: ...` + 同一 commit 内含 version 文件变更
+- **禁止**在未改 `friday/version.py` 的情况下向 GitHub 推送用户可见功能更新
+- 需要发安装包时，再运行 `scripts/publish-github.ps1` 打 GitHub Release
