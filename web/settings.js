@@ -551,10 +551,6 @@
     try {
       const res = await F.apiFetch("/api/updates/check");
       const data = await res.json();
-      if (sourceLink && data.source_url) {
-        sourceLink.href = data.source_url;
-        sourceLink.textContent = data.source_repo || "GitHub Releases";
-      }
       if (!data.checked) {
         if (resultEl) resultEl.textContent = "无法读取更新源配置";
         downloadLink?.classList.add("hidden");
@@ -569,12 +565,26 @@
           downloadLink.href = data.download_url;
           downloadLink.classList.remove("hidden");
         }
+      } else if (data.release_notes && data.latest === data.current && !data.download_url) {
+        if (resultEl) {
+          const isError = /无法|暂无|不可达|失败/.test(data.release_notes);
+          resultEl.className = isError ? "settings-result error" : "settings-result ok";
+          resultEl.textContent = isError ? data.release_notes : `已是最新版本 ${data.current}`;
+        }
+        downloadLink?.classList.add("hidden");
       } else {
         if (resultEl) {
           resultEl.className = "settings-result ok";
           resultEl.textContent = `已是最新版本 ${data.current}`;
         }
         downloadLink?.classList.add("hidden");
+      }
+      if (sourceLink && data.source_url) {
+        const kind = data.source_kind === "github" ? "GitHub Releases" : "Gitee Releases";
+        sourceLink.href = data.source_kind === "github"
+          ? `${data.source_url}/releases`
+          : `${data.source_url}/releases`;
+        sourceLink.textContent = kind;
       }
     } catch {
       if (resultEl) {

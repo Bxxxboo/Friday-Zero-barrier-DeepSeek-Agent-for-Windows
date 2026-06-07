@@ -391,6 +391,7 @@ class UpdateCheckResponse(BaseModel):
     checked: bool
     source_repo: str = ""
     source_url: str = ""
+    source_kind: str = ""
 
 
 class ScheduleListResponse(BaseModel):
@@ -1404,6 +1405,7 @@ async def api_check_updates() -> UpdateCheckResponse:
         checked=info.checked,
         source_repo=info.source_repo,
         source_url=info.source_url,
+        source_kind=info.source_kind,
     )
 
 

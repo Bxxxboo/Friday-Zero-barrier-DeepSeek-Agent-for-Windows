@@ -17,7 +17,7 @@ if (-not $Exe) {
 $ReleaseRoot = Join-Path $PWD "release"
 $GuideName = -join ([char]0x5B89, [char]0x88C5, [char]0x6559, [char]0x7A0B) + ".txt"
 $ShortcutName = -join ([char]0x521B, [char]0x5EFA, [char]0x684C, [char]0x9762, [char]0x5FEB, [char]0x6377, [char]0x65B9, [char]0x5F0F) + ".ps1"
-$ZipName = $AppFolder + "-Windows.zip"
+$ZipName = "Friday-Windows.zip"
 
 $Stage = Join-Path $ReleaseRoot "stage"
 if (Test-Path $Stage) {

@@ -5,6 +5,8 @@ param(
     [string]$Visibility = "public",
     [ValidateSet("", "patch", "minor", "major")]
     [string]$Bump = "",
+    [string]$GiteeUser = "Bxxxboo",
+    [string]$GiteeRepoName = "friday",
     [switch]$SkipRelease
 )
 
@@ -27,26 +29,8 @@ if ($Bump) {
 $Repo = "$RepoOwner/$RepoName"
 Write-Host "Target repo: $Repo" -ForegroundColor Cyan
 
-if (-not (Test-Path ".git")) {
-    git init -b main
-}
-
-git add -A
-$status = git status --porcelain
-if ($status) {
-    git commit -m "chore: prepare Friday open-source release"
-} else {
-    Write-Host "No changes to commit." -ForegroundColor Yellow
-}
-
-$remoteUrl = git remote get-url origin 2>$null
-if (-not $remoteUrl) {
-    Write-Host "Creating GitHub repo and pushing..." -ForegroundColor Cyan
-    gh repo create $Repo --$Visibility --source=. --remote=origin --push --description "Friday - Windows AI desktop butler"
-} else {
-    Write-Host "Pushing to origin..." -ForegroundColor Cyan
-    git push -u origin HEAD
-}
+# Git: GitHub + Gitee
+& (Join-Path $PWD "scripts\sync-remotes.ps1") -RepoOwner $RepoOwner -GitHubRepoName $RepoName -GiteeUser $GiteeUser -GiteeRepoName $GiteeRepoName
 
 Write-Host ""
 Write-Host "Repository: https://github.com/$Repo" -ForegroundColor Green
@@ -64,8 +48,8 @@ $Tag = "v$Version"
 Write-Host "Building release $Tag ..." -ForegroundColor Cyan
 powershell -ExecutionPolicy Bypass -File scripts\make-release.ps1
 
-$Zip = Get-ChildItem (Join-Path $PWD "release") -Filter "*-Windows.zip" | Select-Object -First 1
-if (-not $Zip) { throw "Release zip not found in release/" }
+$Zip = Join-Path $PWD "release\Friday-Windows.zip"
+if (-not (Test-Path $Zip)) { throw "Release zip not found in release/" }
 
 $Notes = @"
 ## Friday $Version
@@ -73,17 +57,26 @@ $Notes = @"
 Windows AI desktop butler.
 
 ### Install
-1. Download ``$($Zip.Name)``
+1. Download ``Friday-Windows.zip``
 2. Extract and run ``星期五.exe``
 3. See ``安装教程.txt`` inside the archive
 "@
 
-gh release view $Tag 2>$null
+gh release view $Tag --repo $Repo 2>$null
 if ($LASTEXITCODE -eq 0) {
     Write-Host "Release $Tag exists, uploading asset..." -ForegroundColor Yellow
-    gh release upload $Tag $Zip.FullName --clobber
+    gh release upload $Tag $Zip --repo $Repo --clobber
 } else {
-    gh release create $Tag $Zip.FullName --title "Friday $Version" --notes $Notes
+    gh release create $Tag $Zip --repo $Repo --title "Friday $Version" --notes $Notes
 }
 
-Write-Host "Release: https://github.com/$Repo/releases/tag/$Tag" -ForegroundColor Green
+Write-Host "GitHub release: https://github.com/$Repo/releases/tag/$Tag" -ForegroundColor Green
+
+if ($env:GITEE_TOKEN) {
+    Write-Host "Publishing Gitee release (mirror) ..." -ForegroundColor Cyan
+    powershell -ExecutionPolicy Bypass -File scripts\publish-gitee-release.ps1 -GiteeUser $GiteeUser -RepoName $GiteeRepoName -SkipBuild
+} else {
+    Write-Host "GITEE_TOKEN not set; skip Gitee Release. Run publish-gitee-release.cmd separately." -ForegroundColor Yellow
+}
+
+Write-Host "Tip: use scripts\publish-release.cmd next time for one-step sync." -ForegroundColor Cyan
