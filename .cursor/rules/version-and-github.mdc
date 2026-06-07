@@ -38,7 +38,7 @@ scripts\sync-remotes.cmd -Bump patch -GitHubRepoName Friday-Zero-barrier-DeepSee
 
 | 远端 | 地址 |
 |------|------|
-| **origin** | `github.com/Bxxxboo/<GitHubRepoName>` |
+| **origin** | `github.com/Bxxxboo/Friday-Zero-barrier-DeepSeek-Agent-for-Windows` |
 | **gitee** | `gitee.com/Bxxxboo/friday` |
 
 ## 禁止

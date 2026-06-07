@@ -72,21 +72,14 @@ if (-not $SkipGithubRelease) {
         if (-not (Test-Path $Zip)) {
             throw "release/Friday-Windows.zip not found"
         }
-        $Notes = @"
-## Friday $Version
-
-Windows AI desktop butler.
-
-### Install
-1. Download ``Friday-Windows.zip``
-2. Extract and run ``星期五.exe``
-3. See ``安装教程.txt`` in the archive
-"@
+        $ReleaseNotes = & (Join-Path $Root "scripts\release-notes.ps1") | Out-String
+        $ReleaseNotes = $ReleaseNotes.Trim()
         gh release view $Tag --repo $Repo 2>$null
         if ($LASTEXITCODE -eq 0) {
             gh release upload $Tag $Zip --repo $Repo --clobber
+            gh release edit $Tag --repo $Repo --title "星期五 v$Version" --notes $ReleaseNotes
         } else {
-            gh release create $Tag $Zip --repo $Repo --title "Friday $Version" --notes $Notes
+            gh release create $Tag $Zip --repo $Repo --title "星期五 v$Version" --notes $ReleaseNotes
         }
         Write-Host "GitHub release: https://github.com/$Repo/releases/tag/$Tag" -ForegroundColor Green
     }

@@ -108,6 +108,16 @@ class UserSettings:
     vision_base_url: str = "https://ark.cn-beijing.volces.com/api/v3"
     vision_model: str = ""
     vision_enabled: bool = False
+    image_gen_enabled: bool = False
+    image_gen_provider: str = "openai_compat"
+    image_gen_api_key: str = ""
+    image_gen_base_url: str = "https://next.zhima.world"
+    image_gen_model: str = ""
+    image_gen_default_size: str = "1024x1024"
+    image_gen_fallback_urls: str = ""
+    image_gen_save_dir: str = ""
+    weixin_bridge_enabled: bool = True
+    acknowledged_changelog_version: str = ""
 
     @classmethod
     def from_dict(cls, data: dict) -> "UserSettings":
@@ -141,6 +151,7 @@ def save_settings(settings: UserSettings) -> None:
     data = asdict(settings)
     data["api_key"] = _encrypt_key(data["api_key"])
     data["vision_api_key"] = _encrypt_key(data.get("vision_api_key", ""))
+    data["image_gen_api_key"] = _encrypt_key(data.get("image_gen_api_key", ""))
     path = _settings_path()
     atomic_write_json(path, data)
     _log.info("设置已保存 | path=%s", path)
@@ -160,6 +171,8 @@ def load_settings() -> UserSettings:
         data["api_key"] = _decrypt_key(data["api_key"])
     if "vision_api_key" in data:
         data["vision_api_key"] = _decrypt_key(data["vision_api_key"])
+    if "image_gen_api_key" in data:
+        data["image_gen_api_key"] = _decrypt_key(data["image_gen_api_key"])
     return UserSettings.from_dict(data)
 
 
@@ -212,4 +225,6 @@ def merge_settings(current: UserSettings, payload: dict) -> UserSettings:
         merged = merged.merge({"api_key": current.api_key})
     if "vision_api_key" in payload and not str(payload.get("vision_api_key", "")).strip():
         merged = merged.merge({"vision_api_key": current.vision_api_key})
+    if "image_gen_api_key" in payload and not str(payload.get("image_gen_api_key", "")).strip():
+        merged = merged.merge({"image_gen_api_key": current.image_gen_api_key})
     return merged

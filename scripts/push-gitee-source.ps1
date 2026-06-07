@@ -77,7 +77,7 @@ $Info = @{
     version = $Version
     pushed_at = (Get-Date -Format "yyyy-MM-dd HH:mm")
     github_import = "https://github.com/new/import"
-    github_target = "Bxxxboo/friday"
+    github_target = "Bxxxboo/Friday-Zero-barrier-DeepSeek-Agent-for-Windows"
 } | ConvertTo-Json -Depth 3
 Set-Content -Path $InfoPath -Value $Info -Encoding UTF8
 

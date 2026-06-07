@@ -37,6 +37,14 @@
     const themeMode = mode || "dark";
     document.documentElement.dataset.themeMode = themeMode;
     document.documentElement.dataset.theme = resolveTheme(themeMode);
+    const resolved = resolveTheme(themeMode);
+    document.documentElement.style.backgroundColor = resolved === "light" ? "#f0ebe3" : "#0a0d12";
+    if (document.documentElement.classList.contains("desktop")) {
+      window.pywebview?.api?.sync_window_chrome?.(
+        resolved === "light" ? "#f0ebe3" : "#0a0d12",
+        resolved === "dark"
+      );
+    }
   }
 
   function applyFontSize(size) {
@@ -140,6 +148,31 @@
         : "尚未保存视觉 API Key";
     }
     if (visionEnabled) updateVisionStatus(data.vision_ready, data.vision_enabled);
+    const imageGenEnabled = document.getElementById("imageGenEnabled");
+    if (imageGenEnabled) imageGenEnabled.checked = !!data.image_gen_enabled;
+    const imageGenProvider = document.getElementById("imageGenProvider");
+    if (imageGenProvider) {
+      imageGenProvider.value = data.image_gen_provider || "openai_compat";
+    }
+    const imageGenBaseUrl = document.getElementById("imageGenBaseUrl");
+    if (imageGenBaseUrl) {
+      imageGenBaseUrl.value = data.image_gen_base_url || "https://next.zhima.world";
+    }
+    const imageGenFallback = document.getElementById("imageGenFallbackUrls");
+    if (imageGenFallback) imageGenFallback.value = data.image_gen_fallback_urls || "";
+    const imageGenModel = document.getElementById("imageGenModel");
+    if (imageGenModel) imageGenModel.value = data.image_gen_model || "";
+    const imageGenSize = document.getElementById("imageGenDefaultSize");
+    if (imageGenSize) {
+      imageGenSize.value = data.image_gen_default_size || "1024x1024";
+    }
+    const imageGenHint = document.getElementById("imageGenApiKeyHint");
+    if (imageGenHint) {
+      imageGenHint.textContent = data.image_gen_api_key_masked
+        ? `当前已保存: ${data.image_gen_api_key_masked}`
+        : "尚未保存生图 API Key";
+    }
+    if (imageGenEnabled) updateImageGenStatus(data.image_gen_ready, data.image_gen_enabled);
     document.getElementById("themeMode").value = data.theme || "dark";
     document.getElementById("fontSize").value = data.font_size || "medium";
     const langEl = document.getElementById("uiLanguage");
@@ -176,6 +209,46 @@
       vision_base_url: document.getElementById("visionBaseUrl").value.trim(),
       vision_model: document.getElementById("visionModel").value.trim(),
     };
+  }
+
+  function collectImageGenSettings() {
+    return {
+      image_gen_enabled: document.getElementById("imageGenEnabled").checked,
+      image_gen_provider: document.getElementById("imageGenProvider").value,
+      image_gen_api_key: document.getElementById("imageGenApiKey").value.trim(),
+      image_gen_base_url: document.getElementById("imageGenBaseUrl").value.trim(),
+      image_gen_fallback_urls: document.getElementById("imageGenFallbackUrls").value.trim(),
+      image_gen_model: document.getElementById("imageGenModel").value.trim(),
+      image_gen_default_size: document.getElementById("imageGenDefaultSize").value,
+    };
+  }
+
+  function updateImageGenStatus(ready, enabled) {
+    const pill = document.getElementById("imageGenStatus");
+    if (!pill) return;
+    if (!enabled) {
+      pill.textContent = "生图未启用";
+      pill.classList.remove("ready");
+      return;
+    }
+    if (ready) {
+      pill.textContent = "生图 API 已就绪";
+      pill.classList.add("ready");
+    } else {
+      pill.textContent = "生图 API 未配置";
+      pill.classList.remove("ready");
+    }
+  }
+
+  function onImageGenProviderChange() {
+    const provider = document.getElementById("imageGenProvider")?.value;
+    const baseInput = document.getElementById("imageGenBaseUrl");
+    if (!baseInput || baseInput.dataset.userEdited === "1") return;
+    if (provider === "ark") {
+      baseInput.value = "https://ark.cn-beijing.volces.com/api/v3";
+    } else {
+      baseInput.value = "https://next.zhima.world";
+    }
   }
 
   function updateVisionStatus(ready, enabled) {
@@ -388,6 +461,88 @@
     void F.refreshStatusBar?.();
   }
 
+  async function saveImageGenSettings(event) {
+    event.preventDefault();
+    const resultEl = document.getElementById("imageGenResult");
+    if (resultEl) {
+      resultEl.className = "settings-result";
+      resultEl.textContent = "保存中...";
+    }
+    const payload = collectImageGenSettings();
+    const res = await F.apiFetch("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    document.getElementById("imageGenApiKey").value = "";
+    document.getElementById("imageGenApiKeyHint").textContent = data.image_gen_api_key_masked
+      ? `当前已保存: ${data.image_gen_api_key_masked}`
+      : "尚未保存生图 API Key";
+    updateImageGenStatus(data.image_gen_ready, data.image_gen_enabled);
+    if (resultEl) {
+      resultEl.className = "settings-result ok";
+      resultEl.textContent = "生图设置已保存。";
+    }
+    void F.refreshStatusBar?.();
+  }
+
+  async function testImageGenSettings() {
+    const resultEl = document.getElementById("imageGenResult");
+    if (resultEl) {
+      resultEl.className = "settings-result";
+      resultEl.textContent = "测试生图 API 中（可能需要 1～2 分钟）…";
+    }
+    const payload = collectImageGenSettings();
+    if (!payload.image_gen_enabled) {
+      if (resultEl) {
+        resultEl.className = "settings-result error";
+        resultEl.textContent = "请先勾选「启用生图」。";
+      }
+      updateImageGenStatus(false, false);
+      return;
+    }
+    if (!payload.image_gen_model) {
+      if (resultEl) {
+        resultEl.className = "settings-result error";
+        resultEl.textContent = "请先填写生图模型名称。";
+      }
+      updateImageGenStatus(false, payload.image_gen_enabled);
+      return;
+    }
+    const res = await F.apiFetch("/api/settings/test-image-gen", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      if (resultEl) {
+        resultEl.className = "settings-result error";
+        resultEl.textContent = data.message;
+      }
+      updateImageGenStatus(false, payload.image_gen_enabled);
+      return;
+    }
+
+    const saveRes = await F.apiFetch("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const saved = await saveRes.json();
+    document.getElementById("imageGenApiKey").value = "";
+    document.getElementById("imageGenApiKeyHint").textContent = saved.image_gen_api_key_masked
+      ? `当前已保存: ${saved.image_gen_api_key_masked}`
+      : "尚未保存生图 API Key";
+    updateImageGenStatus(saved.image_gen_ready, saved.image_gen_enabled);
+    if (resultEl) {
+      resultEl.className = "settings-result ok";
+      resultEl.textContent = `${data.message}（已自动保存）`;
+    }
+    void F.refreshStatusBar?.();
+  }
+
   /* ── 设置面板切换 ── */
 
   function openSettings(panel = "api") {
@@ -408,6 +563,9 @@
     });
     if (panel === "logs") {
       void refreshLogPreview();
+    }
+    if (panel === "weixin") {
+      void F.refreshWeixinSetup?.();
     }
   }
 
@@ -477,6 +635,9 @@
   F.testSettings = testSettings;
   F.saveVisionSettings = saveVisionSettings;
   F.testVisionSettings = testVisionSettings;
+  F.saveImageGenSettings = saveImageGenSettings;
+  F.testImageGenSettings = testImageGenSettings;
+  F.onImageGenProviderChange = onImageGenProviderChange;
   F.openSettings = openSettings;
   F.closeSettings = closeSettings;
   F.switchSettingsPanel = switchSettingsPanel;
@@ -609,5 +770,8 @@
   }
 
   document.getElementById("checkUpdateBtn")?.addEventListener("click", checkForUpdates);
+  document.getElementById("viewChangelogBtn")?.addEventListener("click", () => {
+    void F.showChangelogHistory?.();
+  });
   loadAppVersion();
 })();

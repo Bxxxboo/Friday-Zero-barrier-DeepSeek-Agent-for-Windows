@@ -70,6 +70,43 @@
     });
   }
 
+  function buildGeneratedImageUrl(path, { preview = true } = {}) {
+    const token = resolveApiToken();
+    const qs = new URLSearchParams({ path: path || "" });
+    if (token) qs.set("token", token);
+    if (preview) qs.set("preview", "1");
+    return `/api/chat/generated-image?${qs.toString()}`;
+  }
+
+  function appendGeneratedImages(node, images) {
+    if (!node || !images?.length) return;
+    const wrap = document.createElement("div");
+    wrap.className = "message-generated-images";
+    images.forEach((item) => {
+      const path = typeof item === "string" ? item : item?.path;
+      if (!path) return;
+      const img = document.createElement("img");
+      img.className = "message-image";
+      img.src = buildGeneratedImageUrl(path);
+      img.alt = "生成的图片";
+      img.loading = "lazy";
+      img.decoding = "async";
+      img.title = "点击查看大图";
+      img.addEventListener("click", () => {
+        const full = buildGeneratedImageUrl(path, { preview: false });
+        window.open(full, "_blank", "noopener");
+      });
+      img.addEventListener("error", () => {
+        img.replaceWith(Object.assign(document.createElement("p"), {
+          className: "message-image-error",
+          textContent: `图片预览加载失败（文件仍在：${path}）`,
+        }));
+      });
+      wrap.appendChild(img);
+    });
+    if (wrap.childElementCount > 0) node.appendChild(wrap);
+  }
+
   function apiFetchWithTimeout(url, options = {}, timeoutMs = 15000) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -151,26 +188,48 @@
     window.Friday?.refreshStatusBar?.();
   }
 
+  function updateQueueIndicator(count = pendingQueue.length) {
+    const bar = document.getElementById("composerQueue");
+    const text = document.getElementById("composerQueueText");
+    if (!bar || !text) return;
+    const n = Math.max(0, Number(count) || 0);
+    if (n > 0) {
+      bar.classList.remove("hidden");
+      const t = window.Friday?.t;
+      text.textContent =
+        n === 1
+          ? t?.("composer.queue.one") || "1 条指令待执行"
+          : (t?.("composer.queue.many") || "{n} 条指令待执行").replace("{n}", String(n));
+    } else {
+      bar.classList.add("hidden");
+      text.textContent = "";
+    }
+  }
+
   function updateInputState() {
     const friday = window.Friday;
     const hasAttachment = Boolean(friday?.hasComposerAttachment?.());
     const hasText = Boolean(chatInput?.value.trim());
-    const canInteract = !busy && apiReady && activeSessionId;
-    const canSend = canInteract && (hasText || hasAttachment);
-    sendBtn?.classList.toggle("hidden", busy);
+    const canSend = apiReady && activeSessionId && (hasText || hasAttachment);
+    const canInteract = apiReady && activeSessionId;
+
     if (stopBtn) {
       stopBtn.classList.toggle("hidden", !busy);
       stopBtn.disabled = !busy;
     }
-    if (sendBtn) sendBtn.disabled = !canSend;
-    // 输入框保持可聚焦/粘贴；仅 AI 思考中暂时禁用
+    if (sendBtn) {
+      sendBtn.classList.toggle("hidden", busy && !canSend);
+      sendBtn.disabled = !canSend;
+    }
     if (chatInput) {
-      chatInput.disabled = busy;
-      chatInput.classList.toggle("composer-idle", !canSend && !busy);
+      chatInput.disabled = !canInteract;
+      chatInput.classList.toggle("composer-idle", !canSend);
+      chatInput.classList.toggle("composer-busy", busy);
     }
     document.querySelectorAll(".chip").forEach((chip) => {
       chip.classList.toggle("chip-muted", !canInteract);
     });
+    updateQueueIndicator();
   }
 
   function scrollToBottom() {
@@ -200,10 +259,19 @@
   }
 
   function toUiMessages(apiMessages) {
-    return apiMessages.map((msg) => ({
-      kind: msg.role === "user" ? "user" : msg.role === "error" ? "error" : "assistant",
-      text: msg.content,
-    }));
+    return apiMessages.map((msg) => {
+      const item = {
+        kind: msg.role === "user" ? "user" : msg.role === "error" ? "error" : "assistant",
+        text: msg.content,
+      };
+      const images = msg.generated_images || msg.generatedImages;
+      if (images?.length) {
+        item.generatedImages = images
+          .map((img) => ({ path: typeof img === "string" ? img : img?.path }))
+          .filter((img) => img.path);
+      }
+      return item;
+    });
   }
 
   function setBusy(value) {
@@ -230,9 +298,9 @@
       get_system_status: "查看系统",
       get_disk_usage: "查看磁盘",
       get_top_processes: "查看进程",
-      run_powershell: "执行命令",
-      run_python: "运行 Python",
-      run_python_script: "运行脚本",
+      run_powershell: "整理信息",
+      run_python: "分析数据",
+      run_python_script: "运行任务",
       python_env_info: "Python 环境",
       delete_file: "删除文件",
       delete_directory: "删除目录",
@@ -250,6 +318,8 @@
       download_software: "下载软件",
       describe_image: "识别截图",
       vision_status: "检查视觉",
+      generate_image: "生成图片",
+      image_gen_status: "检查生图",
     };
     return labels[name] || name;
   }
@@ -310,11 +380,14 @@
     apiFetch,
     apiFetchWithTimeout,
     apiHeaders,
+    buildGeneratedImageUrl,
+    appendGeneratedImages,
     renderMessageBody,
     migrateLocalStorageSessions,
     setConnectionStatus,
     updateApiStatus,
     updateInputState,
+    updateQueueIndicator,
     scrollToBottom,
     showThinking,
     removeThinking,

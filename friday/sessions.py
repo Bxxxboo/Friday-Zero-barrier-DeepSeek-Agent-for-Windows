@@ -32,6 +32,7 @@ class ChatSession:
     updated_at: float
     agent_messages: list[dict[str, Any]] = field(default_factory=list)
     display_messages: list[dict[str, Any]] = field(default_factory=list)
+    title_pinned: bool = False
 
     def to_summary(self) -> SessionSummary:
         return SessionSummary(
@@ -75,13 +76,60 @@ def _write_index(active_session_id: str, order: list[str]) -> None:
 
 
 def _slim_display_messages(agent_messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """UI 用精简消息：仅保留 user / assistant 文本。"""
+    """UI 用精简消息：user / assistant 文本，并附带同轮生图路径。"""
+    return build_display_messages(agent_messages)
+
+
+def build_display_messages(agent_messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """从 agent 历史构建展示消息，将 generate_image 结果挂到紧随的 assistant 回复。"""
+    from friday.image_gen import extract_path_from_tool_result
+
     display: list[dict[str, Any]] = []
-    for msg in display_messages_from_agent(agent_messages):
-        role = msg.get("role", "")
-        content = msg.get("content", "")
-        if role in ("user", "assistant") and content:
-            display.append({"role": role, "content": content})
+    pending_images: list[dict[str, str]] = []
+    tool_names: dict[str, str] = {}
+
+    for msg in agent_messages:
+        role = str(msg.get("role", ""))
+        if role == "system":
+            continue
+        if role == "user":
+            pending_images = []
+            content = str(msg.get("content", "")).strip()
+            if content:
+                display.append({"role": "user", "content": content})
+            continue
+        if role == "assistant":
+            for call in msg.get("tool_calls") or []:
+                if not isinstance(call, dict):
+                    continue
+                fn = call.get("function") or {}
+                call_id = str(call.get("id", "")).strip()
+                if call_id:
+                    tool_names[call_id] = str(fn.get("name", ""))
+            content = str(msg.get("content", "")).strip()
+            if content or pending_images:
+                item: dict[str, Any] = {"role": "assistant", "content": content}
+                if pending_images:
+                    item["generated_images"] = pending_images.copy()
+                    pending_images = []
+                display.append(item)
+            continue
+        if role == "tool":
+            call_id = str(msg.get("tool_call_id", "")).strip()
+            if tool_names.get(call_id) == "generate_image":
+                path = extract_path_from_tool_result(str(msg.get("content", "")))
+                if path:
+                    pending_images.append({"path": path})
+            continue
+
+    if pending_images:
+        display.append(
+            {
+                "role": "assistant",
+                "content": "已生成图片。",
+                "generated_images": pending_images,
+            }
+        )
     return display
 
 
@@ -116,6 +164,7 @@ def _parse_session_data(data: dict[str, Any]) -> ChatSession | None:
             updated_at=float(data.get("updated_at", time.time())),
             agent_messages=agent_messages,
             display_messages=display,
+            title_pinned=bool(data.get("title_pinned", False)),
         )
     except (KeyError, TypeError, ValueError):
         return None
@@ -130,6 +179,7 @@ def _save_session(session: ChatSession) -> None:
         "title": session.title,
         "created_at": session.created_at,
         "updated_at": session.updated_at,
+        "title_pinned": session.title_pinned,
         "display_messages": display,
         "agent_messages": _compress_agent_messages(session.agent_messages),
     }
@@ -155,7 +205,7 @@ def migrate_session_files() -> int:
     return migrated
 
 
-def create_session(title: str = "新对话") -> ChatSession:
+def create_session(title: str = "新对话", *, title_pinned: bool = False) -> ChatSession:
     session_id = uuid.uuid4().hex[:12]
     now = time.time()
     session = ChatSession(
@@ -165,6 +215,7 @@ def create_session(title: str = "新对话") -> ChatSession:
         updated_at=now,
         agent_messages=[],
         display_messages=[],
+        title_pinned=title_pinned,
     )
     _save_session(session)
     index = _read_index()
@@ -206,7 +257,11 @@ def save_agent_state(
     session.agent_messages = messages
     session.display_messages = _slim_display_messages(messages)
     session.updated_at = time.time()
-    if session.title == "新对话" and user_text.strip():
+    if (
+        not session.title_pinned
+        and session.title == "新对话"
+        and user_text.strip()
+    ):
         title = user_text.strip().replace("\n", " ")
         session.title = title[:32] + ("…" if len(title) > 32 else "")
 
@@ -224,6 +279,18 @@ def set_active_session(session_id: str) -> None:
     index = _read_index()
     index["active_session_id"] = session_id
     _write_index(index["active_session_id"], index["order"])
+
+
+def rename_session(session_id: str, title: str) -> ChatSession:
+    session = get_session(session_id)
+    if session is None:
+        raise ValueError(f"会话不存在: {session_id}")
+    clean = (title or "").strip() or "新对话"
+    session.title = clean[:64]
+    session.title_pinned = True
+    session.updated_at = time.time()
+    _save_session(session)
+    return session
 
 
 def list_sessions(limit: int = 50) -> tuple[list[SessionSummary], str]:
@@ -300,10 +367,12 @@ def display_messages_from_agent(agent_messages: list[dict[str, Any]]) -> list[di
 
 
 def session_display_messages(session: ChatSession) -> list[dict[str, Any]]:
-    """优先使用落盘的 display_messages，兼容旧数据。"""
+    """优先从 agent 历史重建展示消息（含生图路径），兼容旧落盘数据。"""
+    if session.agent_messages:
+        return build_display_messages(session.agent_messages)
     if session.display_messages:
         return session.display_messages
-    return display_messages_from_agent(session.agent_messages)
+    return []
 
 
 def ensure_default_session() -> ChatSession:

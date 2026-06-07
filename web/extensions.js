@@ -47,6 +47,58 @@
 
   /* ── 技能 ── */
 
+  function canDeleteSkill(skill) {
+    return !skill.builtin;
+  }
+
+  function canDeleteRule(rule) {
+    return rule.source !== "builtin";
+  }
+
+  function deleteConfirmMessage(kind, item) {
+    const name = kind === "skill" ? item.label : item.title;
+    if (item.source === "plugin") {
+      return (
+        `确定删除${kind === "skill" ? "技能" : "规则"}「${name}」？\n` +
+        "不会卸载整个插件；重新安装或更新该插件时可恢复。"
+      );
+    }
+    return `确定删除${kind === "skill" ? "技能" : "规则"}「${name}」？此操作不可撤销。`;
+  }
+
+  async function deleteSkill(skill) {
+    if (!confirm(deleteConfirmMessage("skill", skill))) return;
+    try {
+      const res = await F.apiFetch(`/api/skills/${skill.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showResult(skillResultEl, err.detail || "删除失败", false);
+        return;
+      }
+      showResult(skillResultEl, `已删除技能「${skill.label}」`, true);
+      await loadSkillsPanel();
+      F.loadWelcomeChips?.();
+    } catch {
+      showResult(skillResultEl, "删除失败", false);
+    }
+  }
+
+  async function deleteRule(rule) {
+    if (!confirm(deleteConfirmMessage("rule", rule))) return;
+    try {
+      const res = await F.apiFetch(`/api/rules/${rule.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showResult(ruleResultEl, err.detail || "删除失败", false);
+        return;
+      }
+      showResult(ruleResultEl, `已删除规则「${rule.title}」`, true);
+      await loadRulesPanel();
+    } catch {
+      showResult(ruleResultEl, "删除失败", false);
+    }
+  }
+
   function renderSkillManageList(skills) {
     if (!skillListEl) return;
     skillListEl.innerHTML = "";
@@ -59,14 +111,14 @@
       const row = document.createElement("div");
       row.className = "skill-manage-row";
       const badge = sourceBadge(skill.source);
-      const canDelete = skill.source === "custom";
+      const deletable = canDeleteSkill(skill);
       row.innerHTML = `
         <label class="ext-enable-toggle">
           <input type="checkbox" ${skill.enabled ? "checked" : ""} />
           <span>${skill.icon || "✨"} ${skill.label}</span>
           <small class="ext-badge">${badge}</small>
         </label>
-        ${canDelete ? '<button type="button" class="ghost-btn skill-del-btn">删除</button>' : ""}`;
+        ${deletable ? '<button type="button" class="ghost-btn ext-del-btn skill-del-btn">删除</button>' : ""}`;
       row.querySelector("input")?.addEventListener("change", async (e) => {
         await F.apiFetch(`/api/skills/${skill.id}`, {
           method: "PUT",
@@ -75,11 +127,8 @@
         });
         F.loadWelcomeChips?.();
       });
-      row.querySelector(".skill-del-btn")?.addEventListener("click", async () => {
-        if (!confirm(`确定删除技能「${skill.label}」？`)) return;
-        await F.apiFetch(`/api/skills/${skill.id}`, { method: "DELETE" });
-        await loadSkillsPanel();
-        F.loadWelcomeChips?.();
+      row.querySelector(".skill-del-btn")?.addEventListener("click", () => {
+        void deleteSkill(skill);
       });
       skillListEl.appendChild(row);
     });
@@ -87,7 +136,7 @@
 
   async function loadSkillsPanel() {
     try {
-      const res = await F.apiFetch("/api/skills?include_disabled=true");
+      const res = await F.apiFetch("/api/skills?include_disabled=true&manage=true");
       const data = await res.json();
       renderSkillManageList(data.skills || []);
     } catch {
@@ -140,19 +189,19 @@
     rules.forEach((rule) => {
       const row = document.createElement("article");
       row.className = "rule-manage-row";
-      const canDelete = rule.source === "custom";
+      const deletable = canDeleteRule(rule);
       row.innerHTML = `
         <div class="rule-manage-head">
           <label class="ext-enable-toggle">
             <input type="checkbox" ${rule.enabled ? "checked" : ""} />
             <strong>${rule.title}</strong>
           </label>
-          <small class="ext-badge">${sourceBadge(rule.source)}</small>
+          <div class="rule-manage-head-actions">
+            <small class="ext-badge">${sourceBadge(rule.source)}</small>
+            ${deletable ? '<button type="button" class="ghost-btn ext-del-btn rule-del-btn">删除</button>' : ""}
+          </div>
         </div>
-        <p class="rule-manage-content">${rule.content}</p>
-        <div class="rule-manage-actions">
-          ${canDelete ? '<button type="button" class="ghost-btn rule-del-btn">删除</button>' : ""}
-        </div>`;
+        <p class="rule-manage-content">${rule.content}</p>`;
       row.querySelector("input")?.addEventListener("change", async (e) => {
         await F.apiFetch(`/api/rules/${rule.id}`, {
           method: "PUT",
@@ -160,10 +209,8 @@
           body: JSON.stringify({ enabled: e.target.checked }),
         });
       });
-      row.querySelector(".rule-del-btn")?.addEventListener("click", async () => {
-        if (!confirm(`确定删除规则「${rule.title}」？`)) return;
-        await F.apiFetch(`/api/rules/${rule.id}`, { method: "DELETE" });
-        loadRulesPanel();
+      row.querySelector(".rule-del-btn")?.addEventListener("click", () => {
+        void deleteRule(rule);
       });
       ruleListEl.appendChild(row);
     });
@@ -171,7 +218,7 @@
 
   async function loadRulesPanel() {
     try {
-      const res = await F.apiFetch("/api/rules");
+      const res = await F.apiFetch("/api/rules?manage=true");
       const data = await res.json();
       renderRuleList(data.rules || []);
     } catch {
@@ -217,9 +264,18 @@
     if (!pluginListEl) return;
     pluginListEl.innerHTML = "";
     if (plugins.length === 0) {
-      pluginListEl.innerHTML = '<p class="settings-hint">尚未安装插件。在下方输入 GitHub 仓库地址安装（需包含 friday-plugin.json）。</p>';
+      pluginListEl.innerHTML = '<p class="settings-hint">尚未安装插件。可从上方推荐列表一键安装，或输入 GitHub 仓库地址。</p>';
       return;
     }
+
+    const heading = document.createElement("h5");
+    heading.className = "plugin-section-title";
+    heading.textContent = "已安装";
+    pluginListEl.appendChild(heading);
+
+    const list = document.createElement("div");
+    list.className = "plugin-list-inner";
+
     plugins.forEach((plugin) => {
       const card = document.createElement("article");
       card.className = "plugin-card";
@@ -255,26 +311,53 @@
         loadSkillsPanel();
         loadRulesPanel();
       });
-      pluginListEl.appendChild(card);
+      list.appendChild(card);
     });
+
+    pluginListEl.appendChild(list);
   }
 
-  function renderPluginCatalog(items) {
+  function renderPluginCatalog(items, installed = []) {
     if (!pluginCatalogEl) return;
     pluginCatalogEl.innerHTML = "";
-    if (!items.length) return;
+    if (!items.length) {
+      pluginCatalogEl.innerHTML =
+        '<p class="settings-hint">图片识别、存储分析等能力已内置于星期五，无需安装。下方可从 GitHub 安装其他扩展包。</p>';
+      return;
+    }
+
+    const installedIds = new Set((installed || []).map((p) => p.id));
+
+    const heading = document.createElement("h5");
+    heading.className = "plugin-section-title";
+    heading.textContent = "推荐插件";
+    pluginCatalogEl.appendChild(heading);
+
+    const list = document.createElement("div");
+    list.className = "plugin-catalog-list";
+
     items.forEach((item) => {
       const row = document.createElement("div");
       row.className = "plugin-catalog-row";
+      const isInstalled = installedIds.has(item.id);
       row.innerHTML = `
-        <div>
+        <div class="plugin-catalog-info">
           <strong>${item.name}</strong>
-          <p class="settings-hint">${item.description}</p>
+          <p class="plugin-catalog-desc">${item.description || ""}</p>
         </div>
-        <button type="button" class="ghost-btn">安装</button>`;
-      row.querySelector("button").addEventListener("click", () => installPlugin(item.source));
-      pluginCatalogEl.appendChild(row);
+        <div class="plugin-catalog-action">
+          ${
+            isInstalled
+              ? '<span class="ext-badge plugin-installed-badge">已安装</span>'
+              : '<button type="button" class="ghost-btn plugin-install-btn">安装</button>'
+          }
+        </div>`;
+      const btn = row.querySelector(".plugin-install-btn");
+      btn?.addEventListener("click", () => installPlugin(item.source));
+      list.appendChild(row);
     });
+
+    pluginCatalogEl.appendChild(list);
   }
 
   async function loadPluginsPanel() {
@@ -286,7 +369,7 @@
       const pluginsData = await pluginsRes.json();
       const catalogData = await catalogRes.json();
       renderPluginList(pluginsData.plugins || []);
-      renderPluginCatalog(catalogData.catalog || []);
+      renderPluginCatalog(catalogData.catalog || [], pluginsData.plugins || []);
     } catch {
       showResult(pluginResultEl, "加载插件失败", false);
     }

@@ -97,6 +97,103 @@
 
   /* ── 渲染 ── */
 
+  let sessionContextMenu = null;
+  let renameTargetSessionId = "";
+
+  function closeSessionContextMenu() {
+    if (sessionContextMenu) {
+      sessionContextMenu.remove();
+      sessionContextMenu = null;
+    }
+  }
+
+  function openSessionRenameModal(sessionId) {
+    const session = F.sessions.find((s) => s.id === sessionId);
+    if (!session) return;
+    renameTargetSessionId = sessionId;
+    const modal = document.getElementById("sessionRenameModal");
+    const input = document.getElementById("sessionRenameInput");
+    if (!modal || !input) return;
+    input.value = session.title;
+    modal.classList.remove("hidden");
+    input.focus();
+    input.select();
+  }
+
+  function closeSessionRenameModal() {
+    renameTargetSessionId = "";
+    document.getElementById("sessionRenameModal")?.classList.add("hidden");
+  }
+
+  async function renameSession(sessionId, title) {
+    const clean = (title || "").trim();
+    if (!clean) return false;
+    const res = await F.apiFetch(`/api/sessions/${sessionId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: clean }),
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    const session = F.sessions.find((s) => s.id === sessionId);
+    if (session) {
+      session.title = data.title;
+      session.updatedAt = data.updated_at;
+    }
+    if (F.activeSessionId === sessionId) {
+      F.chatTitle.textContent = data.title;
+    }
+    renderSessionList();
+    return true;
+  }
+
+  function showSessionContextMenu(event, session) {
+    event.preventDefault();
+    event.stopPropagation();
+    closeSessionContextMenu();
+
+    const menu = document.createElement("div");
+    menu.className = "session-context-menu";
+    menu.setAttribute("role", "menu");
+
+    const renameBtn = document.createElement("button");
+    renameBtn.type = "button";
+    renameBtn.className = "session-context-item";
+    renameBtn.textContent = F.t?.("chat.rename.action") || "重命名";
+    renameBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      closeSessionContextMenu();
+      openSessionRenameModal(session.id);
+    });
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "session-context-item danger";
+    deleteBtn.textContent = F.t?.("chat.delete.action") || "删除";
+    deleteBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      closeSessionContextMenu();
+      void deleteSession(session.id);
+    });
+
+    menu.append(renameBtn, deleteBtn);
+    document.body.appendChild(menu);
+    sessionContextMenu = menu;
+
+    const pad = 8;
+    const rect = menu.getBoundingClientRect();
+    let left = event.clientX;
+    let top = event.clientY;
+    if (left + rect.width > window.innerWidth - pad) {
+      left = window.innerWidth - rect.width - pad;
+    }
+    if (top + rect.height > window.innerHeight - pad) {
+      top = window.innerHeight - rect.height - pad;
+    }
+    menu.style.left = `${Math.max(pad, left)}px`;
+    menu.style.top = `${Math.max(pad, top)}px`;
+  }
+
   function renderSessionList() {
     F.sessionList.innerHTML = "";
     const sorted = [...F.sessions].sort((a, b) => b.updatedAt - a.updatedAt);
@@ -122,6 +219,7 @@
       btn.appendChild(title);
       btn.appendChild(del);
       btn.addEventListener("click", () => switchSession(session.id));
+      btn.addEventListener("contextmenu", (e) => showSessionContextMenu(e, session));
       F.sessionList.appendChild(btn);
     });
   }
@@ -138,6 +236,7 @@
       const node = document.createElement("div");
       node.className = `message ${msg.kind}`;
       F.renderMessageBody(node, msg.kind, msg.text);
+      F.appendGeneratedImages(node, msg.generatedImages);
       F.chatLog.appendChild(node);
     });
     updateEmptyState(messages);
@@ -194,6 +293,31 @@
 
   /* ── 挂载 ── */
 
+  document.getElementById("sessionRenameCancel")?.addEventListener("click", closeSessionRenameModal);
+  document.getElementById("sessionRenameConfirm")?.addEventListener("click", () => {
+    const input = document.getElementById("sessionRenameInput");
+    const sessionId = renameTargetSessionId;
+    if (!sessionId || !input) return;
+    void renameSession(sessionId, input.value).then((ok) => {
+      if (ok) closeSessionRenameModal();
+    });
+  });
+  document.getElementById("sessionRenameInput")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      document.getElementById("sessionRenameConfirm")?.click();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      closeSessionRenameModal();
+    }
+  });
+  document.getElementById("sessionRenameModal")?.addEventListener("click", (e) => {
+    if (e.target?.id === "sessionRenameModal") closeSessionRenameModal();
+  });
+  document.addEventListener("click", closeSessionContextMenu);
+  document.addEventListener("scroll", closeSessionContextMenu, true);
+  window.addEventListener("resize", closeSessionContextMenu);
+
   F.fetchSessions = fetchSessions;
   F.loadSessionDetail = loadSessionDetail;
   F.createSession = createSession;
@@ -203,4 +327,5 @@
   F.switchSession = switchSession;
   F.deleteSession = deleteSession;
   F.applySessionMeta = applySessionMeta;
+  F.renameSession = renameSession;
 })();

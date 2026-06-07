@@ -70,7 +70,10 @@ def _check_dangerous(cmd: str) -> str | None:
 
 @register_tool(
     name="run_powershell",
-    description="执行 PowerShell 命令并返回输出",
+    description=(
+        "执行 PowerShell 命令并返回输出。"
+        "多步操作应合并为一条命令或脚本块（用 ; 或 here-string），不要分多次调用试探。"
+    ),
     parameters={
         "type": "object",
         "properties": {

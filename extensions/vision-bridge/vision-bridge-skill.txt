@@ -1,0 +1,128 @@
+---
+name: vision-bridge
+description: 通过豆包/Ark 视觉模型辅助 DeepSeek 理解截图与图片。用户提到图片、截图、界面、照片时必须先调用 describe_image（或先 screenshot 再 describe_image），不要假装能直接看见图片。
+version: 1.0.0
+author: Reasonix / Friday
+platform: Friday Desktop (内置版，无需 MCP)
+---
+
+# Vision Bridge — 图片识别技能包
+
+DeepSeek 本身无法直接看图。本技能让 Agent 通过火山引擎豆包/Ark 多模态 API 把图片转成文字描述，再据此回答用户。
+
+## 一、配置（首次使用）
+
+1. 打开 **设置 → API 连接 → 视觉辅助模型（豆包/Ark）**
+2. 勾选「启用视觉辅助」
+3. 填写火山引擎 Ark API Key（`ark-` 开头）
+4. **视觉模型/端点** 填推理接入点 ID（`ep-2026...`），不是裸模型名
+5. Base URL 默认 `https://ark.cn-beijing.volces.com/api/v3`
+6. 点击「测试连接」确认就绪
+
+### 获取 Ark Key（国内推荐）
+
+1. 注册 https://console.volcengine.com/ark
+2. 获取 API Key（`ark-` 开头）
+3. 控制台 → 推理接入点 → 创建接入点
+4. 选择视觉理解模型（如 doubao-vision 系列，勿选 Seedream 图片生成）
+5. 将端点 ID（`ep-2026...`）填入「视觉模型/端点」
+
+## 二、安装插件（星期五）
+
+设置 → 扩展 → 插件 → 安装 `local:vision-bridge`（或从推荐列表一键安装）。
+
+安装后自动注册：
+- 2 个快捷技能（看懂截图 / 识别图片文件）
+- 1 条常驻规则（图片必走视觉桥接）
+
+## 三、可用工具
+
+| 工具 | 用途 |
+|------|------|
+| describe_image | 将本地图片发给豆包/Ark，返回文字描述。path 为绝对路径；可选 prompt 定制提问 |
+| vision_status | 检查视觉辅助是否已在设置中配置并就绪 |
+| screenshot | 截取当前屏幕，得到图片路径后可接 describe_image |
+
+### describe_image 参数
+
+- path（必填）：PNG / JPEG / GIF / WebP 绝对路径
+- prompt（可选）：如「读出图中错误信息」「描述界面布局」
+
+### 标准工作流
+
+**用户粘贴截图 / 问界面内容：**
+1. 若消息中已有截图路径 → 直接 `describe_image(path=...)`
+2. 若无路径 → 先 `screenshot` → 再 `describe_image`
+3. 根据返回的文字描述回答用户，勿编造未识别内容
+
+**用户给图片文件路径：**
+1. `describe_image(path=用户路径, prompt=用户问题)`
+2. 转述并回答
+
+## 四、铁律（Agent 必须遵守）
+
+1. 用户提到图片、截图、界面、照片、图表时，**必须先**调用 describe_image，禁止假装能直接看见
+2. 若聊天消息已含 `[截图视觉分析]` 或 `[说明] 视觉分析已完成`，**勿再**重复调用 describe_image
+3. 视觉 API 失败时如实告知用户检查 Key、端点 ID、网络，不要瞎猜图片内容
+4. describe_image / vision_status / screenshot 均为只读操作，无需特殊审批
+
+## 五、内置快捷技能
+
+### 看懂截图（describe-screen）
+请先用 screenshot 截屏（或指定图片路径），再用 describe_image 分析图片内容，然后根据描述回答我的问题。
+
+### 识别图片文件（read-image-file）
+我会给你一张图片的路径。请用 describe_image 读取并描述图片，再告诉我你看到了什么。
+
+## 六、常驻规则
+
+**图片必走视觉桥接**
+用户提到图片、截图、界面、照片时，必须先调用 describe_image（或先 screenshot 再 describe_image），不要假装能直接看见图片。
+
+## 七、常见问题
+
+| 现象 | 处理 |
+|------|------|
+| 404 InvalidEndpointOrModel | 端点 ID 错误或未创建；须用 `ep-...` 而非模型名 |
+| 400 model does not support this api | 接入点选了图片生成模型，应换视觉理解模型 |
+| 视觉辅助未配置 | 设置中开启并填写 ark- Key |
+| 找不到图片 | 确认 path 为存在的绝对路径 |
+| 识图慢 | 大图会自动压缩；可缩短 prompt |
+
+## 八、插件 Manifest（friday-plugin.json）
+
+{
+  "id": "vision-bridge",
+  "name": "Vision Bridge 图片识别",
+  "version": "1.0.0",
+  "description": "通过豆包/Ark 视觉模型辅助 DeepSeek 理解截图与图片（describe_image 工具）。",
+  "author": "Reasonix / Friday",
+  "skills": [
+    {
+      "id": "describe-screen",
+      "label": "看懂截图",
+      "icon": "👁️",
+      "category": "plugin",
+      "prompt": "请先用 screenshot 截屏（或指定图片路径），再用 describe_image 分析图片内容，然后根据描述回答我的问题。"
+    },
+    {
+      "id": "read-image-file",
+      "label": "识别图片文件",
+      "icon": "🖼️",
+      "category": "plugin",
+      "prompt": "我会给你一张图片的路径。请用 describe_image 读取并描述图片，再告诉我你看到了什么。"
+    }
+  ],
+  "rules": [
+    {
+      "id": "use-vision-bridge",
+      "title": "图片必走视觉桥接",
+      "content": "用户提到图片、截图、界面、照片时，必须先调用 describe_image（或先 screenshot 再 describe_image），不要假装能直接看见图片。",
+      "enabled": true,
+      "always_apply": true
+    }
+  ]
+}
+
+---
+END OF SKILL PACK — vision-bridge v1.0.0

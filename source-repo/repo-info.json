@@ -1,8 +1,8 @@
-﻿{
-    "version":  "1.0.0",
-    "clone_url":  "https://gitee.com/Bxxxboo/friday.git",
-    "github_target":  "Bxxxboo/friday",
-    "github_import":  "https://github.com/new/import",
-    "pushed_at":  "2026-06-07 15:50",
-    "web_url":  "https://gitee.com/Bxxxboo/friday"
+{
+  "version": "1.1.0",
+  "clone_url": "https://gitee.com/Bxxxboo/friday.git",
+  "github_target": "Bxxxboo/Friday-Zero-barrier-DeepSeek-Agent-for-Windows",
+  "github_import": "https://github.com/new/import",
+  "pushed_at": "2026-06-07",
+  "web_url": "https://gitee.com/Bxxxboo/friday"
 }

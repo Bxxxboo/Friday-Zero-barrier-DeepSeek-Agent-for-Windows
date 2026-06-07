@@ -11,6 +11,7 @@ from friday.safety import (
     PendingAction,
     TurnApprovalState,
     classify_tool,
+    describe_approval_plain,
     evaluate_tool,
     mark_turn_approved,
     should_request_approval,
@@ -103,7 +104,7 @@ class FridayAgent:
 
     # ── 流式消费 ──
 
-    def _consume_stream(self, on_event: EventCallback | None) -> ChatCompletionResult:
+    def _consume_stream(self, on_event: EventCallback | None, *, tools: bool = True) -> ChatCompletionResult:
         """与模型交互一次，返回 delta + finish 结果。"""
         # ── 上下文管理：发送前截断超限消息 ──
         self.messages = self.brain.trim_messages(self.messages)
@@ -113,6 +114,7 @@ class FridayAgent:
 
         for kind, payload in self.brain.iter_chat(
             self.messages,
+            tools=tools,
             should_cancel=self._cancel_event.is_set,
         ):
             if self._cancel_event.is_set():
@@ -133,6 +135,38 @@ class FridayAgent:
             self._emit(on_event, "assistant_clear", {})
 
         return finish
+
+    def _wrap_up_reply(self, on_event: EventCallback | None, *, reason: str = "round_limit") -> str:
+        """工具轮次用尽或需收尾时，让模型用自然语言总结已完成工作与下一步计划。"""
+        if self._cancel_event.is_set():
+            return CANCELLED_MESSAGE
+
+        if reason == "round_limit":
+            hint = (
+                "【系统提示】本轮工具调用次数已达上限，请不要再调用任何工具。"
+                "请仅根据上文已执行的操作，按系统提示中的「任务完成后的回复格式」向用户回复："
+                "① 刚刚具体完成了什么（文件、路径、数量、结果）；"
+                "② 若还有未完成部分，说明剩余什么；"
+                "③ 给出 2～4 条可执行的下一步建议，并给出一句用户可直接复制发送的后续指令。"
+                "禁止只说「已完成」或「请说继续」。"
+            )
+        else:
+            hint = (
+                "【系统提示】请根据上文，按「任务完成后的回复格式」向用户说明刚刚完成了什么，"
+                "并给出具体的下一步建议；禁止空泛收尾。"
+            )
+        self.messages.append({"role": "user", "content": hint})
+        finish = self._consume_stream(on_event, tools=False)
+        if self._cancel_event.is_set():
+            return CANCELLED_MESSAGE
+        content = (finish.content or "").strip()
+        if content:
+            self.messages.append({"role": "assistant", "content": content})
+            return self._finish_run(content)
+        return self._finish_run(
+            "本轮执行步骤较多，我暂时无法自动生成完整总结。"
+            "你可以说「总结一下刚才做了什么，并告诉我下一步建议」，我会按你的要求整理。"
+        )
 
     # ── 工具调用处理 ──
 
@@ -261,9 +295,8 @@ class FridayAgent:
                 exec_args["confirm_untrusted_source"] = True
                 exec_args["_untrusted_approved"] = True
             self._emit(on_event, "approval_auto", {
-                "summary": summarize_action(name, args),
+                "summary": describe_approval_plain(name, args),
                 "tool_name": name,
-                "preview": preview,
             })
 
         self._emit(on_event, "tool_start", {
@@ -275,6 +308,7 @@ class FridayAgent:
         })
         if self._cancel_event.is_set():
             return CANCELLED_MESSAGE
+
         result = execute_tool(name, exec_args, cancel_event=self._cancel_event)
         if self._cancel_event.is_set() or result == CANCELLED_TOOL_MESSAGE:
             return CANCELLED_MESSAGE
@@ -288,6 +322,12 @@ class FridayAgent:
             approved=approved,
         )
         self._emit(on_event, "operation_logged", entry)
+        if name == "generate_image":
+            from friday.image_gen import extract_path_from_tool_result
+
+            img_path = extract_path_from_tool_result(result)
+            if img_path:
+                self._emit(on_event, "image_generated", {"path": img_path})
         return result
 
     def _append_tool_result(self, call_id: str, name: str, result: str) -> None:
@@ -376,7 +416,10 @@ class FridayAgent:
             # 无工具调用 → 对话结束
             if not finish.tool_calls:
                 _log.info("对话完成 | %s", self.brain.usage_summary())
-                return self._finish_run(finish.content or "已完成。")
+                reply = (finish.content or "").strip()
+                if not reply:
+                    return self._wrap_up_reply(on_event, reason="empty_reply")
+                return self._finish_run(reply)
 
             # 执行工具轮次
             self._execute_round(finish, on_event)
@@ -385,4 +428,4 @@ class FridayAgent:
                 return self._finish_run(CANCELLED_MESSAGE)
 
         _log.warning("达到最大轮次限制 rounds=%d | %s", MAX_TOOL_ROUNDS, self.brain.usage_summary())
-        return self._finish_run("这部分任务已完成。若还有剩余工作，直接说「继续」或告诉我下一步即可。")
+        return self._wrap_up_reply(on_event, reason="round_limit")

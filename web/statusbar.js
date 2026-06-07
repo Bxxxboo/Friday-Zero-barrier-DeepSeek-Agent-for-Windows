@@ -19,6 +19,8 @@
     apiText: document.getElementById("statusApiText"),
     visionDot: document.getElementById("statusVisionDot"),
     visionText: document.getElementById("statusVisionText"),
+    imageGenDot: document.getElementById("statusImageGenDot"),
+    imageGenText: document.getElementById("statusImageGenText"),
     tokens: document.getElementById("statusTokens"),
     tasks: document.getElementById("statusTasks"),
     workspace: document.getElementById("statusWorkspace"),
@@ -71,6 +73,18 @@
       }
     }
 
+    const imageGenEnabled = Boolean(data.image_gen_enabled);
+    const imageGenOnline = Boolean(data.image_gen_online);
+    if (!imageGenEnabled) {
+      setDot(els.imageGenDot, "disabled");
+      if (els.imageGenText) els.imageGenText.textContent = F.t?.("status.imageGen.disabled") || "";
+    } else {
+      setDot(els.imageGenDot, imageGenOnline ? "online" : "offline");
+      if (els.imageGenText) {
+        els.imageGenText.textContent = F.t?.(imageGenOnline ? "status.imageGen.on" : "status.imageGen.off") || "";
+      }
+    }
+
     if (els.tokens && data.tokens_total != null) {
       els.tokens.textContent = formatTokens(data.tokens_total);
     }
@@ -93,6 +107,8 @@
       api_online: Boolean(data.api_ready),
       vision_enabled: Boolean(data.vision_enabled),
       vision_online: Boolean(data.vision_enabled && data.vision_ready),
+      image_gen_enabled: Boolean(data.image_gen_enabled),
+      image_gen_online: Boolean(data.image_gen_enabled && data.image_gen_ready),
       workspace: workspaceLabel(data.workspace),
       workspace_path: data.workspace,
       model: data.model || "—",

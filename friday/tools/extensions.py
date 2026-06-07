@@ -30,25 +30,31 @@ def _catalog_plugin_id(source: str) -> str | None:
     description=(
         "安装星期五扩展插件（技能+规则）。安装前先 list_friday_plugins 检查是否已存在。"
         "source 格式："
-        "① 推荐插件 ID，如 storage-analyzer、vision-bridge；"
-        "② skill:owner/repo/skill目录（GitHub 上的 Agent Skill，如 skill:KKKKhazix/khazix-skills/storage-analyzer）；"
-        "③ owner/repo 或 owner/repo@分支（仓库根目录需 friday-plugin.json）；"
-        "④ local:插件id（内置扩展）。"
-        "失败时不要猜测编造仓库名连续重试，应 list_plugin_catalog 查推荐来源。"
+        "① skill:owner/repo/skill目录（GitHub 上的 Agent Skill）；"
+        "② owner/repo 或 owner/repo@分支（仓库根目录需 friday-plugin.json）；"
+        "③ local:插件id（非内置扩展目录）。"
+        "图片视觉桥接、storage-analyzer 已内置，无需安装。"
+        "失败时不要猜测编造仓库名连续重试，应 list_plugin_catalog 查看说明。"
     ),
     parameters={
         "type": "object",
         "properties": {
             "source": {
                 "type": "string",
-                "description": "插件来源，如 storage-analyzer 或 skill:KKKKhazix/khazix-skills/storage-analyzer",
+                "description": "插件来源，如 skill:owner/repo/skill目录 或 owner/repo",
             },
         },
         "required": ["source"],
     },
 )
 def install_friday_plugin(source: str) -> str:
+    from friday.bundled import bundled_already_message, resolve_bundled_source
+
     raw = source.strip()
+    bundled_id = resolve_bundled_source(raw)
+    if bundled_id:
+        return bundled_already_message(bundled_id)
+
     resolved = resolve_plugin_source(raw)
     plugin_id = _catalog_plugin_id(resolved)
     if plugin_id:

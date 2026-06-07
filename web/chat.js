@@ -36,10 +36,16 @@
 
     F.ws.onerror = () => {
       F.wsConnected = false;
+      F.setBusy(false);
+      F.removeThinking();
+      removeProgress();
     };
 
     F.ws.onclose = () => {
       F.wsConnected = false;
+      F.setBusy(false);
+      F.removeThinking();
+      removeProgress();
       F.setConnectionStatus("连接断开，重连中...");
       setTimeout(connectWs, 1500);
     };
@@ -48,6 +54,36 @@
   /* ── 进度指示器 ── */
 
   let progressNode = null;
+  let pendingGeneratedImages = [];
+  let progressTimer = null;
+
+  function resetPendingGeneratedImages() {
+    pendingGeneratedImages = [];
+  }
+
+  function collectPendingGeneratedImages() {
+    const copy = pendingGeneratedImages.slice();
+    resetPendingGeneratedImages();
+    return copy;
+  }
+
+  function stopProgressTimer() {
+    if (progressTimer) {
+      clearInterval(progressTimer);
+      progressTimer = null;
+    }
+  }
+
+  function startProgressTimer(baseText) {
+    stopProgressTimer();
+    const started = Date.now();
+    progressTimer = setInterval(() => {
+      if (!progressNode) return;
+      const elapsed = Math.floor((Date.now() - started) / 1000);
+      const textEl = progressNode.querySelector(".progress-text");
+      if (textEl) textEl.textContent = `${baseText}（已 ${elapsed}s）`;
+    }, 1000);
+  }
 
   function formatProgressMessage(data) {
     const tools = data.tools || [];
@@ -62,6 +98,9 @@
       const label = toolLabels[0];
       if (tools[0] === "describe_image") {
         return `正在识别截图${stepHint}…`;
+      }
+      if (tools[0] === "generate_image") {
+        return `正在生成图片${stepHint}…`;
       }
       return `正在${label}${stepHint}…`;
     }
@@ -79,6 +118,11 @@
   }
 
   function showProgress(data) {
+    const tools = data.tools || [];
+    const isImageGen = tools.includes("generate_image");
+    // 生图由前端 1s 计时器更新，忽略后端重复 progress，避免进度条被重建、计时归零
+    if (data.heartbeat && progressNode && isImageGen) return;
+
     removeProgress();
     const msg = formatProgressMessage(data);
     progressNode = document.createElement("div");
@@ -87,9 +131,13 @@
     F.chatLog.appendChild(progressNode);
     F.scrollToBottom();
     F.removeThinking();
+    if (isImageGen) {
+      startProgressTimer(msg.replace(/…$/, ""));
+    }
   }
 
   function removeProgress() {
+    stopProgressTimer();
     if (progressNode) {
       progressNode.remove();
       progressNode = null;
@@ -128,13 +176,17 @@
   }
 
   function finalizeStreamingMessage(text) {
+    const generatedImages = collectPendingGeneratedImages();
     if (F.streamingNode) {
       F.streamingNode.classList.remove("streaming");
       F.streamingNode.replaceChildren();
       F.renderMessageBody(F.streamingNode, "assistant", text);
+      F.appendGeneratedImages(F.streamingNode, generatedImages);
       const session = F.getActiveSession();
       if (session) {
-        session.messages.push({ kind: "assistant", text });
+        const entry = { kind: "assistant", text };
+        if (generatedImages.length) entry.generatedImages = generatedImages;
+        session.messages.push(entry);
         F.updateEmptyState(session.messages);
       }
       F.streamingNode = null;
@@ -142,7 +194,7 @@
       F.scrollToBottom();
       return;
     }
-    appendMessage("assistant", text, false);
+    appendMessage("assistant", text, false, { generatedImages });
   }
 
   /* ── 事件分发 ── */
@@ -167,6 +219,7 @@
         F.setConnectionStatus("就绪", true);
         if (data.usage) F.applyStatusUsage?.(data.usage);
         F.refreshStatusBar?.();
+        flushQueue();
         break;
       case "busy":
         F.removeThinking();
@@ -182,12 +235,14 @@
         F.setBusy(false);
         F.setConnectionStatus("就绪", true);
         F.refreshStatusBar?.();
+        flushQueue();
         break;
       case "status":
         if (data.message && data.message.includes("思考")) {
           F.showThinking();
         } else if (data.message === "就绪") {
           F.removeThinking();
+          F.setBusy(false);
         }
         if (F.wsConnected) {
           F.setConnectionStatus(data.message || "就绪", true);
@@ -203,6 +258,11 @@
           tool_count: data.tool_count,
           tools: [data.tool],
         });
+        break;
+      case "image_generated":
+        if (data.path) {
+          pendingGeneratedImages.push({ path: data.path });
+        }
         break;
       case "approval_request":
         F.removeThinking();
@@ -228,8 +288,14 @@
     F.chatScroll.classList.remove("hidden");
 
     const node = document.createElement("div");
-    node.className = `message ${kind}`;
+    node.className = `message ${kind}` + (extra.queued ? " queued" : "");
     F.renderMessageBody(node, kind, text);
+    if (extra.queued) {
+      const badge = document.createElement("span");
+      badge.className = "message-queue-badge";
+      badge.textContent = F.t?.("composer.queue.badge") || "排队中";
+      node.appendChild(badge);
+    }
     if (extra.imagePreviewUrl) {
       const img = document.createElement("img");
       img.className = "message-image";
@@ -237,13 +303,16 @@
       img.alt = "粘贴的截图";
       node.appendChild(img);
     }
+    F.appendGeneratedImages(node, extra.generatedImages);
     F.chatLog.appendChild(node);
     F.scrollToBottom();
 
     if (!trackLocal) return;
     const session = F.getActiveSession();
     if (session) {
-      session.messages.push({ kind, text });
+      const entry = { kind, text };
+      if (extra.generatedImages?.length) entry.generatedImages = extra.generatedImages;
+      session.messages.push(entry);
       F.updateEmptyState(session.messages);
     }
   }
@@ -345,7 +414,21 @@
   }
 
   function enqueueChat(item) {
-    F.pendingQueue.push(normalizeQueueItem(item));
+    const normalized = normalizeQueueItem(item);
+    F.pendingQueue.push(normalized);
+    const displayText = normalized.text || "请分析我粘贴的这张截图";
+    appendMessage("user", displayText, true, {
+      imagePreviewUrl: normalized.previewUrl || undefined,
+      queued: true,
+    });
+    F.updateQueueIndicator?.();
+    F.setConnectionStatus(
+      F.pendingQueue.length === 1
+        ? "已加入队列，当前任务完成后自动执行"
+        : `已加入队列（${F.pendingQueue.length} 条待执行）`,
+      true
+    );
+    F.updateInputState();
   }
 
   function bindPasteHandlers() {
@@ -389,6 +472,7 @@
   function flushQueue() {
     if (F.busy || F.pendingQueue.length === 0) return;
     const item = normalizeQueueItem(F.pendingQueue.shift());
+    F.updateQueueIndicator?.();
     void sendChat(item.text, true, {
       imagePath: item.imagePath,
       previewUrl: item.previewUrl,
@@ -419,6 +503,8 @@
 
     if (F.busy && !fromQueue) {
       enqueueChat({ text, imagePath, previewUrl });
+      pendingImage = null;
+      hideComposerAttachment();
       return;
     }
 
@@ -429,11 +515,21 @@
     }
 
     const displayText = text || "请分析我粘贴的这张截图";
-    appendMessage("user", displayText, true, { imagePreviewUrl: previewUrl || undefined });
+    if (!fromQueue) {
+      appendMessage("user", displayText, true, { imagePreviewUrl: previewUrl || undefined });
+    } else {
+      const nextQueued = document.querySelector(".message.user.queued");
+      if (nextQueued) {
+        nextQueued.classList.remove("queued");
+        const badge = nextQueued.querySelector(".message-queue-badge");
+        if (badge) badge.textContent = F.t?.("composer.queue.running") || "执行中…";
+      }
+    }
     pendingImage = null;
     hideComposerAttachment();
     F.updateInputState();
     F.setBusy(true);
+    resetPendingGeneratedImages();
     F.showThinking();
 
     if (!F.ws || F.ws.readyState !== WebSocket.OPEN) {
@@ -470,16 +566,29 @@
     return `${num} B`;
   }
 
-  function showAutoApprovalNote(data) {
-    F.welcomePanel.classList.add("hidden");
-    F.chatScroll.classList.remove("hidden");
-    const node = document.createElement("div");
-    node.className = "message approval-auto";
-    const text = document.createElement("p");
-    text.textContent = `已沿用本次确认，继续：${data.preview || data.summary || ""}`;
-    node.appendChild(text);
-    F.chatLog.appendChild(node);
-    F.scrollToBottom();
+  function showAutoApprovalNote(_data) {
+    // 同轮次已确认的操作不再插入命令/脚本详情，避免刷屏；进度见上方指示条。
+    F.setConnectionStatus("已确认，继续执行…", true);
+  }
+
+  function approvalTitle(data) {
+    if (data.untrusted_download) return "非官方来源下载确认";
+    if (data.large_download) return "大文件下载确认";
+    const titles = {
+      run_powershell: "PowerShell 命令确认",
+      run_python: "Python 脚本确认",
+      run_python_script: "运行脚本文件确认",
+      write_text_file: "写入文件确认",
+      move_file: "移动文件确认",
+      copy_file: "复制文件确认",
+      delete_file: "删除文件确认",
+      delete_directory: "删除文件夹确认",
+      organize_directory: "整理文件夹确认",
+      download_file: "下载文件确认",
+      download_software: "下载软件确认",
+      generate_image: "生图确认",
+    };
+    return titles[data.tool_name] || "需要你确认一下";
   }
 
   function showApprovalInChat(data) {
@@ -499,25 +608,30 @@
 
     const title = document.createElement("p");
     title.className = "approval-title";
-    title.textContent = data.untrusted_download
-      ? "非官方来源下载确认"
-      : data.large_download
-        ? "大文件下载确认"
-        : "需要你确认一下";
+    title.textContent = approvalTitle(data);
+
+    const summary = (data.summary || "即将在这台电脑上执行一项操作").trim();
+    let detail = (data.preview || "").trim();
+    if (detail === summary) {
+      detail = "";
+    }
 
     const text = document.createElement("p");
     text.className = "approval-text";
-    let preview = data.preview || data.summary || "即将执行一项操作";
+    text.textContent = summary;
+
     if (data.untrusted_download) {
       const trust = data.trust_label || "未验证";
-      preview = `${preview}\n\n⚠ 该下载来源未通过官方认证（${trust}）。仅在你确认信任该网站时才继续。`;
+      detail = detail
+        ? `${detail}\n\n⚠ 该下载来源未通过官方认证（${trust}）。仅在你确认信任该网站时才继续。`
+        : `⚠ 该下载来源未通过官方认证（${trust}）。仅在你确认信任该网站时才继续。`;
     } else if (data.large_download) {
       const sizeHint = data.download_size_bytes
         ? `约 ${formatBytes(data.download_size_bytes)}`
         : "大小未知";
-      preview = `${preview}\n\n这将从互联网下载一个大文件（${sizeHint}，最高允许 10 GB）。请确认来源可信后再继续。`;
+      const sizeNote = `这将从互联网下载一个大文件（${sizeHint}，最高允许 10 GB）。请确认来源可信后再继续。`;
+      detail = detail ? `${detail}\n\n${sizeNote}` : sizeNote;
     }
-    text.textContent = preview;
 
     const actions = document.createElement("div");
     actions.className = "approval-actions";
@@ -525,17 +639,24 @@
     const rejectBtn = document.createElement("button");
     rejectBtn.type = "button";
     rejectBtn.className = "ghost-btn";
-    rejectBtn.textContent = "取消";
+    rejectBtn.textContent = "拒绝";
     rejectBtn.addEventListener("click", () => resolveApproval(false));
 
     const approveBtn = document.createElement("button");
     approveBtn.type = "button";
     approveBtn.className = "primary-btn";
-    approveBtn.textContent = "继续";
+    approveBtn.textContent = "同意";
     approveBtn.addEventListener("click", () => resolveApproval(true));
 
     actions.append(rejectBtn, approveBtn);
-    node.append(title, text, actions);
+    if (detail) {
+      const detailNode = document.createElement("p");
+      detailNode.className = "approval-detail";
+      detailNode.textContent = detail;
+      node.append(title, text, detailNode, actions);
+    } else {
+      node.append(title, text, actions);
+    }
     F.chatLog.appendChild(node);
     pendingApprovalNode = node;
     F.scrollToBottom();
@@ -603,6 +724,7 @@
     } catch {
       // 忽略网络错误，UI 由助手返回的结果恢复
     }
+    flushQueue();
   }
 
   /* ── 挂载 ── */

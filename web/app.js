@@ -40,7 +40,9 @@
       hideOverlay();
       F.connectWs();
       F.updateInputState();
-      void F.checkOnboarding?.().catch((err) => console.warn("checkOnboarding", err));
+      void F.checkOnboarding?.().catch((err) => console.warn("checkOnboarding", err)).finally(() => {
+        setTimeout(() => void F.checkReleaseNotes?.(), 400);
+      });
       void F.refreshStatusBar?.();
     } catch (err) {
       console.error(err);
@@ -112,6 +114,12 @@
 
   F.settingsForm?.addEventListener("submit", F.saveSettings);
   document.getElementById("visionForm")?.addEventListener("submit", F.saveVisionSettings);
+  document.getElementById("testImageGenBtn")?.addEventListener("click", F.testImageGenSettings);
+  document.getElementById("imageGenForm")?.addEventListener("submit", F.saveImageGenSettings);
+  document.getElementById("imageGenBaseUrl")?.addEventListener("input", (e) => {
+    e.target.dataset.userEdited = e.target.value.trim() ? "1" : "";
+  });
+  document.getElementById("imageGenProvider")?.addEventListener("change", F.onImageGenProviderChange);
   F.workspaceForm?.addEventListener("submit", F.saveWorkspace);
   document.getElementById("pickWorkspaceBtn")?.addEventListener("click", F.pickWorkspaceFolder);
   F.appearanceForm?.addEventListener("submit", F.saveAppearanceSettings);
@@ -148,6 +156,47 @@
     });
   }
 
+  function refreshDesktopSurface() {
+    const root = document.documentElement;
+    root.style.willChange = "transform";
+    requestAnimationFrame(() => {
+      root.style.willChange = "";
+    });
+  }
+
+  function syncWindowChrome() {
+    const api = window.pywebview?.api;
+    if (!api?.sync_window_chrome) return;
+    const theme = document.documentElement.dataset.theme || "dark";
+    const bg = theme === "light" ? "#f0ebe3" : "#0a0d12";
+    api.sync_window_chrome(bg, theme === "dark");
+  }
+
+  function initDesktopSurfaceRefresh() {
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        refreshDesktopSurface();
+        syncWindowChrome();
+      }
+    });
+    window.addEventListener("focus", () => {
+      refreshDesktopSurface();
+      syncWindowChrome();
+    });
+  }
+
+  function bindTitlebarBtn(id, handler) {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.setAttribute("tabindex", "-1");
+    btn.addEventListener("mousedown", (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      handler();
+    });
+  }
+
   function initFramelessWindow() {
     if (framelessReady) return;
     if (!window.pywebview?.api) return;
@@ -155,12 +204,21 @@
     framelessReady = true;
     document.body.classList.add("frameless");
     document.documentElement.classList.add("desktop");
+    document.activeElement?.blur?.();
 
-    document.getElementById("winMinimize")?.addEventListener("click", () => {
-      window.pywebview.api.minimize_window();
+    bindTitlebarBtn("winMinimize", () => {
+      refreshDesktopSurface();
+      syncWindowChrome();
+      const api = window.pywebview.api;
+      const doMinimize = () => api.minimize_window();
+      if (api.prepare_minimize) {
+        Promise.resolve(api.prepare_minimize()).finally(doMinimize);
+      } else {
+        requestAnimationFrame(doMinimize);
+      }
     });
 
-    document.getElementById("winMaximize")?.addEventListener("click", () => {
+    bindTitlebarBtn("winMaximize", () => {
       if (windowMaximized) {
         window.pywebview.api.restore_window();
         windowMaximized = false;
@@ -171,12 +229,13 @@
       document.getElementById("winMaximize")?.classList.toggle("is-maximized", windowMaximized);
     });
 
-    document.getElementById("winClose")?.addEventListener("click", () => {
+    bindTitlebarBtn("winClose", () => {
       window.pywebview.api.close_window();
     });
 
     syncMaximizeButton();
     window.addEventListener("resize", syncMaximizeButton);
+    syncWindowChrome();
   }
 
   function tryInitFrameless() {
@@ -188,6 +247,7 @@
   }
 
   if (document.documentElement.classList.contains("desktop")) {
+    initDesktopSurfaceRefresh();
     window.addEventListener("pywebviewready", initFramelessWindow);
     tryInitFrameless();
   } else {
@@ -196,15 +256,31 @@
 
   /* ── 视口修复 ── */
 
+  const isDesktopApp = document.documentElement.classList.contains("desktop");
+
   function fixViewportHeight() {
+    if (isDesktopApp) {
+      document.documentElement.style.setProperty("--app-height", "100%");
+      document.documentElement.style.height = "100%";
+      document.body.style.height = "100%";
+      document.body.style.width = "100%";
+      return;
+    }
     const h = window.visualViewport?.height || window.innerHeight;
     document.documentElement.style.setProperty("--app-height", `${Math.round(h)}px`);
   }
 
   fixViewportHeight();
-  window.addEventListener("resize", fixViewportHeight);
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener("resize", fixViewportHeight);
+  if (!isDesktopApp) {
+    window.addEventListener("resize", fixViewportHeight);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", fixViewportHeight);
+    }
+  } else {
+    window.addEventListener("resize", () => {
+      fixViewportHeight();
+      syncWindowChrome?.();
+    });
   }
 
   /* ── 聊天区滚动 ── */

@@ -20,6 +20,7 @@ from friday.config import (
     TOOL_TIMEOUT_EXEC,
     TOOL_TIMEOUT_READ,
     TOOL_TIMEOUT_VISION,
+    TOOL_TIMEOUT_IMAGE_GEN,
     TOOL_TIMEOUT_WRITE,
 )
 from friday.logging_config import get_logger
@@ -41,7 +42,7 @@ _DOWNLOAD_BLOCKED_TOOLS = frozenset({
     "open_url",
 })
 
-_EAGER_MODULES = ("filesystem", "shell", "python_runner", "system", "extensions", "vision")
+_EAGER_MODULES = ("filesystem", "shell", "python_runner", "system", "extensions", "vision", "image_gen")
 _LAZY_MODULES = ("documents", "media", "web")
 _IMPORTED: set[str] = set()
 
@@ -63,6 +64,8 @@ _TOOL_MODULE: dict[str, str] = {
     "download_software": "web",
     "describe_image": "vision",
     "vision_status": "vision",
+    "generate_image": "image_gen",
+    "image_gen_status": "image_gen",
 }
 
 
@@ -158,6 +161,8 @@ def _ensure_tool_module(tool_name: str) -> None:
 def _tool_timeout(name: str, arguments: dict[str, Any] | None = None) -> int:
     if name == "describe_image":
         return TOOL_TIMEOUT_VISION
+    if name == "generate_image":
+        return TOOL_TIMEOUT_IMAGE_GEN
     if name == "download_file":
         args = arguments or {}
         if args.get("_allow_large") or args.get("confirm_large_download"):

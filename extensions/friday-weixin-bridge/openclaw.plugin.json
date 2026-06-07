@@ -1,0 +1,14 @@
+{
+  "id": "friday-weixin-bridge",
+  "version": "1.0.0",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "configPath": {
+        "type": "string",
+        "description": "Optional override for %APPDATA%/Friday/weixin-bridge.json"
+      }
+    }
+  }
+}

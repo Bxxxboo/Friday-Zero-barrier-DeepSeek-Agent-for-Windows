@@ -21,27 +21,8 @@ _log = get_logger("plugins")
 _MANIFEST = "friday-plugin.json"
 _USER_AGENT = "Friday-Desktop/1.0"
 
-# 推荐插件目录
-_PLUGIN_CATALOG: list[dict[str, str]] = [
-    {
-        "id": "demo-office",
-        "name": "办公增强示例包",
-        "description": "内置示例：站会摘要技能 + 简洁回复规则（无需 GitHub）",
-        "source": "local:demo-office",
-    },
-    {
-        "id": "vision-bridge",
-        "name": "Vision Bridge 图片识别",
-        "description": "豆包/Ark 视觉模型辅助 DeepSeek 理解截图与图片",
-        "source": "local:vision-bridge",
-    },
-    {
-        "id": "storage-analyzer",
-        "name": "Storage Analyzer 存储分析",
-        "description": "扫描磁盘占用、分级清理建议、生成交互式 HTML 报告（GitHub: KKKKhazix/khazix-skills）",
-        "source": "skill:KKKKhazix/khazix-skills/storage-analyzer",
-    },
-]
+# 推荐插件目录（原 demo-office / vision-bridge / storage-analyzer 已改为内置，见 friday.bundled）
+_PLUGIN_CATALOG: list[dict[str, str]] = []
 
 _GITHUB_RE = re.compile(
     r"^(?:https?://github\.com/)?(?P<owner>[\w.-]+)/(?P<repo>[\w.-]+)(?:/(?:tree|blob)/(?P<ref>[\w./-]+))?(?:\.git)?/?$",
@@ -187,6 +168,11 @@ def install_github_skill(source: str) -> dict[str, Any]:
     plugin_id = skill_path.split("/")[-1].strip()
     if not plugin_id or not re.match(r"^[\w-]+$", plugin_id):
         raise ValueError("skill 目录名无法作为插件 ID")
+
+    from friday.bundled import bundled_already_message, is_bundled_plugin
+
+    if is_bundled_plugin(plugin_id):
+        raise ValueError(bundled_already_message(plugin_id))
 
     dest = _plugin_dir(plugin_id)
     _download_github_skill_folder(owner, repo, ref, skill_path, dest)
@@ -341,6 +327,11 @@ def resolve_plugin_source(source: str) -> str:
 
 
 def format_plugin_catalog() -> str:
+    if not _PLUGIN_CATALOG:
+        return (
+            "图片视觉桥接、存储分析等能力已内置于星期五，无需安装。"
+            "可在设置 → 扩展 → 插件 从 GitHub 安装其他 friday-plugin.json 扩展包。"
+        )
     lines = ["推荐插件（设置 → 扩展 → 插件 也可一键安装）："]
     for item in _PLUGIN_CATALOG:
         lines.append(f"- {item['name']}（id: {item['id']}）→ {item['source']}")
@@ -374,8 +365,12 @@ def _validate_manifest(data: dict[str, Any]) -> dict[str, Any]:
 
 def install_plugin_from_manifest(manifest: dict[str, Any], *, source: str = "local") -> dict[str, Any]:
     """从 manifest 字典安装（测试 / 本地示例）。"""
+    from friday.bundled import bundled_already_message, is_bundled_plugin
+
     manifest = _validate_manifest(manifest)
     plugin_id = manifest["id"]
+    if is_bundled_plugin(plugin_id):
+        raise ValueError(bundled_already_message(plugin_id))
     now = time.time()
     entry = {
         "id": plugin_id,
@@ -406,9 +401,12 @@ def install_plugin_from_manifest(manifest: dict[str, Any], *, source: str = "loc
 
 def install_local_plugin(plugin_id: str) -> dict[str, Any]:
     """从内置 extensions/ 目录安装插件。"""
+    from friday.bundled import bundled_already_message, is_bundled_plugin
     from friday.paths import extensions_dir
 
     pid = (plugin_id or "").strip()
+    if is_bundled_plugin(pid):
+        raise ValueError(bundled_already_message(pid))
     if not pid or not re.match(r"^[\w-]+$", pid):
         raise ValueError("插件 ID 无效")
 
@@ -432,9 +430,18 @@ def install_local_plugin(plugin_id: str) -> dict[str, Any]:
 
 
 def install_plugin(source: str) -> dict[str, Any]:
+    from friday.bundled import bundled_already_message, is_bundled_plugin, resolve_bundled_source
+
+    bundled_id = resolve_bundled_source(source)
+    if bundled_id:
+        raise ValueError(bundled_already_message(bundled_id))
+
     raw = resolve_plugin_source((source or "").strip())
     if raw.startswith("local:"):
-        return install_local_plugin(raw.split(":", 1)[1])
+        pid = raw.split(":", 1)[1]
+        if is_bundled_plugin(pid):
+            raise ValueError(bundled_already_message(pid))
+        return install_local_plugin(pid)
     skill_source = _extract_skill_source(raw)
     if skill_source:
         return install_github_skill(skill_source)
@@ -504,7 +511,13 @@ def refresh_plugin(plugin_id: str) -> dict[str, Any]:
 
 
 def uninstall_plugin(plugin_id: str) -> bool:
-    entry = get_plugin(plugin_id)
+    from friday.bundled import bundled_already_message, is_bundled_plugin
+
+    pid = (plugin_id or "").strip()
+    if is_bundled_plugin(pid):
+        raise ValueError(bundled_already_message(pid))
+
+    entry = get_plugin(pid)
     if entry is None:
         return False
 

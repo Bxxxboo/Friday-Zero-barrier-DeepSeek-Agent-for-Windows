@@ -49,13 +49,31 @@
   </script>
   <style>
     html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
       background: #0a0d12;
+    }
+    html.desktop, html.desktop body {
+      width: 100%;
+      height: 100%;
+      min-height: 100%;
+      max-height: 100%;
+      overflow: hidden;
+    }
+    html.desktop .win-btn,
+    html.desktop .win-btn:focus,
+    html.desktop .win-btn:focus-visible {
+      outline: none !important;
+      box-shadow: none !important;
+      border: none !important;
     }
     html[data-theme="light"], html[data-theme="light"] body {
       background: #f0ebe3;
     }
   </style>
-  <link rel="stylesheet" href="/static/styles.css?v=53" />
+  <link rel="stylesheet" href="/static/styles.css?v=58" />
 </head>
 <body>
   <div class="app-boot-overlay" id="appBootOverlay" aria-live="polite">
@@ -71,15 +89,15 @@
         <span class="titlebar-name" data-i18n="app.name">星期五</span>
       </div>
     </div>
-    <div class="titlebar-controls">
-      <button class="win-btn" id="winMinimize" data-i18n-title="win.minimize" title="最小化" aria-label="最小化">
-        <svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 5h10" stroke="currentColor" stroke-width="1.2"/></svg>
+    <div class="titlebar-controls" role="group" aria-label="窗口控制">
+      <button type="button" class="win-btn" id="winMinimize" tabindex="-1" data-i18n-title="win.minimize" title="最小化" aria-label="最小化">
+        <svg width="11" height="11" viewBox="0 0 11 11" aria-hidden="true"><path d="M1.5 5.5h8" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/></svg>
       </button>
-      <button class="win-btn" id="winMaximize" data-i18n-title="win.maximize" title="最大化" aria-label="最大化">
-        <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1" y="1" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>
+      <button type="button" class="win-btn" id="winMaximize" tabindex="-1" data-i18n-title="win.maximize" title="最大化" aria-label="最大化">
+        <svg width="11" height="11" viewBox="0 0 11 11" aria-hidden="true"><rect x="1.75" y="1.75" width="7.5" height="7.5" rx="0.5" fill="none" stroke="currentColor" stroke-width="1.25"/></svg>
       </button>
-      <button class="win-btn win-btn-close" id="winClose" data-i18n-title="win.close" title="关闭" aria-label="关闭">
-        <svg width="10" height="10" viewBox="0 0 10 10"><path d="M1 1l8 8M9 1L1 9" stroke="currentColor" stroke-width="1.2"/></svg>
+      <button type="button" class="win-btn win-btn-close" id="winClose" tabindex="-1" data-i18n-title="win.close" title="关闭" aria-label="关闭">
+        <svg width="11" height="11" viewBox="0 0 11 11" aria-hidden="true"><path d="M2.2 2.2l6.6 6.6M8.8 2.2L2.2 8.8" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/></svg>
       </button>
     </div>
   </header>
@@ -115,8 +133,8 @@
           </button>
           <button class="icon-btn" id="openSettingsBtn" data-i18n-title="settings.title" title="设置" aria-label="设置">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
               <circle cx="12" cy="12" r="3"></circle>
-              <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path>
             </svg>
           </button>
         </div>
@@ -147,6 +165,10 @@
               <button type="button" class="mode-btn" data-mode="yolo" data-i18n-title="mode.yolo.title" title="工作区自动执行" data-i18n="mode.yolo">Yolo</button>
             </div>
             <span class="mode-hint" id="modeHint">修改与执行前需你确认</span>
+          </div>
+          <div class="composer-queue hidden" id="composerQueue" aria-live="polite">
+            <span class="composer-queue-dot"></span>
+            <span id="composerQueueText"></span>
           </div>
           <div class="composer-row">
         <div class="composer-input-wrap">
@@ -183,6 +205,9 @@
         <span class="status-divider" aria-hidden="true"></span>
         <span class="status-dot" id="statusVisionDot" aria-hidden="true"></span>
         <span class="status-text" id="statusVisionText" data-i18n="status.vision.disabled">视觉 关</span>
+        <span class="status-divider" aria-hidden="true"></span>
+        <span class="status-dot" id="statusImageGenDot" aria-hidden="true"></span>
+        <span class="status-text" id="statusImageGenText" data-i18n="status.imageGen.disabled">生图 关</span>
       </div>
       <div class="status-group" data-i18n-title="status.tokenUsage" title="当前会话 Token 用量">
         <svg class="status-icon" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm0 1.2a5.8 5.8 0 1 1 0 11.6A5.8 5.8 0 0 1 8 2.2Zm-.3 2.5h.6v3.4l2.8 1.6-.3.5-3.1-1.8V4.7Z"/></svg>
@@ -313,6 +338,17 @@
     </div>
   </div>
 
+  <div class="modal hidden" id="sessionRenameModal" role="dialog" aria-labelledby="sessionRenameTitle" aria-modal="true">
+    <div class="session-rename-window">
+      <h4 id="sessionRenameTitle" data-i18n="chat.rename.title">重命名对话</h4>
+      <input type="text" id="sessionRenameInput" class="session-rename-input" maxlength="64" autocomplete="off" />
+      <div class="session-rename-actions">
+        <button type="button" class="ghost-btn" id="sessionRenameCancel" data-i18n="common.cancel">取消</button>
+        <button type="button" class="primary-btn" id="sessionRenameConfirm" data-i18n="common.confirm">确定</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal hidden" id="settingsModal">
     <div class="settings-window">
       <header class="settings-header">
@@ -331,6 +367,7 @@
           <button class="settings-nav-item" data-panel="logs" data-i18n="settings.nav.logs">日志</button>
           <button class="settings-nav-item" data-panel="security-updates" data-i18n="settings.nav.security">安全与更新</button>
           <button class="settings-nav-item" data-panel="extensions" data-i18n="settings.nav.extensions">扩展</button>
+          <button class="settings-nav-item" data-panel="weixin">微信端 AI</button>
           <button class="settings-nav-item" data-panel="schedules" data-i18n="settings.nav.schedules">定时任务</button>
         </nav>
         <div class="settings-content">
@@ -396,6 +433,60 @@
                   <button type="submit" class="primary-btn">保存视觉设置</button>
                 </div>
                 <div class="settings-result" id="visionResult"></div>
+              </form>
+            </div>
+            <div class="settings-group image-gen-group">
+              <h5>生图（OpenAI 兼容 / 火山方舟）</h5>
+              <p class="settings-hint">
+                与识图 Key 分开配置。默认适用于 OpenAI 兼容生图中转（如 <code>https://next.zhima.world</code>）；
+                也可选火山方舟。模型名称请向 API 提供商确认，测试时再填即可。
+              </p>
+              <form class="settings-form" id="imageGenForm">
+                <label class="settings-check">
+                  <input type="checkbox" id="imageGenEnabled" />
+                  <span>启用生图</span>
+                </label>
+                <label>
+                  <span>Provider</span>
+                  <select id="imageGenProvider">
+                    <option value="openai_compat">OpenAI 兼容中转</option>
+                    <option value="ark">火山方舟</option>
+                  </select>
+                </label>
+                <label>
+                  <span>生图 API Key</span>
+                  <input type="password" id="imageGenApiKey" placeholder="sk-..." autocomplete="off" />
+                  <small id="imageGenApiKeyHint">留空则保留已保存的 Key</small>
+                </label>
+                <label>
+                  <span>生图 API Base URL</span>
+                  <input type="text" id="imageGenBaseUrl" placeholder="https://next.zhima.world" />
+                  <small>备用端点填下方，主 URL 失败时自动切换</small>
+                </label>
+                <label>
+                  <span>备用 Base URL（逗号分隔）</span>
+                  <input type="text" id="imageGenFallbackUrls" placeholder="https://crs.happycode.online, https://sg.zhima.world" />
+                </label>
+                <label>
+                  <span>生图模型</span>
+                  <input type="text" id="imageGenModel" placeholder="测试时向 API 提供商确认 model 名" />
+                </label>
+                <label>
+                  <span>默认尺寸</span>
+                  <select id="imageGenDefaultSize">
+                    <option value="1024x1024">1024×1024（方图）</option>
+                    <option value="1280x720">1280×720（横图）</option>
+                    <option value="768x1024">768×1024（竖图）</option>
+                  </select>
+                </label>
+                <div class="settings-actions-bar">
+                  <div class="settings-actions-left">
+                    <span class="status-pill" id="imageGenStatus">生图未配置</span>
+                    <button type="button" class="ghost-btn" id="testImageGenBtn">测试生图</button>
+                  </div>
+                  <button type="submit" class="primary-btn">保存生图设置</button>
+                </div>
+                <div class="settings-result" id="imageGenResult"></div>
               </form>
             </div>
           </section>
@@ -498,6 +589,13 @@
                 <a class="ghost-btn hidden" id="downloadUpdateLink" href="#" target="_blank" rel="noopener" data-i18n="updates.download">下载新版本</a>
               </div>
               <div class="settings-result" id="updateResult"></div>
+            </div>
+            <div class="settings-group changelog-group">
+              <h5>更新公告</h5>
+              <p class="settings-hint">查看各版本的新功能、改进与修复说明。升级后首次启动会自动弹出未读公告。</p>
+              <div class="settings-actions">
+                <button type="button" class="ghost-btn" id="viewChangelogBtn">查看更新历史</button>
+              </div>
             </div>
             <form class="settings-form" id="securityForm">
               <div class="settings-group">
@@ -625,16 +723,49 @@
             <div class="ext-panel hidden" data-ext-panel="plugins">
               <p class="settings-hint">
                 插件是 GitHub 仓库中的 <code>friday-plugin.json</code>，包含技能与规则。
+                图片识别、存储分析已内置于星期五；此处仅安装第三方扩展。
                 格式示例见项目 <code>extensions/demo-office/</code>。
               </p>
               <div id="pluginCatalog" class="plugin-catalog"></div>
-              <div class="plugin-install-row">
-                <input type="text" id="pluginSourceInput" placeholder="owner/repo 或 owner/repo@分支 或 GitHub 链接" />
-                <button type="button" class="primary-btn" id="pluginInstallBtn">从 GitHub 安装</button>
+              <div class="plugin-install-block">
+                <h5 class="plugin-section-title">从 GitHub 安装</h5>
+                <div class="plugin-install-row">
+                  <input type="text" id="pluginSourceInput" placeholder="owner/repo 或 owner/repo@分支 或 GitHub 链接" />
+                  <button type="button" class="primary-btn" id="pluginInstallBtn">安装</button>
+                </div>
               </div>
               <div id="pluginList" class="plugin-list"></div>
               <div class="settings-result" id="pluginResult"></div>
             </div>
+          </section>
+          <section class="settings-section" id="panel-weixin">
+            <h4>微信端 AI</h4>
+            <p class="settings-desc">
+              用手机微信给「星期五 AI」发文字，即可远程指挥这台电脑。下面向导会依次检测 OpenClaw、微信登录与桥接，大多数步骤可一键完成。
+            </p>
+            <div class="weixin-setup-banner" id="weixinSetupBanner">
+              <span class="weixin-setup-badge" id="weixinSetupBadge">检测中…</span>
+              <p class="weixin-setup-banner-text" id="weixinSetupBannerText">正在读取配置…</p>
+            </div>
+            <label class="settings-check weixin-bridge-toggle">
+              <input type="checkbox" id="weixinBridgeEnabled" checked />
+              <span>启用微信桥接（关闭后微信消息不再转发到星期五）</span>
+            </label>
+            <div class="settings-actions weixin-setup-actions">
+              <button type="button" class="primary-btn" id="weixinSetupFullBtn">一键配置</button>
+              <button type="button" class="ghost-btn" id="weixinSetupRefreshBtn">刷新状态</button>
+              <button type="button" class="ghost-btn" id="weixinSetupLoginBtn">打开微信扫码登录</button>
+            </div>
+            <ol class="weixin-setup-steps" id="weixinSetupSteps"></ol>
+            <div class="settings-group weixin-setup-help">
+              <h5>配置完成后怎么用？</h5>
+              <p class="settings-hint">
+                1. 保持<strong>星期五</strong>在本机运行（可最小化）<br />
+                2. 微信里找到已绑定的 Bot，发送例如：<code>列出桌面有哪些软件</code><br />
+                3. 涉及改文件、跑命令时会用人话询问，回复 <strong>同意</strong> 或 <strong>拒绝</strong>
+              </p>
+            </div>
+            <div class="settings-result" id="weixinSetupResult"></div>
           </section>
           <section class="settings-section" id="panel-schedules">
             <h4>定时任务</h4>
@@ -734,6 +865,17 @@
     </div>
   </div>
 
+  <div class="modal hidden" id="releaseNotesModal" role="dialog" aria-labelledby="releaseNotesTitle" aria-modal="true">
+    <div class="modal-card release-notes-card">
+      <h3 id="releaseNotesTitle">更新说明</h3>
+      <div class="release-notes-body" id="releaseNotesBody"></div>
+      <div class="modal-actions release-notes-actions">
+        <a href="#" class="ghost-btn hidden" id="releaseNotesHistoryLink">查看完整更新历史</a>
+        <button type="button" class="primary-btn" id="releaseNotesDismissBtn">知道了</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal hidden" id="yoloUnlockModal" aria-modal="true" role="dialog" aria-labelledby="yoloUnlockTitle">
     <div class="modal-card yolo-unlock-card">
       <h3 id="yoloUnlockTitle" data-i18n="yolo.title">开启 Yolo 模式</h3>
@@ -754,18 +896,20 @@
 
   <script defer src="/static/vendor/marked.min.js"></script>
   <script defer src="/static/vendor/purify.min.js"></script>
-  <script defer src="/static/i18n.js?v=1"></script>
-  <script defer src="/static/utils.js?v=55"></script>
-  <script defer src="/static/sessions.js?v=52"></script>
-  <script defer src="/static/settings.js?v=56"></script>
+  <script defer src="/static/i18n.js?v=2"></script>
+  <script defer src="/static/utils.js?v=57"></script>
+  <script defer src="/static/sessions.js?v=53"></script>
+  <script defer src="/static/settings.js?v=57"></script>
+  <script defer src="/static/weixin.js?v=1"></script>
   <script defer src="/static/onboarding.js?v=51"></script>
+  <script defer src="/static/releaseNotes.js?v=1"></script>
   <script defer src="/static/skills.js?v=51"></script>
-  <script defer src="/static/extensions.js?v=51"></script>
+  <script defer src="/static/extensions.js?v=52"></script>
   <script defer src="/static/history.js?v=51"></script>
   <script defer src="/static/schedules.js?v=51"></script>
   <script defer src="/static/mode.js?v=52"></script>
   <script defer src="/static/statusbar.js?v=53"></script>
-  <script defer src="/static/chat.js?v=53"></script>
-  <script defer src="/static/app.js?v=52"></script>
+  <script defer src="/static/chat.js?v=56"></script>
+  <script defer src="/static/app.js?v=54"></script>
 </body>
 </html>

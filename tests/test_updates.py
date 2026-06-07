@@ -33,9 +33,9 @@ def test_check_updates_github_only(monkeypatch):
     monkeypatch.setenv("FRIDAY_UPDATE_SOURCE", "github")
     monkeypatch.delenv("FRIDAY_GITHUB_REPO", raising=False)
     payload = {
-        "tag_name": "v1.0.4",
+        "tag_name": "v1.2.0",
         "body": "fix",
-        "html_url": "https://github.com/o/r/releases/tag/v1.0.4",
+        "html_url": "https://github.com/o/r/releases/tag/v1.2.0",
         "assets": [{"name": "Friday-Windows.zip", "browser_download_url": "https://x/a.zip"}],
     }
 
@@ -58,7 +58,7 @@ def test_check_updates_github_only(monkeypatch):
     assert info.source_repo == GITHUB_REPO
     assert info.source_kind == "github"
     assert info.update_available is True
-    assert info.latest == "1.0.4"
+    assert info.latest == "1.2.0"
     assert info.download_url == "https://x/a.zip"
 
 

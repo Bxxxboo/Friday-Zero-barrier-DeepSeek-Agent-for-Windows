@@ -22,7 +22,27 @@ coverage.xml
 release/*.zip
 release/stage/
 
+openclaw-weixin/
+openclaw-weixin-*.tgz
+analysis.json
+storage_scan.json
+scan_readable.txt
+screenshot-diagnose.png
+models-clean.json
+models-fixed.json
+生成的图片/
 粘贴的截图/
+build_report.py
+scan.py
+report_template.html
+/gateway-deepseek.cmd
+/test-openclaw.bat
+/final-config.ps1
+/setup-ds*.ps1
+/setup-deepseek-config.ps1
+/openclaw-setup-deepseek.ps1
+/show-models*.ps1
+/server.py
 outputs/
 storage-report.html
 *.log

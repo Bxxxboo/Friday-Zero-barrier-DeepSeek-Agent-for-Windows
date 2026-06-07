@@ -48,6 +48,9 @@ if (-not (Test-Path $Zip)) {
 }
 if (-not $Zip) { throw "Release zip not found. Run scripts/make-release.ps1 first." }
 
+$ReleaseNotes = & (Join-Path $Root "scripts\release-notes.ps1") | Out-String
+$ReleaseNotes = $ReleaseNotes.Trim()
+
 $ReleaseId = $null
 $TagEncoded = [Uri]::EscapeDataString($Tag)
 foreach ($lookupUri in @(
@@ -70,8 +73,8 @@ if (-not $ReleaseId) {
     $Body = @{
         access_token = $GiteeToken
         tag_name = $Tag
-        name = "Friday $Version"
-        body = "Windows AI desktop butler.`n`nDownload ``Friday-Windows.zip`` from attachments."
+        name = "星期五 v$Version"
+        body = $ReleaseNotes
         target_commitish = "main"
     }
     $Release = Invoke-RestMethod -Method Post -Uri "https://gitee.com/api/v5/repos/$Repo/releases" -Body $Body

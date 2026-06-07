@@ -2,7 +2,7 @@
   "id": "demo-office",
   "name": "办公增强示例包",
   "version": "1.0.0",
-  "description": "Friday 官方示例插件：额外办公技能与回复风格规则。",
+  "description": "Friday 官方示例插件：额外办公技能（站会摘要、清空下载夹计划）。",
   "author": "Friday",
   "skills": [
     {
@@ -20,13 +20,5 @@
       "prompt": "查看下载文件夹，列出可归档/可删除/需保留的文件清单，先只读分析不要移动。"
     }
   ],
-  "rules": [
-    {
-      "id": "concise-replies",
-      "title": "简洁回复",
-      "content": "回答办公类问题时优先使用分点列表，每条不超过两行，避免冗长铺垫。",
-      "enabled": true,
-      "always_apply": true
-    }
-  ]
+  "rules": []
 }

@@ -15,6 +15,7 @@ _thread: threading.Thread | None = None
 _stop = threading.Event()
 _running_ids: set[str] = set()
 _lock = threading.Lock()
+_gateway_health_ticks = 0
 
 
 def _execute_task(task_id: str, title: str, prompt: str) -> None:
@@ -67,8 +68,27 @@ def run_schedule_now(schedule_id: str) -> tuple[str, str]:
             _running_ids.discard(schedule_id)
 
 
+def _maybe_ensure_openclaw_gateway() -> None:
+    global _gateway_health_ticks
+    from friday.storage import load_settings
+
+    if not getattr(load_settings(), "weixin_bridge_enabled", True):
+        return
+    _gateway_health_ticks += 1
+    if _gateway_health_ticks < 5:
+        return
+    _gateway_health_ticks = 0
+
+    from friday.weixin.gateway import ensure_gateway_running_background, probe_gateway
+
+    if probe_gateway():
+        return
+    ensure_gateway_running_background()
+
+
 def _tick() -> None:
     now = time.time()
+    _maybe_ensure_openclaw_gateway()
     for task in due_schedules(now):
         _log.info("触发定时任务 | id=%s title=%s", task.id, task.title)
         worker = threading.Thread(

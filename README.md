@@ -4,15 +4,21 @@ Windows AI 电脑管家：大模型理解意图 + 本地工具真正动手。
 
 帮你整理文件、查看系统、生成文档、执行日常电脑事务——说人话就行，不用懂技术。
 
+**当前版本：1.1.0**
+
 ## 功能
 
 - 小窗口桌面应用，对话即入口
 - **设置页填写 DeepSeek API Key**（保存在 `%APPDATA%/Friday/settings.json`）
 - 左侧对话列表，**会话持久化到 `%APPDATA%/Friday/sessions/`**
 - 助手回复支持 **Markdown** 流式输出
-- 设置：**API 连接 / 默认操作文件夹 / 通用 / 安全与审批 / 定时任务**
-- 操作历史时间线、定时任务
-- 28 个本地工具：文件整理、系统体检、文档生成、截屏、剪贴板等
+- **生图**：OpenAI 兼容 / 火山方舟，结果写入会话历史
+- **视觉辅助**：豆包 / Ark 识图（截图粘贴或文件路径）
+- **微信端 AI**：手机微信远程指挥本机（OpenClaw 桥接）
+- 设置：**API / 文件夹 / 外观 / 日志 / 安全与更新 / 扩展 / 定时任务**
+- **更新公告**：升级后自动展示版本说明，设置页可查看历史
+- 操作历史时间线、技能与规则、插件扩展
+- 28+ 本地工具：文件整理、系统体检、文档生成、截屏、剪贴板等
 
 ## 快速开始
 
@@ -34,6 +40,7 @@ powershell -ExecutionPolicy Bypass -File scripts/build.ps1
 产物：`dist/星期五/星期五.exe`（onedir 文件夹分发，含 `_internal/`，主程序无需安装 Python）
 
 **运行要求：**
+
 - Windows 10/11
 - 已安装 [WebView2 运行时](https://developer.microsoft.com/microsoft-edge/webview2/)（Win11 通常已内置）
 - 若使用 Agent Python 脚本功能：另需系统 Python 3.11+（见下方「移植到新电脑」）
@@ -86,25 +93,28 @@ winget install Python.Python.3.12
 
 **不要**直接拷贝工作区里的 `.python-env/`，到新电脑后重新初始化即可。
 
-## GitHub 发布与自动更新
+## 下载与自动更新
 
-内置更新源：**https://github.com/Bxxxboo/friday**（修改 `friday/version.py` 里的 `GITHUB_REPO` 可更换）。
+| 平台 | 地址 |
+|------|------|
+| **Gitee Releases（默认，国内免 VPN）** | https://gitee.com/Bxxxboo/friday/releases |
+| **GitHub Releases（备用）** | https://github.com/Bxxxboo/Friday-Zero-barrier-DeepSeek-Agent-for-Windows/releases |
 
-用户可在 **设置 → 通用 → 检查更新** 从 GitHub Releases 下载 `*-Windows.zip`。
+应用内：**设置 → 安全与更新 → 检查更新**，优先从 Gitee 拉取 `Friday-Windows.zip`。
 
-### 首次发布
+升级后会弹出 **更新公告**；也可在同一页面点击「查看更新历史」。完整文字见 [CHANGELOG.md](CHANGELOG.md) 与 `assets/changelog.json`。
 
-需安装 [Git](https://git-scm.com/) 与 [GitHub CLI](https://cli.github.com/)，并执行 `gh auth login`：
+## 发布与双端同步（维护者）
+
+详见 [docs/RELEASE.md](docs/RELEASE.md)。
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/publish-github.ps1
+$env:GITEE_TOKEN = '令牌'
+powershell -ExecutionPolicy Bypass -File scripts/publish-release.ps1 `
+  -GitHubRepoName Friday-Zero-barrier-DeepSeek-Agent-for-Windows
 ```
 
-### 后续版本
-
-1. 更新 `friday/version.py` 中的 `__version__`
-2. `git tag v1.0.1 && git push origin v1.0.1`
-3. Actions 工作流 `.github/workflows/release.yml` 自动构建并上传安装包
+同步 GitHub + Gitee 代码，并上传 Release 安装包与更新说明。
 
 ## 工程维护
 
@@ -120,7 +130,7 @@ powershell -ExecutionPolicy Bypass -File scripts/clean.ps1
 powershell -ExecutionPolicy Bypass -File scripts/make-release.ps1
 ```
 
-产物：`release/星期五-Windows.zip`（含 exe、`安装教程.txt`、快捷方式脚本）。
+产物：`release/Friday-Windows.zip`（含 exe、`安装教程.txt`、快捷方式脚本）。
 
 **两个 Python 环境（有意分离，勿合并）：**
 
@@ -131,7 +141,7 @@ powershell -ExecutionPolicy Bypass -File scripts/make-release.ps1
 
 ## 技术栈
 
-- 前端：`HTML + CSS + JavaScript`（`utils.js` / `sessions.js` / `settings.js` / `chat.js` / `onboarding.js` / `history.js` / `schedules.js` / `app.js`）
+- 前端：`HTML + CSS + JavaScript`（模块化：`utils.js` / `sessions.js` / `settings.js` / `chat.js` / `releaseNotes.js` 等）
 - 后端：`FastAPI + WebSocket`
 - 桌面壳：`pywebview`（Edge WebView2）
 - 配置存储：`%APPDATA%\Friday\settings.json`
@@ -151,28 +161,37 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
+## 文档
+
+| 文件 | 说明 |
+|------|------|
+| [CHANGELOG.md](CHANGELOG.md) | 版本更新日志 |
+| [docs/RELEASE.md](docs/RELEASE.md) | 发布与双端同步流程 |
+| [docs/image-gen.md](docs/image-gen.md) | 生图功能配置 |
+| [docs/PLAN.md](docs/PLAN.md) | 项目计划 |
+
 ## 项目结构
 
 ```
 星期五/
 ├── run.py
-├── friday.spec          # PyInstaller 配置
-├── tests/               # pytest
-├── web/                 # 前端
-│   ├── index.html
-│   ├── styles.css
-│   ├── onboarding.js
-│   ├── history.js
-│   ├── schedules.js
-│   └── ...
+├── CHANGELOG.md
+├── assets/
+│   ├── friday.ico
+│   └── changelog.json      # 应用内更新公告
+├── friday.spec             # PyInstaller 配置
+├── tests/                  # pytest
+├── web/                    # 前端
 ├── scripts/
-│   ├── build.ps1        # 一键打包
-│   ├── clean.ps1        # 清理 build/dist/pycache
-│   └── create_icon.py
-├── docs/                # 项目计划等文档
+│   ├── build.ps1           # 一键打包
+│   ├── publish-release.ps1 # Gitee + GitHub 发布
+│   ├── release-notes.ps1   # 从 changelog 生成 Release 说明
+│   └── sync-remotes.ps1    # 双端 push
+├── docs/
 ├── friday/
-│   ├── desktop.py       # 桌面窗口
-│   ├── server.py        # API + WebSocket
+│   ├── desktop.py          # 桌面窗口
+│   ├── changelog.py        # 更新公告 API
+│   ├── server.py           # API + WebSocket
 │   └── tools/
-└── assets/friday.ico
+└── extensions/             # 内置/示例插件
 ```

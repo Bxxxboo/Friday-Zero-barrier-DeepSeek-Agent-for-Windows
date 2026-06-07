@@ -26,6 +26,9 @@ if (-not $SkipBuild) {
 $Zip = Join-Path $PWD "release\Friday-Windows.zip"
 if (-not (Test-Path $Zip)) { throw "release/Friday-Windows.zip not found" }
 
+$ReleaseNotes = & (Join-Path $Root "scripts\release-notes.ps1") | Out-String
+$ReleaseNotes = $ReleaseNotes.Trim()
+
 $Headers = @{
     Authorization = "Bearer $GitHubToken"
     Accept = "application/vnd.github+json"
@@ -41,17 +44,8 @@ try {
     Write-Host "Creating GitHub release $Tag on $Repo ..." -ForegroundColor Cyan
     $Body = @{
         tag_name = $Tag
-        name = "Friday $Version"
-        body = @"
-## Friday $Version
-
-Windows AI desktop butler.
-
-### Install
-1. Download ``Friday-Windows.zip``
-2. Extract and run ``星期五.exe``
-3. See ``安装教程.txt`` in the archive
-"@
+        name = "星期五 v$Version"
+        body = $ReleaseNotes
     } | ConvertTo-Json
     $Release = Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/$Repo/releases" -Headers $Headers -Body $Body -ContentType "application/json; charset=utf-8"
     $ReleaseId = $Release.id

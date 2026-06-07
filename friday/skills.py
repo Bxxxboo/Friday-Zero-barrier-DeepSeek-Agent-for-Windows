@@ -36,6 +36,8 @@ _BUILTIN: list[dict[str, Any]] = [
      "prompt": "在我的文档目录生成一份 docx 会议纪要模板，包含时间、参会人、议题、结论、待办事项等栏目。"},
     {"id": "daily-screenshot", "label": "截屏", "icon": "📸", "category": "daily",
      "prompt": "帮我截一张当前屏幕的截图，保存到我的文档目录。"},
+    {"id": "daily-image-gen", "label": "生成图片", "icon": "🎨", "category": "daily",
+     "prompt": "根据我的描述生成一张图片，保存到「生成的图片」文件夹，并告诉我保存路径。"},
     {"id": "daily-dup", "label": "查重复文件", "icon": "🗂", "category": "daily",
      "prompt": "在我的文档和下载文件夹中查找重复文件，先列出结果不要直接删除。"},
      {"id": "net-download", "label": "下载软件", "icon": "⬇️", "category": "daily",
@@ -68,6 +70,7 @@ def _normalize_skill(raw: dict[str, Any], *, builtin: bool = False) -> dict[str,
         "prompt": str(raw.get("prompt", "")).strip(),
         "builtin": bool(raw.get("builtin", builtin)),
         "enabled": bool(raw.get("enabled", True)),
+        "hidden": bool(raw.get("hidden", False)),
         "source": source,
         "plugin_id": str(raw.get("plugin_id", "")),
         "created_at": float(raw.get("created_at", time.time())),
@@ -86,18 +89,20 @@ def _save_custom(items: list[dict[str, Any]]) -> None:
     atomic_write_json(_store_path(), custom)
 
 
-def list_skills(*, include_disabled: bool = False) -> list[dict[str, Any]]:
+def list_skills(*, include_disabled: bool = False, for_ui: bool = False) -> list[dict[str, Any]]:
     builtins = [_normalize_skill(s, builtin=True) for s in _BUILTIN]
     custom = _load_custom()
     all_skills = builtins + custom
+    if for_ui:
+        all_skills = [s for s in all_skills if not s.get("hidden")]
     if include_disabled:
         return all_skills
     return [s for s in all_skills if s.get("enabled", True)]
 
 
-def list_skills_grouped(*, include_disabled: bool = False) -> list[dict[str, Any]]:
+def list_skills_grouped(*, include_disabled: bool = False, for_ui: bool = False) -> list[dict[str, Any]]:
     groups: dict[str, list[dict[str, Any]]] = {}
-    for skill in list_skills(include_disabled=include_disabled):
+    for skill in list_skills(include_disabled=include_disabled, for_ui=for_ui):
         cat = skill.get("category") or "custom"
         groups.setdefault(cat, []).append(skill)
     order = ["system", "files", "docs", "daily", "plugin", "custom"]
@@ -151,8 +156,6 @@ def update_skill(skill_id: str, payload: dict[str, Any]) -> dict[str, Any] | Non
 def delete_skill(skill_id: str) -> bool:
     skill = get_skill(skill_id)
     if skill is None or skill.get("builtin"):
-        return False
-    if skill.get("source") == "plugin":
         return False
     custom = [s for s in _load_custom() if s["id"] != skill_id]
     if len(custom) == len(_load_custom()):

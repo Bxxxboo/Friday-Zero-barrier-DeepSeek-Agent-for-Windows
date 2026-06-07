@@ -116,9 +116,10 @@ def python_env_info() -> str:
 @register_tool(
     name="run_python",
     description=(
-        "在工作区 .python-env 中执行 Python 代码（适合数据处理、批量计算、生成图表等复杂任务）。"
-        "优先写完整可运行代码；大任务可先 write_text_file 保存脚本再 run_python_script。"
-        "Windows 下用 python 而非 python3。"
+        "在工作区 .python-env 中一次性执行完整 Python 脚本（非 REPL 片段）。"
+        "必须把 import、逻辑、输出合并为一段可独立运行的 code，禁止分多次调用做试探。"
+        "多步任务（读配置、调 API、写文件、验证）应写进同一次 code。"
+        "超长脚本用 write_text_file 保存后用 run_python_script。"
     ),
     parameters={
         "type": "object",
@@ -171,7 +172,8 @@ def run_python(code: str, cwd: str = "", timeout: int = 120) -> str:
 @register_tool(
     name="run_python_script",
     description=(
-        "运行工作区内的 .py 脚本文件（使用 .python-env 解释器）。"
+        "运行工作区内的 .py 脚本（.python-env 解释器）。"
+        "适合已用 write_text_file 写好的完整脚本；不要用来替代本应一次 run_python 完成的小片段。"
         "args 为传给脚本的命令行参数（空格分隔）。"
     ),
     parameters={

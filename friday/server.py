@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import uuid
 from concurrent.futures import Future
 from contextlib import asynccontextmanager
@@ -17,7 +18,7 @@ from starlette.responses import JSONResponse
 
 from friday.auth import ensure_api_token, get_api_token, verify_api_token
 
-from friday.safety import PendingAction, TurnApprovalState, mark_turn_approved, should_request_approval, summarize_preview
+from friday.safety import PendingAction, TurnApprovalState, describe_approval_detail, describe_approval_plain, mark_turn_approved, should_request_approval, summarize_preview
 from friday.sessions import (
     ChatSession,
     create_session,
@@ -32,6 +33,7 @@ from friday.sessions import (
     session_display_messages,
     session_exists,
     set_active_session,
+    rename_session,
 )
 from friday.operations import (
     clear_operations,
@@ -48,7 +50,8 @@ from friday.schedules import (
     update_schedule,
 )
 from friday.skills import create_skill, delete_skill, get_skill, list_skills, list_skills_grouped, update_skill
-from friday.rules import create_rule, delete_rule, get_rule, list_rules, update_rule
+from friday.rules import create_rule, delete_rule, ensure_builtin_rules, get_rule, list_rules, update_rule
+from friday.bundled import migrate_legacy_bundled_plugins
 from friday.plugins import (
     install_plugin,
     list_plugins,
@@ -57,6 +60,7 @@ from friday.plugins import (
     uninstall_plugin,
 )
 from friday.updates import check_for_updates
+from friday.changelog import changelog_payload
 from friday.version import __version__
 from friday.paths import known_folders, web_dir
 from friday.storage import (
@@ -83,12 +87,35 @@ async def _lifespan(app: FastAPI):
 
     def _bootstrap() -> None:
         initialize_first_run()
+        migrate_legacy_bundled_plugins()
+        ensure_builtin_rules()
         migrate_legacy_data_dir()
         migrate_session_files()
         ensure_default_session()
 
     await asyncio.to_thread(_bootstrap)
     _backend_ready = True
+
+    async def _weixin_warmup() -> None:
+        from friday.logging_config import get_logger
+
+        try:
+            if not getattr(load_settings(), "weixin_bridge_enabled", True):
+                return
+            port = int(os.environ.get("FRIDAY_PORT", "8765"))
+            from friday.auth import get_api_token
+            from friday.weixin.config import write_bridge_config
+            from friday.weixin.gateway import ensure_gateway_running_async_delay
+
+            await asyncio.to_thread(write_bridge_config, port, get_api_token())
+            from friday.weixin.sessions import migrate_weixin_session_titles
+
+            await asyncio.to_thread(migrate_weixin_session_titles)
+            ensure_gateway_running_async_delay(delay_sec=2.0)
+        except Exception:
+            get_logger("weixin").exception("微信桥接后台初始化失败")
+
+    asyncio.create_task(_weixin_warmup())
     yield
 
 
@@ -145,6 +172,16 @@ class SettingsPayload(BaseModel):
     vision_base_url: str = ""
     vision_model: str = ""
     vision_enabled: bool | None = None
+    image_gen_enabled: bool | None = None
+    image_gen_provider: str = ""
+    image_gen_api_key: str = ""
+    image_gen_base_url: str = ""
+    image_gen_model: str = ""
+    image_gen_default_size: str = ""
+    image_gen_fallback_urls: str = ""
+    image_gen_save_dir: str = ""
+    weixin_bridge_enabled: bool | None = None
+    acknowledged_changelog_version: str | None = None
 
 
 class SettingsResponse(BaseModel):
@@ -176,6 +213,17 @@ class SettingsResponse(BaseModel):
     vision_model: str
     vision_enabled: bool
     vision_ready: bool
+    image_gen_api_key_masked: str
+    image_gen_provider: str
+    image_gen_base_url: str
+    image_gen_model: str
+    image_gen_default_size: str
+    image_gen_fallback_urls: str
+    image_gen_save_dir: str
+    image_gen_enabled: bool
+    image_gen_ready: bool
+    weixin_bridge_enabled: bool = True
+    acknowledged_changelog_version: str = ""
 
 
 class TestResponse(BaseModel):
@@ -209,6 +257,10 @@ class SessionCreatePayload(BaseModel):
     title: str = "新对话"
 
 
+class SessionRenamePayload(BaseModel):
+    title: str = ""
+
+
 class LocalStorageMigrationPayload(BaseModel):
     sessions: list[dict[str, Any]] = []
     active_session_id: str = ""
@@ -226,9 +278,14 @@ class SessionListResponse(BaseModel):
     active_session_id: str
 
 
+class GeneratedImageRef(BaseModel):
+    path: str
+
+
 class DisplayMessageResponse(BaseModel):
     role: str
     content: str
+    generated_images: list[GeneratedImageRef] = []
 
 
 class SessionDetailResponse(BaseModel):
@@ -394,6 +451,26 @@ class UpdateCheckResponse(BaseModel):
     source_repo: str = ""
     source_url: str = ""
     source_kind: str = ""
+
+
+class ChangelogSectionResponse(BaseModel):
+    label: str
+    items: list[str]
+
+
+class ChangelogEntryResponse(BaseModel):
+    version: str
+    date: str = ""
+    title: str = ""
+    sections: list[ChangelogSectionResponse] = []
+
+
+class ChangelogResponse(BaseModel):
+    current: str
+    acknowledged: str
+    has_unseen: bool
+    entries: list[ChangelogEntryResponse]
+    unseen: list[ChangelogEntryResponse]
 
 
 class ScheduleListResponse(BaseModel):
@@ -599,6 +676,15 @@ async def test_vision_settings(payload: SettingsPayload) -> TestResponse:
     return TestResponse(ok=ok, message=message)
 
 
+@app.post("/api/settings/test-image-gen", response_model=TestResponse)
+async def test_image_gen_settings(payload: SettingsPayload) -> TestResponse:
+    from friday.image_gen import test_image_gen_connection
+
+    cfg = _merge_payload(payload)
+    ok, message = await asyncio.to_thread(test_image_gen_connection, cfg)
+    return TestResponse(ok=ok, message=message)
+
+
 @app.post("/api/chat/paste-image", response_model=PasteImageResponse)
 async def paste_chat_image(payload: PasteImagePayload) -> PasteImageResponse:
     from friday.paste_images import save_pasted_image
@@ -615,6 +701,31 @@ async def paste_chat_image(payload: PasteImagePayload) -> PasteImageResponse:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return PasteImageResponse(path=path, filename=filename)
+
+
+@app.get("/api/chat/generated-image")
+async def get_generated_image(path: str, token: str = "", preview: int = 0) -> Response:
+    from friday.auth import verify_api_token
+    from friday.image_gen import guess_image_media_type, render_preview_bytes, resolve_generated_image_path
+
+    if not verify_api_token(token):
+        raise HTTPException(status_code=401, detail="未授权")
+    raw = (path or "").strip()
+    if not raw:
+        raise HTTPException(status_code=400, detail="缺少 path")
+    cfg = load_settings()
+    try:
+        target = await asyncio.to_thread(resolve_generated_image_path, raw, cfg)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (PermissionError, ValueError) as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+    if preview:
+        data, media_type = await asyncio.to_thread(render_preview_bytes, target)
+        return Response(content=data, media_type=media_type)
+
+    return FileResponse(target, media_type=guess_image_media_type(target))
 
 
 @app.get("/api/sessions", response_model=SessionListResponse)
@@ -681,12 +792,27 @@ async def api_activate_session(session_id: str) -> dict[str, str]:
     return {"ok": True, "active_session_id": session_id}
 
 
+@app.patch("/api/sessions/{session_id}", response_model=SessionDetailResponse)
+async def api_rename_session(session_id: str, payload: SessionRenamePayload) -> SessionDetailResponse:
+    if not session_exists(session_id):
+        raise HTTPException(status_code=404, detail="会话不存在")
+    title = payload.title.strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="名称不能为空")
+    try:
+        session = rename_session(session_id, title)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _session_to_detail(session)
+
+
 def _merge_payload(payload: SettingsPayload) -> UserSettings:
     current = load_settings()
     return merge_settings(current, payload.model_dump(exclude_unset=True))
 
 
 def _to_response(cfg: UserSettings) -> SettingsResponse:
+    from friday.image_gen import default_base_url, image_gen_ready, masked_image_gen_key
     from friday.vision import masked_vision_key, vision_ready
 
     return SettingsResponse(
@@ -718,6 +844,17 @@ def _to_response(cfg: UserSettings) -> SettingsResponse:
         vision_model=cfg.vision_model,
         vision_enabled=cfg.vision_enabled,
         vision_ready=vision_ready(cfg),
+        image_gen_api_key_masked=masked_image_gen_key(cfg),
+        image_gen_provider=cfg.image_gen_provider or "openai_compat",
+        image_gen_base_url=cfg.image_gen_base_url.strip() or default_base_url(cfg),
+        image_gen_model=cfg.image_gen_model,
+        image_gen_default_size=cfg.image_gen_default_size or "1024x1024",
+        image_gen_fallback_urls=cfg.image_gen_fallback_urls,
+        image_gen_save_dir=cfg.image_gen_save_dir,
+        image_gen_enabled=cfg.image_gen_enabled,
+        image_gen_ready=image_gen_ready(cfg),
+        weixin_bridge_enabled=getattr(cfg, "weixin_bridge_enabled", True),
+        acknowledged_changelog_version=getattr(cfg, "acknowledged_changelog_version", "") or "",
     )
 
 
@@ -729,7 +866,16 @@ def _session_to_detail(session: ChatSession) -> SessionDetailResponse:
         updated_at=session.updated_at,
         created_at=session.created_at,
         messages=[
-            DisplayMessageResponse(role=item["role"], content=item["content"]) for item in display
+            DisplayMessageResponse(
+                role=item["role"],
+                content=item["content"],
+                generated_images=[
+                    GeneratedImageRef(path=str(img.get("path", "")))
+                    for img in item.get("generated_images") or []
+                    if str(img.get("path", "")).strip()
+                ],
+            )
+            for item in display
         ],
     )
 
@@ -808,12 +954,20 @@ def _make_approval_bridge(
         future: Future[bool] = Future()
         _approval_waiters[approval_id] = future
         _approval_sessions[approval_id] = session_id
+        plain_summary = describe_approval_plain(action.tool_name, action.arguments)
+        detail = describe_approval_detail(action.tool_name, action.arguments)
+        if action.tool_name == "download_file":
+            preview = summarize_preview(action.tool_name, action.arguments)
+        elif detail:
+            preview = detail
+        else:
+            preview = ""
         asyncio.run_coroutine_threadsafe(
             emit(
                 "approval_request",
                 {
                     "approval_id": approval_id,
-                    "summary": action.summary,
+                    "summary": plain_summary,
                     "tool_name": action.tool_name,
                     "arguments": action.arguments,
                     "risk": action.risk.value,
@@ -821,7 +975,7 @@ def _make_approval_bridge(
                     "download_size_bytes": action.download_size_bytes,
                     "untrusted_download": action.untrusted_download,
                     "trust_label": action.trust_label,
-                    "preview": summarize_preview(action.tool_name, action.arguments),
+                    "preview": preview,
                 },
             ),
             loop,
@@ -1006,6 +1160,89 @@ async def cancel_chat(payload: CancelPayload) -> dict[str, bool]:
         _cancel_session_approvals(session_id)
         return {"ok": True}
     return {"ok": False}
+
+
+class WeixinInboundPayload(BaseModel):
+    text: str = ""
+    sender_id: str = ""
+    peer_id: str = ""
+    account_id: str = ""
+    context_token: str = ""
+    channel: str = "openclaw-weixin"
+
+
+class WeixinInboundResponse(BaseModel):
+    handled: bool
+    reply: str = ""
+
+
+@app.post("/api/weixin/inbound", response_model=WeixinInboundResponse)
+async def weixin_inbound(payload: WeixinInboundPayload) -> WeixinInboundResponse:
+    from friday.weixin import handle_inbound
+    from friday.weixin.bridge import InboundRequest
+
+    result = await asyncio.to_thread(
+        handle_inbound,
+        InboundRequest(
+            text=payload.text,
+            sender_id=payload.sender_id,
+            peer_id=payload.peer_id,
+            account_id=payload.account_id,
+            context_token=payload.context_token,
+        ),
+    )
+    return WeixinInboundResponse(handled=result.handled, reply=result.reply)
+
+
+@app.get("/api/weixin/status")
+async def weixin_status() -> dict[str, object]:
+    from friday.weixin.setup import weixin_status_payload
+
+    return await asyncio.to_thread(weixin_status_payload)
+
+
+class WeixinSetupRunPayload(BaseModel):
+    action: str = "full"
+
+
+@app.get("/api/weixin/setup/status")
+async def weixin_setup_status() -> dict[str, object]:
+    from friday.auth import get_api_token
+
+    port = int(os.environ.get("FRIDAY_PORT", "8765"))
+    from friday.weixin.setup import setup_status_payload
+
+    return await asyncio.to_thread(
+        setup_status_payload,
+        port=port,
+        api_token=get_api_token(),
+    )
+
+
+@app.post("/api/weixin/setup/run")
+async def weixin_setup_run(payload: WeixinSetupRunPayload) -> dict[str, object]:
+    from friday.auth import get_api_token
+    from friday.weixin.setup import run_setup_action
+
+    port = int(os.environ.get("FRIDAY_PORT", "8765"))
+    return await asyncio.to_thread(
+        run_setup_action,
+        payload.action,
+        port=port,
+        api_token=get_api_token(),
+    )
+
+
+class WeixinBridgeTogglePayload(BaseModel):
+    enabled: bool = True
+
+
+@app.post("/api/weixin/setup/toggle")
+async def weixin_setup_toggle(payload: WeixinBridgeTogglePayload) -> dict[str, object]:
+    from friday.weixin.setup import set_bridge_enabled
+
+    updated = await asyncio.to_thread(set_bridge_enabled, payload.enabled)
+    return {"ok": True, "bridge_enabled": getattr(updated, "weixin_bridge_enabled", True)}
 
 
 class YoloUnlockPayload(BaseModel):
@@ -1253,9 +1490,13 @@ async def api_schedule_runs(schedule_id: str, limit: int = 30) -> OperationListR
 
 
 @app.get("/api/skills")
-async def api_list_skills(grouped: bool = False, include_disabled: bool = False) -> dict[str, Any]:
+async def api_list_skills(
+    grouped: bool = False,
+    include_disabled: bool = False,
+    manage: bool = False,
+) -> dict[str, Any]:
     if grouped:
-        groups = list_skills_grouped(include_disabled=include_disabled)
+        groups = list_skills_grouped(include_disabled=include_disabled, for_ui=manage)
         return {
             "groups": [
                 {
@@ -1269,7 +1510,7 @@ async def api_list_skills(grouped: bool = False, include_disabled: bool = False)
     return {
         "skills": [
             _skill_to_response(s).model_dump()
-            for s in list_skills(include_disabled=include_disabled)
+            for s in list_skills(include_disabled=include_disabled, for_ui=manage)
         ]
     }
 
@@ -1293,8 +1534,6 @@ async def api_delete_skill(skill_id: str) -> dict[str, bool]:
         raise HTTPException(status_code=404, detail="技能不存在")
     if skill.get("builtin"):
         raise HTTPException(status_code=400, detail="内置技能不可删除")
-    if skill.get("source") == "plugin":
-        raise HTTPException(status_code=400, detail="插件技能请通过卸载插件移除")
     if not delete_skill(skill_id):
         raise HTTPException(status_code=404, detail="技能不存在")
     clear_agent_cache()
@@ -1316,8 +1555,8 @@ async def api_update_skill(skill_id: str, payload: SkillUpdatePayload) -> SkillR
 
 
 @app.get("/api/rules")
-async def api_list_rules() -> dict[str, Any]:
-    return {"rules": [_rule_to_response(r).model_dump() for r in list_rules()]}
+async def api_list_rules(manage: bool = False) -> dict[str, Any]:
+    return {"rules": [_rule_to_response(r).model_dump() for r in list_rules(for_ui=manage)]}
 
 
 @app.post("/api/rules", response_model=RuleResponse)
@@ -1347,8 +1586,8 @@ async def api_delete_rule(rule_id: str) -> dict[str, bool]:
     rule = get_rule(rule_id)
     if rule is None:
         raise HTTPException(status_code=404, detail="规则不存在")
-    if rule.get("source") == "plugin":
-        raise HTTPException(status_code=400, detail="插件规则请通过卸载插件移除")
+    if rule.get("source") == "builtin":
+        raise HTTPException(status_code=400, detail="内置规则不可删除")
     if not delete_rule(rule_id):
         raise HTTPException(status_code=404, detail="规则不存在")
     clear_agent_cache()
@@ -1412,8 +1651,46 @@ async def api_check_updates() -> UpdateCheckResponse:
     )
 
 
+def _changelog_to_response(data: dict[str, Any]) -> ChangelogResponse:
+    def _map_entry(raw: dict[str, Any]) -> ChangelogEntryResponse:
+        sections = []
+        for sec in raw.get("sections") or []:
+            if not isinstance(sec, dict):
+                continue
+            items = sec.get("items") or []
+            sections.append(
+                ChangelogSectionResponse(
+                    label=str(sec.get("label", "")),
+                    items=[str(x) for x in items if x],
+                )
+            )
+        return ChangelogEntryResponse(
+            version=str(raw.get("version", "")),
+            date=str(raw.get("date", "")),
+            title=str(raw.get("title", "")),
+            sections=sections,
+        )
+
+    return ChangelogResponse(
+        current=str(data.get("current", "")),
+        acknowledged=str(data.get("acknowledged", "")),
+        has_unseen=bool(data.get("has_unseen")),
+        entries=[_map_entry(e) for e in data.get("entries") or [] if isinstance(e, dict)],
+        unseen=[_map_entry(e) for e in data.get("unseen") or [] if isinstance(e, dict)],
+    )
+
+
+@app.get("/api/changelog", response_model=ChangelogResponse)
+async def api_changelog() -> ChangelogResponse:
+    cfg = load_settings()
+    ack = getattr(cfg, "acknowledged_changelog_version", "") or ""
+    payload = await asyncio.to_thread(changelog_payload, ack, __version__)
+    return _changelog_to_response(payload)
+
+
 @app.get("/api/status-bar")
 async def get_status_bar(session_id: str = "") -> dict[str, object]:
+    from friday.image_gen import image_gen_ready
     from friday.python_env import python_ready_light
     from friday.schedules import list_schedules
     from friday.vision import vision_ready
@@ -1431,10 +1708,13 @@ async def get_status_bar(session_id: str = "") -> dict[str, object]:
         completion_tokens = int(usage.get("tokens_completion", 0) or 0)
 
     vision_on = bool(cfg.vision_enabled)
+    image_gen_on = bool(cfg.image_gen_enabled)
     return {
         "api_online": cfg.api_ready,
         "vision_online": vision_on and vision_ready(cfg),
         "vision_enabled": vision_on,
+        "image_gen_online": image_gen_on and image_gen_ready(cfg),
+        "image_gen_enabled": image_gen_on,
         "model": cfg.model or "—",
         "workspace": ws_label.replace("\\", "/"),
         "workspace_path": workspace.replace("\\", "/"),

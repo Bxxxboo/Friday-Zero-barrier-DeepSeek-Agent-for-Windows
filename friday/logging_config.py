@@ -2,12 +2,14 @@
 
 输出目标：
 - %APPDATA%/Friday/friday.log  按天轮转，保留 7 天
-- 控制台（仅 WARNING 及以上）
+- 控制台（CLI 模式，仅 WARNING 及以上；桌面 GUI 模式不写控制台）
 """
 
 from __future__ import annotations
 
 import logging
+import os
+import sys
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 
@@ -37,11 +39,13 @@ def setup_logging(*, verbose: bool = False) -> None:
     file_handler.setFormatter(fmt)
     root.addHandler(file_handler)
 
-    # 控制台 handler
-    console = logging.StreamHandler()
-    console.setLevel(logging.DEBUG if verbose else logging.WARNING)
-    console.setFormatter(fmt)
-    root.addHandler(console)
+    # 桌面 GUI 模式不写控制台，避免启动时弹出黑框
+    gui_mode = bool(os.environ.get("FRIDAY_GUI")) or getattr(sys, "frozen", False)
+    if not gui_mode:
+        console = logging.StreamHandler()
+        console.setLevel(logging.DEBUG if verbose else logging.WARNING)
+        console.setFormatter(fmt)
+        root.addHandler(console)
 
     root.debug("日志系统已初始化 | log_path=%s", log_path)
 

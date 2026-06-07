@@ -31,6 +31,45 @@ def test_session_save_compresses_tool_messages(tmp_appdata):
     assert len(tool_content) <= MAX_PERSISTED_TOOL_CHARS + 40
 
 
+def test_session_save_persists_generated_images(tmp_appdata):
+    session = create_session()
+    img_path = "C:/FridayWorkspace/生成的图片/test.png"
+    messages = [
+        {"role": "user", "content": "画一张草原"},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "id": "call_img_1",
+                    "type": "function",
+                    "function": {"name": "generate_image", "arguments": "{}"},
+                }
+            ],
+        },
+        {
+            "role": "tool",
+            "tool_call_id": "call_img_1",
+            "content": f"已生成图片并保存：{img_path}\n尺寸：1024x1024，模型：test。",
+        },
+        {"role": "assistant", "content": "图片已生成，请查看。"},
+    ]
+    save_agent_state(session.id, messages, user_text="画一张草原")
+
+    loaded = get_session(session.id)
+    assert loaded is not None
+    display = loaded.display_messages
+    assert len(display) == 2
+    assistant = display[-1]
+    assert assistant["role"] == "assistant"
+    assert assistant.get("generated_images") == [{"path": img_path}]
+
+    from friday.sessions import session_display_messages
+
+    api_display = session_display_messages(loaded)
+    assert api_display[-1].get("generated_images") == [{"path": img_path}]
+
+
 def test_migrate_old_session_format(tmp_appdata):
     session = create_session(title="旧格式")
     path = tmp_appdata / "sessions" / f"{session.id}.json"
