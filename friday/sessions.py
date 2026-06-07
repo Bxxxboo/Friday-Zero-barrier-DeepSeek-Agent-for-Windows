@@ -171,7 +171,22 @@ def _parse_session_data(data: dict[str, Any]) -> ChatSession | None:
 
 
 def _save_session(session: ChatSession) -> None:
+    from friday.portability import to_portable_path
+    from friday.storage import load_settings, resolved_workspace
+
     display = session.display_messages or _slim_display_messages(session.agent_messages)
+    workspace = resolved_workspace(load_settings())
+    for msg in display:
+        images = msg.get("generated_images")
+        if not isinstance(images, list):
+            continue
+        normalized: list[dict[str, str]] = []
+        for item in images:
+            if not isinstance(item, dict):
+                continue
+            old = str(item.get("path", "")).strip()
+            normalized.append({"path": to_portable_path(old, workspace) if old else ""})
+        msg["generated_images"] = normalized
     session.display_messages = display
     payload = {
         "format_version": SESSION_FORMAT_VERSION,

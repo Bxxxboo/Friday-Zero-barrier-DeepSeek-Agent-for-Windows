@@ -87,6 +87,11 @@
 
   F.chatInput?.addEventListener("input", () => F.updateInputState());
 
+  document.getElementById("clearQuoteBtn")?.addEventListener("click", () => {
+    F.clearComposerQuote?.();
+    F.chatInput?.focus();
+  });
+
   F.stopBtn?.addEventListener("click", () => F.stopChat());
 
   document.getElementById("newChatBtn")?.addEventListener("click", () => F.createSession(true));

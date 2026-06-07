@@ -44,6 +44,7 @@
   let activeSessionId = null;
   let streamingNode = null;
   let streamingText = "";
+  let composerQuoteText = "";
 
   const MIGRATION_KEY = "friday_migrated_v1";
   const LEGACY_SESSIONS_KEY = "friday_sessions";
@@ -130,6 +131,126 @@
     node.textContent = text;
   }
 
+  function formatQuoteBlock(text) {
+    const lines = (text || "").trim().split(/\r?\n/);
+    if (!lines.length || !lines[0]) return "";
+    return lines.map((line) => `> ${line}`).join("\n");
+  }
+
+  function composeMessageWithQuote(userText) {
+    const quote = composerQuoteText.trim();
+    const body = (userText || "").trim();
+    if (!quote) return body;
+    const block = formatQuoteBlock(quote);
+    if (!body) return block;
+    return `${block}\n\n${body}`;
+  }
+
+  function hasComposerQuote() {
+    return Boolean(composerQuoteText.trim());
+  }
+
+  function setComposerQuote(text) {
+    composerQuoteText = (text || "").trim();
+    const bar = document.getElementById("composerQuote");
+    const preview = document.getElementById("composerQuotePreview");
+    if (!bar || !preview) return;
+    if (!composerQuoteText) {
+      bar.classList.add("hidden");
+      preview.textContent = "";
+      updateInputState();
+      return;
+    }
+    preview.textContent = composerQuoteText.length > 160
+      ? `${composerQuoteText.slice(0, 160)}…`
+      : composerQuoteText;
+    bar.classList.remove("hidden");
+    updateInputState();
+  }
+
+  function clearComposerQuote() {
+    setComposerQuote("");
+  }
+
+  async function copyTextToClipboard(text) {
+    const value = (text || "").trim();
+    if (!value) return false;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+        return true;
+      }
+    } catch {
+      /* fallback below */
+    }
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = value;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand("copy");
+      ta.remove();
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+
+  function flashActionButton(btn, label) {
+    if (!btn) return;
+    const original = btn.textContent;
+    btn.textContent = label;
+    btn.disabled = true;
+    setTimeout(() => {
+      btn.textContent = original;
+      btn.disabled = false;
+    }, 1400);
+  }
+
+  function attachAssistantMessageActions(node, plainText) {
+    if (!node || node.classList.contains("streaming")) return;
+    const text = (plainText || "").trim();
+    if (!text || node.querySelector(".message-actions")) return;
+
+    node._fridayPlainText = text;
+
+    const actions = document.createElement("div");
+    actions.className = "message-actions";
+
+    const t = (key, fallback) => window.FridayI18n?.t?.(key) || fallback;
+
+    const copyBtn = document.createElement("button");
+    copyBtn.type = "button";
+    copyBtn.className = "message-action-btn";
+    copyBtn.title = t("message.copy", "复制回答");
+    copyBtn.textContent = t("message.copy", "复制");
+    copyBtn.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      const ok = await copyTextToClipboard(node._fridayPlainText || text);
+      flashActionButton(
+        copyBtn,
+        ok ? t("message.copied", "已复制") : t("message.copyFailed", "复制失败"),
+      );
+    });
+
+    const quoteBtn = document.createElement("button");
+    quoteBtn.type = "button";
+    quoteBtn.className = "message-action-btn";
+    quoteBtn.title = t("message.quote", "引用到输入框");
+    quoteBtn.textContent = t("message.quote", "引用");
+    quoteBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      setComposerQuote(node._fridayPlainText || text);
+      chatInput?.focus();
+    });
+
+    actions.append(copyBtn, quoteBtn);
+    node.appendChild(actions);
+  }
+
   async function migrateLocalStorageSessions() {
     if (localStorage.getItem(MIGRATION_KEY)) return;
 
@@ -209,8 +330,9 @@
   function updateInputState() {
     const friday = window.Friday;
     const hasAttachment = Boolean(friday?.hasComposerAttachment?.());
+    const hasQuote = hasComposerQuote();
     const hasText = Boolean(chatInput?.value.trim());
-    const canSend = apiReady && activeSessionId && (hasText || hasAttachment);
+    const canSend = apiReady && activeSessionId && (hasText || hasAttachment || hasQuote);
     const canInteract = apiReady && activeSessionId;
 
     if (stopBtn) {
@@ -218,7 +340,6 @@
       stopBtn.disabled = !busy;
     }
     if (sendBtn) {
-      sendBtn.classList.toggle("hidden", busy && !canSend);
       sendBtn.disabled = !canSend;
     }
     if (chatInput) {
@@ -383,6 +504,12 @@
     buildGeneratedImageUrl,
     appendGeneratedImages,
     renderMessageBody,
+    attachAssistantMessageActions,
+    composeMessageWithQuote,
+    setComposerQuote,
+    clearComposerQuote,
+    hasComposerQuote,
+    copyTextToClipboard,
     migrateLocalStorageSessions,
     setConnectionStatus,
     updateApiStatus,

@@ -11,6 +11,7 @@ from friday.interaction_modes import (
     normalize_mode,
     tool_allowed_in_mode,
 )
+from friday.paths import known_folders
 from friday.storage import UserSettings, resolved_workspace
 
 
@@ -172,6 +173,31 @@ def path_in_workspace(path: str, workspace: str) -> bool:
         return False
 
 
+def path_in_known_user_folders(path: str) -> bool:
+    """路径是否位于桌面/文档/下载等常见用户目录。"""
+    try:
+        target = _resolve_path(path)
+    except (OSError, RuntimeError, ValueError):
+        return False
+    for folder in known_folders().values():
+        try:
+            target.relative_to(_resolve_path(folder))
+            return True
+        except ValueError:
+            continue
+    return False
+
+
+def path_allowed_for_tool(path: str, tool_name: str, workspace: str, settings: UserSettings) -> bool:
+    if not settings.restrict_to_workspace:
+        return True
+    if path_in_workspace(path, workspace):
+        return True
+    if getattr(settings, "allow_read_user_folders", True) and classify_tool(tool_name) == RiskLevel.READ:
+        return path_in_known_user_folders(path)
+    return False
+
+
 def _extract_paths(tool_name: str, arguments: dict) -> list[str]:
     if tool_name in {"list_directory", "read_text_file", "write_text_file", "organize_directory",
                       "read_pdf", "read_excel", "find_duplicates", "batch_rename",
@@ -261,11 +287,11 @@ def evaluate_tool(
         if tool_name != "download_file":
             root = resolved_workspace(cfg)
             for path in _extract_paths(tool_name, arguments):
-                if path and not path_in_workspace(path, root):
+                if path and not path_allowed_for_tool(path, tool_name, root, cfg):
                     return ToolDecision(
                         False,
                         False,
-                        f"路径超出默认操作文件夹范围（{root}）: {path}",
+                        f"路径超出允许范围（{root}）: {path}",
                     )
 
     if tool_name == "download_file":

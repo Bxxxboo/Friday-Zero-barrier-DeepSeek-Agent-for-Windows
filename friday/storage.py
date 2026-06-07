@@ -89,6 +89,7 @@ class UserSettings:
     theme: str = "dark"
     font_size: str = "medium"
     restrict_to_workspace: bool = True
+    allow_read_user_folders: bool = True
     require_approval_writes: bool = True
     require_approval_exec: bool = True
     allow_write_files: bool = True
@@ -148,10 +149,13 @@ def _settings_path() -> Path:
 
 def save_settings(settings: UserSettings) -> None:
     """保存设置到 %APPDATA%/Friday/settings.json，api_key 加密后落盘。"""
+    from friday.portability import CURRENT_SETTINGS_SCHEMA_VERSION
+
     data = asdict(settings)
     data["api_key"] = _encrypt_key(data["api_key"])
     data["vision_api_key"] = _encrypt_key(data.get("vision_api_key", ""))
     data["image_gen_api_key"] = _encrypt_key(data.get("image_gen_api_key", ""))
+    data["settings_schema_version"] = CURRENT_SETTINGS_SCHEMA_VERSION
     path = _settings_path()
     atomic_write_json(path, data)
     _log.info("设置已保存 | path=%s", path)
@@ -159,6 +163,8 @@ def save_settings(settings: UserSettings) -> None:
 
 def load_settings() -> UserSettings:
     """从 %APPDATA%/Friday/settings.json 加载设置，api_key 自动解密。"""
+    from friday.portability import CURRENT_SETTINGS_SCHEMA_VERSION
+
     path = _settings_path()
     if not path.exists():
         _log.info("设置文件不存在，使用默认设置 | path=%s", path)
@@ -167,35 +173,65 @@ def load_settings() -> UserSettings:
     if not isinstance(data, dict):
         _log.warning("设置文件无效，使用默认设置 | path=%s", path)
         return UserSettings()
+    schema = int(data.pop("settings_schema_version", 0) or 0)
     if "api_key" in data:
         data["api_key"] = _decrypt_key(data["api_key"])
     if "vision_api_key" in data:
         data["vision_api_key"] = _decrypt_key(data["vision_api_key"])
     if "image_gen_api_key" in data:
         data["image_gen_api_key"] = _decrypt_key(data["image_gen_api_key"])
-    return UserSettings.from_dict(data)
+    settings = UserSettings.from_dict(data)
+    if schema < CURRENT_SETTINGS_SCHEMA_VERSION:
+        settings = _migrate_settings_schema(settings, schema)
+    return settings
+
+
+def _migrate_settings_schema(settings: UserSettings, old_schema: int) -> UserSettings:
+    """settings.json 结构升级（保留用户数据）。"""
+    from friday.portability import CURRENT_SETTINGS_SCHEMA_VERSION
+
+    merged = asdict(settings)
+    if old_schema < 1:
+        merged.setdefault("allow_read_user_folders", True)
+    updated = UserSettings.from_dict(merged)
+    save_settings(updated)
+    _log.info("settings 已迁移 schema %d -> %d", old_schema, CURRENT_SETTINGS_SCHEMA_VERSION)
+    return updated
 
 
 def ensure_workspace(settings: UserSettings) -> str:
-    """确保 workspace 目录存在，若为空则使用并创建默认文件夹。"""
+    """确保 workspace 目录存在，若为空或不可用则使用本机默认文件夹。"""
+    from friday.portability import expand_config_path, validate_workspace_path
+
     raw = settings.workspace.strip()
     if raw:
-        path = Path(raw).expanduser()
+        expanded = expand_config_path(raw, ensure_default_exists=True)
+        ok, reason = validate_workspace_path(raw)
+        if not ok:
+            _log.warning("配置的 workspace 不可用 | path=%s reason=%s", raw, reason)
+            path = default_workspace_path(ensure_exists=True)
+            return _normalize(path)
+        path = Path(expanded or raw).expanduser()
         if not path.is_dir():
-            _log.warning("配置的 workspace 不存在，尝试创建 | path=%s", path)
-            path.mkdir(parents=True, exist_ok=True)
+            try:
+                path.mkdir(parents=True, exist_ok=True)
+            except OSError as exc:
+                _log.warning("无法创建 workspace，改用默认目录 | path=%s err=%s", raw, exc)
+                path = default_workspace_path(ensure_exists=True)
         return _normalize(path)
     path = default_workspace_path(ensure_exists=True)
     return _normalize(path)
 
 
 def initialize_first_run() -> UserSettings:
-    """首次启动：确保应用数据目录与默认操作文件夹就绪。"""
+    """首次启动：确保应用数据目录与默认操作文件夹就绪，并做跨机迁移自愈。"""
+    from friday.portability import run_startup_portability_checks
     from friday.sessions import migrate_session_files
 
     get_appdata_dir()
     migrate_session_files()
     settings = load_settings()
+    settings = run_startup_portability_checks(settings)
     if not settings.workspace.strip():
         workspace = _normalize(default_workspace_path(ensure_exists=True))
         settings = settings.merge({"workspace": workspace})

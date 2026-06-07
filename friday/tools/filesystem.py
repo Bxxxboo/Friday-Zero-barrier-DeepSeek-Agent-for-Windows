@@ -114,7 +114,15 @@ def read_text_file(path: str, max_chars: int = 8000) -> str:
     target = _resolve(path)
     if not target.exists() or not target.is_file():
         return f"文件不存在: {target}"
-    text = target.read_text(encoding="utf-8", errors="replace")
+    raw = target.read_bytes()
+    for encoding in ("utf-8-sig", "utf-8", "gb18030", "gbk"):
+        try:
+            text = raw.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+    else:
+        text = raw.decode("utf-8", errors="replace")
     if len(text) > max_chars:
         return text[:max_chars] + f"\n... (截断，共 {len(text)} 字符)"
     return text

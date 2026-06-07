@@ -4,71 +4,161 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>星期五 · 源仓库</title>
+  <script>
+    (function () {
+      var mode = window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+      document.documentElement.dataset.theme = mode;
+      document.documentElement.style.colorScheme = mode;
+    })();
+  </script>
   <style>
     :root {
       --bg: #0a0d12;
-      --card: #141a28;
-      --border: rgba(212, 160, 86, 0.18);
+      --bg-elevated: #111620;
+      --panel: #161c2c;
+      --panel-2: #1a2235;
+      --border: rgba(212, 160, 86, 0.14);
+      --border-subtle: rgba(255, 255, 255, 0.07);
       --text: #e8eaef;
-      --muted: #8b949e;
+      --muted: #8b95a8;
       --accent: #d4a056;
-      --link: #5b8fd9;
+      --accent-2: #a67c32;
+      --accent-soft: rgba(212, 160, 86, 0.14);
+      --on-accent: #0a0d12;
+      --primary: #5b8fd9;
+      --primary-2: #4070b8;
+      --success: #9dd49b;
+      --danger: #e88a7a;
+      --shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.2);
+      --shadow-md: 0 12px 36px rgba(0, 0, 0, 0.32);
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+      --duration-fast: 0.15s;
+      --duration-normal: 0.22s;
+      --font-display: "Segoe UI", "Microsoft YaHei UI", "Noto Serif SC", serif;
+      --font-body: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
     }
+
+    html[data-theme="light"] {
+      --bg: #f0ebe3;
+      --bg-elevated: #faf7f2;
+      --panel: #ffffff;
+      --panel-2: #f3ede4;
+      --border: rgba(26, 31, 46, 0.1);
+      --border-subtle: rgba(26, 31, 46, 0.06);
+      --text: #1a1f2e;
+      --muted: #5c6578;
+      --accent: #b8862e;
+      --accent-2: #8f6820;
+      --accent-soft: rgba(184, 134, 46, 0.12);
+      --on-accent: #1a1f2e;
+      --primary: #3d6db5;
+      --primary-2: #2d5490;
+      --shadow-sm: 0 4px 14px rgba(26, 31, 46, 0.06);
+      --shadow-md: 0 12px 32px rgba(26, 31, 46, 0.08);
+    }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
+
     body {
-      font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif;
-      background: radial-gradient(1200px 600px at 80% -10%, rgba(91,143,217,0.12), transparent),
-                  radial-gradient(900px 500px at 10% 100%, rgba(212,160,86,0.1), transparent),
-                  var(--bg);
+      font-family: var(--font-body);
+      background:
+        radial-gradient(1200px 600px at 80% -10%, rgba(91, 143, 217, 0.1), transparent),
+        radial-gradient(900px 500px at 10% 100%, rgba(212, 160, 86, 0.08), transparent),
+        var(--bg);
       color: var(--text);
       min-height: 100vh;
       padding: 32px 20px 48px;
       line-height: 1.65;
     }
+
     .wrap { max-width: 760px; margin: 0 auto; }
+
     .badge {
       display: inline-block;
       font-size: 11px;
-      letter-spacing: 0.12em;
+      letter-spacing: 0.1em;
       text-transform: uppercase;
       color: var(--accent);
       border: 1px solid var(--border);
       border-radius: 999px;
       padding: 4px 12px;
       margin-bottom: 14px;
+      background: var(--accent-soft);
+      box-shadow: var(--shadow-sm);
     }
-    h1 { font-size: clamp(28px, 5vw, 38px); margin-bottom: 8px; }
+
+    h1 {
+      font-family: var(--font-display);
+      font-size: clamp(28px, 5vw, 38px);
+      margin-bottom: 8px;
+      text-wrap: balance;
+    }
+
     h1 em { font-style: normal; color: var(--accent); }
-    .sub { color: var(--muted); margin-bottom: 28px; font-size: 15px; }
+
+    .sub {
+      color: var(--muted);
+      margin-bottom: 28px;
+      font-size: 15px;
+      max-width: 52ch;
+    }
+
     .card {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 16px;
+      background: var(--panel);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
       padding: 22px 24px;
       margin-bottom: 16px;
+      box-shadow: var(--shadow-sm);
+      transition:
+        border-color var(--duration-normal),
+        box-shadow var(--duration-normal),
+        transform var(--duration-normal) var(--ease-out);
     }
-    .card h2 { font-size: 17px; margin-bottom: 12px; }
+
+    .card:hover {
+      border-color: var(--border);
+      box-shadow: var(--shadow-md);
+    }
+
+    .card h2 {
+      font-size: 17px;
+      margin-bottom: 12px;
+      font-weight: 600;
+    }
+
     .url-box {
       display: flex;
       gap: 8px;
       flex-wrap: wrap;
       margin: 12px 0;
     }
+
     .url-box input {
       flex: 1 1 280px;
       min-width: 0;
-      background: #0c1018;
-      border: 1px solid var(--border);
+      background: var(--panel-2);
+      border: 1px solid var(--border-subtle);
       border-radius: 10px;
       color: var(--text);
       padding: 11px 12px;
       font: inherit;
       font-size: 13px;
+      transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
     }
+
+    .url-box input:focus {
+      outline: none;
+      border-color: rgba(212, 160, 86, 0.45);
+      box-shadow: 0 0 0 3px var(--accent-soft);
+    }
+
     .btn {
       appearance: none;
-      border: 1px solid var(--border);
-      background: rgba(212,160,86,0.14);
+      border: 1px solid var(--border-subtle);
+      background: var(--accent-soft);
       color: var(--text);
       border-radius: 10px;
       padding: 10px 16px;
@@ -77,28 +167,75 @@
       cursor: pointer;
       text-decoration: none;
       display: inline-block;
+      transition:
+        border-color var(--duration-fast),
+        background var(--duration-fast),
+        transform var(--duration-fast) var(--ease-out);
     }
-    .btn:hover { border-color: var(--accent); }
-    .btn-primary { background: linear-gradient(135deg, #d4a056, #a67c32); color: #0a0d12; font-weight: 600; }
-    ol { padding-left: 20px; color: var(--muted); font-size: 14px; }
+
+    .btn:hover {
+      border-color: var(--accent);
+      background: rgba(212, 160, 86, 0.2);
+    }
+
+    .btn:active {
+      transform: scale(0.98);
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      color: var(--on-accent);
+      font-weight: 600;
+      border-color: transparent;
+    }
+
+    .btn-primary:hover {
+      filter: brightness(1.05);
+      border-color: transparent;
+    }
+
+    ol {
+      padding-left: 20px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
     ol li { margin: 8px 0; }
     ol strong { color: var(--text); }
+
     code {
-      background: rgba(255,255,255,0.06);
+      background: var(--accent-soft);
       padding: 2px 6px;
       border-radius: 6px;
       font-size: 12px;
     }
+
     .status {
       font-size: 13px;
       color: var(--muted);
       margin-top: 10px;
       min-height: 1.2em;
     }
-    .status.ok { color: #9dd49b; }
-    .status.err { color: #e88a7a; }
-    footer { margin-top: 28px; text-align: center; color: var(--muted); font-size: 12px; }
-    a { color: var(--link); }
+
+    .status.ok { color: var(--success); }
+    .status.err { color: var(--danger); }
+
+    footer {
+      margin-top: 28px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    a { color: var(--primary); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
   </style>
 </head>
 <body>
@@ -143,7 +280,7 @@
     </div>
 
     <footer>
-      版本 <span id="version">1.1.0</span> · GitHub github.com/Bxxxboo/Friday-Zero-barrier-DeepSeek-Agent-for-Windows · Gitee gitee.com/Bxxxboo/friday
+      版本 <span id="version">1.1.2</span> · GitHub github.com/Bxxxboo/Friday-Zero-barrier-DeepSeek-Agent-for-Windows · Gitee gitee.com/Bxxxboo/friday
     </footer>
   </div>
   <script>

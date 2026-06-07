@@ -38,21 +38,136 @@ def _plugin_dir(plugin_id: str) -> Path:
     return get_appdata_dir() / "plugins" / plugin_id
 
 
-def _substitute_plugin_dir(text: str, plugin_id: str) -> str:
+def substitute_plugin_text(text: str, plugin_id: str) -> str:
+    """运行时将 manifest / 技能 / 规则中的 {plugin_dir} 替换为本机路径。"""
     root = str(_plugin_dir(plugin_id)).replace("\\", "/")
-    return text.replace("{plugin_dir}", root)
+    return (text or "").replace("{plugin_dir}", root)
 
 
-def _apply_plugin_dir(manifest: dict[str, Any], plugin_id: str) -> dict[str, Any]:
-    """将 manifest 中的 {plugin_dir} 替换为实际安装路径。"""
+def _portabilize_text(text: str, plugin_id: str) -> str:
+    """将 manifest 文本中的本机绝对 plugin 路径改回 {plugin_dir} 占位符。"""
+    raw = text or ""
+    root = str(_plugin_dir(plugin_id))
+    candidates = {root, root.replace("\\", "/"), root.replace("/", "\\")}
+    for candidate in candidates:
+        if candidate and candidate in raw:
+            raw = raw.replace(candidate, "{plugin_dir}")
+    return raw
+
+
+def _ensure_portable_manifest(manifest: dict[str, Any], plugin_id: str) -> dict[str, Any]:
+    """确保 manifest 落盘时使用 {plugin_dir} 而非绝对路径。"""
     result = dict(manifest)
+    skills: list[dict[str, Any]] = []
     for skill in result.get("skills", []):
-        if isinstance(skill, dict) and "prompt" in skill:
-            skill["prompt"] = _substitute_plugin_dir(str(skill["prompt"]), plugin_id)
+        if not isinstance(skill, dict):
+            continue
+        item = dict(skill)
+        if "prompt" in item:
+            item["prompt"] = _portabilize_text(str(item["prompt"]), plugin_id)
+        skills.append(item)
+    rules: list[dict[str, Any]] = []
     for rule in result.get("rules", []):
-        if isinstance(rule, dict) and "content" in rule:
-            rule["content"] = _substitute_plugin_dir(str(rule["content"]), plugin_id)
+        if not isinstance(rule, dict):
+            continue
+        item = dict(rule)
+        if "content" in item:
+            item["content"] = _portabilize_text(str(item["content"]), plugin_id)
+        rules.append(item)
+    result["skills"] = skills
+    result["rules"] = rules
     return result
+
+
+def _manifest_has_absolute_plugin_dir(manifest: dict[str, Any], plugin_id: str) -> bool:
+    root = str(_plugin_dir(plugin_id)).replace("\\", "/")
+    for skill in manifest.get("skills", []):
+        if isinstance(skill, dict):
+            prompt = str(skill.get("prompt", "")).replace("\\", "/")
+            if root in prompt and "{plugin_dir}" not in prompt:
+                return True
+    for rule in manifest.get("rules", []):
+        if isinstance(rule, dict):
+            content = str(rule.get("content", "")).replace("\\", "/")
+            if root in content and "{plugin_dir}" not in content:
+                return True
+    return False
+
+
+def migrate_installed_plugin_manifests() -> int:
+    """启动时将旧版绝对路径 manifest 迁移为 {plugin_dir} 占位符。"""
+    marker = get_appdata_dir() / ".plugin_manifest_portable_v1"
+    if marker.is_file():
+        return 0
+
+    updated = 0
+    for entry in list_plugins():
+        plugin_id = str(entry.get("id", "")).strip()
+        if not plugin_id:
+            continue
+        manifest_path = _plugin_dir(plugin_id) / _MANIFEST
+        if not manifest_path.is_file():
+            continue
+        try:
+            manifest = _validate_manifest(json.loads(manifest_path.read_text(encoding="utf-8")))
+        except (OSError, json.JSONDecodeError, ValueError):
+            continue
+        portable = _ensure_portable_manifest(manifest, plugin_id)
+        if _manifest_has_absolute_plugin_dir(manifest, plugin_id):
+            atomic_write_json(manifest_path, portable)
+            upsert_plugin_skills(plugin_id, portable["skills"])
+            upsert_plugin_rules(plugin_id, portable["rules"])
+            updated += 1
+            _log.info("已迁移插件 manifest 为可移植格式 | id=%s", plugin_id)
+    try:
+        marker.write_text(str(updated), encoding="utf-8")
+    except OSError:
+        pass
+    return updated
+
+
+def audit_plugin_portability() -> list[dict[str, Any]]:
+    """可移植性自检：插件 manifest 是否仍含绝对路径。"""
+    items: list[dict[str, Any]] = []
+    for entry in list_plugins():
+        plugin_id = str(entry.get("id", "")).strip()
+        if not plugin_id:
+            continue
+        manifest_path = _plugin_dir(plugin_id) / _MANIFEST
+        label = str(entry.get("name") or plugin_id)
+        if not manifest_path.is_file():
+            items.append({
+                "id": f"plugin-{plugin_id}",
+                "ok": False,
+                "label": f"插件：{label}",
+                "detail": "缺少 friday-plugin.json",
+            })
+            continue
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            items.append({
+                "id": f"plugin-{plugin_id}",
+                "ok": False,
+                "label": f"插件：{label}",
+                "detail": "manifest 无法读取",
+            })
+            continue
+        if _manifest_has_absolute_plugin_dir(manifest, plugin_id):
+            items.append({
+                "id": f"plugin-{plugin_id}",
+                "ok": False,
+                "label": f"插件：{label}",
+                "detail": "manifest 仍含本机绝对路径，请运行迁移或重新安装",
+            })
+        else:
+            items.append({
+                "id": f"plugin-{plugin_id}",
+                "ok": True,
+                "label": f"插件：{label}",
+                "detail": "manifest 使用 {plugin_dir} 占位符",
+            })
+    return items
 
 
 def _copy_tree(src: Path, dest: Path) -> None:
@@ -205,7 +320,7 @@ def install_github_skill(source: str) -> dict[str, Any]:
             "rules": [],
         })
 
-    manifest = _apply_plugin_dir(manifest, plugin_id)
+    manifest = _ensure_portable_manifest(manifest, plugin_id)
     atomic_write_json(dest / _MANIFEST, manifest)
 
     now = time.time()
@@ -392,7 +507,7 @@ def install_plugin_from_manifest(manifest: dict[str, Any], *, source: str = "loc
     _save_registry(registry)
     dest = _plugin_dir(plugin_id)
     dest.mkdir(parents=True, exist_ok=True)
-    manifest = _apply_plugin_dir(manifest, plugin_id)
+    manifest = _ensure_portable_manifest(manifest, plugin_id)
     atomic_write_json(dest / _MANIFEST, manifest)
     upsert_plugin_skills(plugin_id, manifest["skills"])
     upsert_plugin_rules(plugin_id, manifest["rules"])
@@ -419,8 +534,8 @@ def install_local_plugin(plugin_id: str) -> dict[str, Any]:
     bundle = extensions_dir() / pid
     if bundle.is_dir():
         _copy_tree(bundle, _plugin_dir(pid))
-        manifest = _apply_plugin_dir(
-            json.loads((_plugin_dir(pid) / _MANIFEST).read_text(encoding="utf-8")),
+        manifest = _ensure_portable_manifest(
+            json.loads(manifest_path.read_text(encoding="utf-8")),
             pid,
         )
         atomic_write_json(_plugin_dir(pid) / _MANIFEST, manifest)
@@ -488,6 +603,7 @@ def install_plugin(source: str) -> dict[str, Any]:
 
     dest = _plugin_dir(plugin_id)
     dest.mkdir(parents=True, exist_ok=True)
+    manifest = _ensure_portable_manifest(manifest, plugin_id)
     atomic_write_json(dest / _MANIFEST, manifest)
 
     upsert_plugin_skills(plugin_id, manifest["skills"])

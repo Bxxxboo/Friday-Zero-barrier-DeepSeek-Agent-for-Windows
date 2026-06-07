@@ -237,6 +237,9 @@
       node.className = `message ${msg.kind}`;
       F.renderMessageBody(node, msg.kind, msg.text);
       F.appendGeneratedImages(node, msg.generatedImages);
+      if (msg.kind === "assistant") {
+        F.attachAssistantMessageActions(node, msg.text);
+      }
       F.chatLog.appendChild(node);
     });
     updateEmptyState(messages);

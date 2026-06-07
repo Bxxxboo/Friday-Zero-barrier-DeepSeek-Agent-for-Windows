@@ -98,6 +98,10 @@ def test_install_plugin_from_manifest(tmp_appdata):
     assert entry["skill_count"] == 1
     assert entry["rule_count"] == 1
 
+    manifest_path = tmp_appdata / "plugins" / "my-custom-plugin" / "friday-plugin.json"
+    saved = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert saved["skills"][0]["prompt"] == "写站会摘要"
+
     plugins = list_plugins()
     assert len(plugins) == 1
 
@@ -223,3 +227,40 @@ def test_install_github_skill_storage_analyzer_blocked(tmp_appdata):
     """storage-analyzer 已内置，禁止再作为插件安装。"""
     with pytest.raises(ValueError, match="内置"):
         install_github_skill("KKKKhazix/khazix-skills/storage-analyzer")
+
+
+def test_plugin_manifest_substitutes_at_runtime(tmp_appdata):
+    manifest = {
+        "id": "path-plugin",
+        "name": "Path Plugin",
+        "version": "1.0.0",
+        "description": "test",
+        "author": "test",
+        "skills": [{
+            "id": "run",
+            "label": "Run",
+            "icon": "✨",
+            "category": "plugin",
+            "prompt": "read {plugin_dir}/SKILL.md",
+        }],
+        "rules": [{
+            "id": "rule",
+            "title": "Rule",
+            "content": "use {plugin_dir}/scripts",
+            "enabled": True,
+            "always_apply": True,
+        }],
+    }
+    install_plugin_from_manifest(manifest, source="local")
+    saved = json.loads(
+        (tmp_appdata / "plugins" / "path-plugin" / "friday-plugin.json").read_text(encoding="utf-8")
+    )
+    assert "{plugin_dir}" in saved["skills"][0]["prompt"]
+
+    skill = next(s for s in list_skills(include_disabled=True) if s.get("plugin_id") == "path-plugin")
+    assert "{plugin_dir}" not in skill["prompt"]
+    assert "plugins/path-plugin".replace("/", "\\") in skill["prompt"] or "plugins/path-plugin" in skill["prompt"]
+
+    prompt = active_rules_prompt()
+    assert "{plugin_dir}" not in prompt
+    assert "scripts" in prompt

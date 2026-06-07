@@ -221,6 +221,7 @@
       F.streamingNode.replaceChildren();
       F.renderMessageBody(F.streamingNode, "assistant", text);
       F.appendGeneratedImages(F.streamingNode, generatedImages);
+      F.attachAssistantMessageActions(F.streamingNode, text);
       const session = F.getActiveSession();
       if (session) {
         const entry = { kind: "assistant", text };
@@ -343,6 +344,9 @@
       node.appendChild(img);
     }
     F.appendGeneratedImages(node, extra.generatedImages);
+    if (kind === "assistant") {
+      F.attachAssistantMessageActions(node, text);
+    }
     F.chatLog.appendChild(node);
     F.scrollToBottom();
 
@@ -519,7 +523,8 @@
   }
 
   async function sendChat(message, fromQueue = false, options = {}) {
-    const text = message.trim();
+    const composed = F.composeMessageWithQuote(message.trim());
+    const text = composed.trim();
     const imagePath = options.imagePath || pendingImage?.path || "";
     const previewUrl = options.previewUrl || pendingImage?.previewUrl || "";
     if (!text && !imagePath) return;
@@ -544,12 +549,14 @@
       enqueueChat({ text, imagePath, previewUrl });
       pendingImage = null;
       hideComposerAttachment();
+      F.clearComposerQuote?.();
       return;
     }
 
     if (!F.wsConnected) {
       enqueueChat({ text, imagePath, previewUrl });
       if (!fromQueue) F.setConnectionStatus("正在连接，消息已排队...");
+      if (!fromQueue) F.clearComposerQuote?.();
       return;
     }
 
@@ -566,6 +573,7 @@
     }
     pendingImage = null;
     hideComposerAttachment();
+    F.clearComposerQuote?.();
     F.updateInputState();
     F.setBusy(true);
     resetPendingGeneratedImages();

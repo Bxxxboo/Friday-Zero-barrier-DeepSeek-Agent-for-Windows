@@ -153,6 +153,7 @@ class SettingsPayload(BaseModel):
     theme: str = ""
     font_size: str = ""
     restrict_to_workspace: bool | None = None
+    allow_read_user_folders: bool | None = None
     require_approval_writes: bool | None = None
     require_approval_exec: bool | None = None
     allow_write_files: bool | None = None
@@ -193,6 +194,7 @@ class SettingsResponse(BaseModel):
     theme: str
     font_size: str
     restrict_to_workspace: bool
+    allow_read_user_folders: bool = True
     require_approval_writes: bool
     require_approval_exec: bool
     allow_write_files: bool
@@ -224,6 +226,7 @@ class SettingsResponse(BaseModel):
     image_gen_ready: bool
     weixin_bridge_enabled: bool = True
     acknowledged_changelog_version: str = ""
+    portability_notices: list[str] = []
 
 
 class TestResponse(BaseModel):
@@ -685,6 +688,74 @@ async def test_image_gen_settings(payload: SettingsPayload) -> TestResponse:
     return TestResponse(ok=ok, message=message)
 
 
+class PortableExportPayload(BaseModel):
+    include_sessions: bool = False
+
+
+class PortableImportPayload(BaseModel):
+    zip_base64: str = ""
+    filename: str = "Friday-portable.zip"
+
+
+@app.get("/api/portable/audit")
+async def portable_audit() -> dict[str, object]:
+    from friday.portability import run_portability_audit
+
+    cfg = load_settings()
+    return {"items": run_portability_audit(cfg)}
+
+
+@app.post("/api/portable/export")
+async def portable_export(payload: PortableExportPayload | None = None) -> FileResponse:
+    import tempfile
+
+    from friday.portable_bundle import export_portable_bundle
+
+    include_sessions = bool(payload.include_sessions) if payload else False
+    tmp = Path(tempfile.gettempdir()) / f"friday-portable-{uuid.uuid4().hex}.zip"
+    path, _report = await asyncio.to_thread(
+        export_portable_bundle,
+        tmp,
+        include_sessions=include_sessions,
+    )
+    return FileResponse(
+        path,
+        media_type="application/zip",
+        filename="Friday-portable.zip",
+    )
+
+
+@app.post("/api/portable/import")
+async def portable_import(payload: PortableImportPayload) -> dict[str, object]:
+    import base64
+    import binascii
+    import tempfile
+
+    from friday.portable_bundle import import_portable_bundle
+
+    raw = (payload.zip_base64 or "").strip()
+    if not raw:
+        raise HTTPException(status_code=400, detail="请上传 .zip 配置包")
+    try:
+        content = base64.b64decode(raw, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="配置包数据无效") from exc
+    if not content:
+        raise HTTPException(status_code=400, detail="配置包为空")
+
+    tmp = Path(tempfile.gettempdir()) / f"friday-import-{uuid.uuid4().hex}.zip"
+    tmp.write_bytes(content)
+    report = await asyncio.to_thread(import_portable_bundle, tmp)
+    try:
+        tmp.unlink(missing_ok=True)
+    except OSError:
+        pass
+    if report.get("errors"):
+        raise HTTPException(status_code=400, detail="; ".join(report["errors"]))
+    clear_agent_cache()
+    return report
+
+
 @app.post("/api/chat/paste-image", response_model=PasteImageResponse)
 async def paste_chat_image(payload: PasteImagePayload) -> PasteImageResponse:
     from friday.paste_images import save_pasted_image
@@ -813,8 +884,10 @@ def _merge_payload(payload: SettingsPayload) -> UserSettings:
 
 def _to_response(cfg: UserSettings) -> SettingsResponse:
     from friday.image_gen import default_base_url, image_gen_ready, masked_image_gen_key
+    from friday.portability import pop_startup_notices
     from friday.vision import masked_vision_key, vision_ready
 
+    notices = pop_startup_notices()
     return SettingsResponse(
         api_key_masked=cfg.masked_key(),
         base_url=cfg.base_url,
@@ -824,6 +897,7 @@ def _to_response(cfg: UserSettings) -> SettingsResponse:
         theme=cfg.theme,
         font_size=cfg.font_size,
         restrict_to_workspace=cfg.restrict_to_workspace,
+        allow_read_user_folders=getattr(cfg, "allow_read_user_folders", True),
         require_approval_writes=cfg.require_approval_writes,
         require_approval_exec=cfg.require_approval_exec,
         allow_write_files=cfg.allow_write_files,
@@ -855,6 +929,7 @@ def _to_response(cfg: UserSettings) -> SettingsResponse:
         image_gen_ready=image_gen_ready(cfg),
         weixin_bridge_enabled=getattr(cfg, "weixin_bridge_enabled", True),
         acknowledged_changelog_version=getattr(cfg, "acknowledged_changelog_version", "") or "",
+        portability_notices=notices,
     )
 
 

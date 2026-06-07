@@ -283,9 +283,11 @@ def extract_path_from_tool_result(text: str) -> str | None:
 
 
 def resolve_generated_image_path(path: str, settings: UserSettings) -> Path:
-    """校验生图路径位于工作区内。"""
+    """校验生图路径位于工作区内（支持相对路径）。"""
+    from friday.portability import resolve_portable_path
+
     workspace = Path(resolved_workspace(settings)).resolve()
-    target = Path(path).expanduser().resolve()
+    target = resolve_portable_path(path, str(workspace))
     if not target.is_file():
         raise FileNotFoundError(f"找不到图片: {target}")
     try:

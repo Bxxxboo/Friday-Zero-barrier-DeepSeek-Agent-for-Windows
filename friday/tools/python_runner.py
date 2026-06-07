@@ -6,6 +6,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import os
 from pathlib import Path
 
 from friday.logging_config import get_logger
@@ -61,6 +62,7 @@ def _run_process(
         "errors": "replace",
         "timeout": timeout,
         "cwd": str(cwd),
+        "env": {**os.environ, "PYTHONIOENCODING": "utf-8"},
     }
     if sys.platform == "win32":
         run_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW

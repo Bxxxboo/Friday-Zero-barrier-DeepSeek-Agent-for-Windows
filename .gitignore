@@ -1,4 +1,9 @@
-.env
+# 本地文档/素材（勿入库）
+星期五*.docx
+图*_*.jpg
+图*_*.png
+密码学复习/
+
 .venv/
 .python-env/
 __pycache__/

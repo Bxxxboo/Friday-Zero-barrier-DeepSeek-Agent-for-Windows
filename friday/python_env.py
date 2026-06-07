@@ -191,6 +191,8 @@ def find_system_python(*, skip_embed: bool = False, skip_winget: bool = False) -
 
 
 def _run_hidden(args: list[str], *, cwd: Path | None = None, timeout: int = 600) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    env.setdefault("PYTHONIOENCODING", "utf-8")
     kwargs: dict = {
         "args": args,
         "capture_output": True,
@@ -199,6 +201,7 @@ def _run_hidden(args: list[str], *, cwd: Path | None = None, timeout: int = 600)
         "errors": "replace",
         "timeout": timeout,
         "cwd": str(cwd) if cwd else None,
+        "env": env,
     }
     if sys.platform == "win32":
         kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
@@ -261,6 +264,28 @@ def _has_core_packages(python_exe: Path, env_dir: Path | None = None) -> bool:
     return ok
 
 
+def _venv_is_stale(env_dir: Path) -> bool:
+    """检测来自其他机器或已损坏的 venv。"""
+    venv_py = _venv_python(env_dir)
+    if not venv_py.is_file():
+        return True
+
+    cfg = env_dir / "pyvenv.cfg"
+    if cfg.is_file():
+        for line in cfg.read_text(encoding="utf-8", errors="replace").splitlines():
+            if not line.lower().startswith("home"):
+                continue
+            home = Path(line.split("=", 1)[1].strip())
+            if home and not home.is_dir():
+                return True
+
+    try:
+        cp = _run_hidden([str(venv_py), "-c", "print('ok')"], timeout=8)
+    except (OSError, subprocess.SubprocessError):
+        return True
+    return cp.returncode != 0 or "ok" not in (cp.stdout or "")
+
+
 def resolve_agent_python(workspace: str, *, auto_setup: bool = False) -> tuple[Path | None, str]:
     """返回 Agent 应使用的 python.exe；auto_setup 时在缺失时尝试创建环境。"""
     ws = Path(workspace).expanduser().resolve()
@@ -269,7 +294,16 @@ def resolve_agent_python(workspace: str, *, auto_setup: bool = False) -> tuple[P
     venv_py = _venv_python(env_dir)
 
     if venv_py.is_file():
-        return venv_py, str(env_dir)
+        if _venv_is_stale(env_dir):
+            _log.warning("工作区 Python 环境已失效，准备重建 | dir=%s", env_dir)
+            shutil.rmtree(env_dir, ignore_errors=True)
+            if not auto_setup:
+                return None, (
+                    "工作区 Python 环境已失效（常见于从其他电脑拷贝工作区）。"
+                    "请在「设置 → Python 环境」点击「初始化 Python 环境」。"
+                )
+        else:
+            return venv_py, str(env_dir)
 
     if not auto_setup:
         return None, f"工作区 Python 环境尚未初始化：{env_dir}"
@@ -287,8 +321,12 @@ def setup_agent_env(workspace: str) -> tuple[bool, str]:
     env_dir = agent_env_dir(str(ws))
     venv_py = _venv_python(env_dir)
 
-    if venv_py.is_file() and _has_core_packages(venv_py, env_dir):
-        return True, f"Python 环境已就绪：{venv_py} ({_python_version(venv_py)})"
+    if venv_py.is_file():
+        if _venv_is_stale(env_dir):
+            _log.warning("重建失效的工作区 Python 环境 | dir=%s", env_dir)
+            shutil.rmtree(env_dir, ignore_errors=True)
+        elif _has_core_packages(venv_py, env_dir):
+            return True, f"Python 环境已就绪：{venv_py} ({_python_version(venv_py)})"
 
     base = find_system_python()
     if not base:

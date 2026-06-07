@@ -89,6 +89,17 @@ def _save_custom(items: list[dict[str, Any]]) -> None:
     atomic_write_json(_store_path(), custom)
 
 
+def _resolve_plugin_skill(skill: dict[str, Any]) -> dict[str, Any]:
+    plugin_id = str(skill.get("plugin_id", "")).strip()
+    if skill.get("source") != "plugin" or not plugin_id:
+        return skill
+    from friday.plugins import substitute_plugin_text
+
+    resolved = skill.copy()
+    resolved["prompt"] = substitute_plugin_text(str(skill.get("prompt", "")), plugin_id)
+    return resolved
+
+
 def list_skills(*, include_disabled: bool = False, for_ui: bool = False) -> list[dict[str, Any]]:
     builtins = [_normalize_skill(s, builtin=True) for s in _BUILTIN]
     custom = _load_custom()
@@ -96,8 +107,10 @@ def list_skills(*, include_disabled: bool = False, for_ui: bool = False) -> list
     if for_ui:
         all_skills = [s for s in all_skills if not s.get("hidden")]
     if include_disabled:
-        return all_skills
-    return [s for s in all_skills if s.get("enabled", True)]
+        result = all_skills
+    else:
+        result = [s for s in all_skills if s.get("enabled", True)]
+    return [_resolve_plugin_skill(s) for s in result]
 
 
 def list_skills_grouped(*, include_disabled: bool = False, for_ui: bool = False) -> list[dict[str, Any]]:

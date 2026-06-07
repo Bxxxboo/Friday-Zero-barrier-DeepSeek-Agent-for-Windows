@@ -74,6 +74,8 @@
 
   function fillSecurityForm(data) {
     document.getElementById("restrictToWorkspace").checked = data.restrict_to_workspace;
+    const allowRead = document.getElementById("allowReadUserFolders");
+    if (allowRead) allowRead.checked = data.allow_read_user_folders !== false;
     document.getElementById("requireApprovalWrites").checked = data.require_approval_writes;
     document.getElementById("requireApprovalExec").checked = data.require_approval_exec;
     document.getElementById("approveOncePerTurn").checked = data.approve_once_per_turn !== false;
@@ -91,6 +93,7 @@
   function collectSecuritySettings() {
     return {
       restrict_to_workspace: document.getElementById("restrictToWorkspace").checked,
+      allow_read_user_folders: document.getElementById("allowReadUserFolders")?.checked !== false,
       require_approval_writes: document.getElementById("requireApprovalWrites").checked,
       require_approval_exec: document.getElementById("requireApprovalExec").checked,
       approve_once_per_turn: document.getElementById("approveOncePerTurn").checked,
@@ -108,6 +111,8 @@
 
   function applyStrictSecurityPreset() {
     document.getElementById("restrictToWorkspace").checked = true;
+    const allowRead = document.getElementById("allowReadUserFolders");
+    if (allowRead) allowRead.checked = false;
     document.getElementById("requireApprovalWrites").checked = true;
     document.getElementById("requireApprovalExec").checked = true;
     document.getElementById("allowWriteFiles").checked = true;
@@ -189,6 +194,10 @@
     F.updateInputState();
     void refreshPythonEnvStatus();
     void F.refreshStatusBar?.();
+    if (Array.isArray(data.portability_notices) && data.portability_notices.length && F.settingsResult) {
+      F.settingsResult.className = "settings-result error";
+      F.settingsResult.textContent = data.portability_notices.join("\n");
+    }
   }
 
   /* ── 保存 ── */
@@ -734,6 +743,121 @@
 
   document.getElementById("openLogFolderBtn")?.addEventListener("click", openLogFolder);
   document.getElementById("refreshLogPreviewBtn")?.addEventListener("click", refreshLogPreview);
+
+  async function runPortableAudit() {
+    const reportEl = document.getElementById("portableReport");
+    const resultEl = document.getElementById("logsResult");
+    if (reportEl) reportEl.textContent = "正在自检…";
+    try {
+      const res = await F.apiFetch("/api/portable/audit");
+      const data = await res.json();
+      const lines = (data.items || []).map((item) => {
+        const mark = item.ok ? "✓" : "✗";
+        return `${mark} ${item.label}${item.detail ? ` — ${item.detail}` : ""}`;
+      });
+      if (reportEl) reportEl.textContent = lines.join("\n") || "（无检查项）";
+      if (resultEl) {
+        resultEl.className = "settings-result ok";
+        resultEl.textContent = "自检完成";
+      }
+    } catch {
+      if (reportEl) reportEl.textContent = "自检失败，请稍后重试。";
+      if (resultEl) {
+        resultEl.className = "settings-result error";
+        resultEl.textContent = "自检失败";
+      }
+    }
+  }
+
+  async function exportPortableBundle() {
+    const btn = document.getElementById("portableExportBtn");
+    const resultEl = document.getElementById("logsResult");
+    const includeSessions = document.getElementById("portableIncludeSessions")?.checked;
+    if (btn) btn.disabled = true;
+    if (resultEl) resultEl.textContent = "正在打包…";
+    try {
+      const res = await F.apiFetch("/api/portable/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ include_sessions: !!includeSessions }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "Friday-portable.zip";
+      a.click();
+      URL.revokeObjectURL(url);
+      if (resultEl) {
+        resultEl.className = "settings-result ok";
+        resultEl.textContent = "配置包已下载";
+      }
+    } catch {
+      if (resultEl) {
+        resultEl.className = "settings-result error";
+        resultEl.textContent = "导出失败";
+      }
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  async function importPortableBundle(file) {
+    const resultEl = document.getElementById("logsResult");
+    const reportEl = document.getElementById("portableReport");
+    if (!file) return;
+    if (resultEl) resultEl.textContent = "正在导入…";
+    try {
+      const zipBase64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const dataUrl = String(reader.result || "");
+          resolve(dataUrl.split(",", 2)[1] || "");
+        };
+        reader.onerror = () => reject(new Error("读取文件失败"));
+        reader.readAsDataURL(file);
+      });
+      const res = await F.apiFetch("/api/portable/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          zip_base64: zipBase64,
+          filename: file.name || "Friday-portable.zip",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || String(res.status));
+      const lines = [
+        `已导入 ${(data.imported || []).length} 项`,
+        data.backup_dir ? `备份：${data.backup_dir}` : "",
+        ...(data.warnings || []),
+      ].filter(Boolean);
+      if (reportEl) reportEl.textContent = lines.join("\n");
+      if (resultEl) {
+        resultEl.className = "settings-result ok";
+        resultEl.textContent = "导入完成，建议重启应用";
+      }
+      await loadSettings();
+    } catch (err) {
+      if (resultEl) {
+        resultEl.className = "settings-result error";
+        resultEl.textContent = err.message || "导入失败";
+      }
+    }
+  }
+
+  document.getElementById("portableAuditBtn")?.addEventListener("click", () => void runPortableAudit());
+  document.getElementById("portableExportBtn")?.addEventListener("click", () => void exportPortableBundle());
+  document.getElementById("portableImportBtn")?.addEventListener("click", () => {
+    document.getElementById("portableImportInput")?.click();
+  });
+  document.getElementById("portableImportInput")?.addEventListener("change", (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    void importPortableBundle(file);
+  });
+
   document.getElementById("refreshPythonEnvBtn")?.addEventListener("click", () => void refreshPythonEnvStatus());
   document.getElementById("setupPythonEnvBtn")?.addEventListener("click", () => void setupPythonEnv());
 

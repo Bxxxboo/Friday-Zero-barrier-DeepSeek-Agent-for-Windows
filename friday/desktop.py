@@ -87,7 +87,15 @@ def _pick_folder_powershell(initial: str = "") -> str:
     )
     try:
         proc = subprocess.run(
-            ["powershell", "-NoProfile", "-STA", "-Command", script],
+            [
+                "powershell",
+                "-NoProfile",
+                "-STA",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                script,
+            ],
             capture_output=True,
             text=True,
             timeout=300,

@@ -39,10 +39,33 @@ def test_evaluate_read_blocked_outside_workspace(workspace: Path):
     settings = UserSettings(
         workspace=str(workspace).replace("\\", "/"),
         restrict_to_workspace=True,
+        allow_read_user_folders=False,
     )
     decision = evaluate_tool(settings, "read_text_file", {"path": "C:/Windows/notepad.exe"})
     assert decision.allowed is False
     assert "超出" in decision.reason
+
+
+def test_evaluate_read_allowed_known_user_folder(workspace: Path, monkeypatch):
+    desktop = workspace.parent / "Desktop"
+    desktop.mkdir()
+    note = desktop / "note.txt"
+    note.write_text("x", encoding="utf-8")
+    monkeypatch.setattr(
+        "friday.safety.known_folders",
+        lambda default_workspace_path="": {"桌面": str(desktop.resolve()).replace("\\", "/")},
+    )
+    settings = UserSettings(
+        workspace=str(workspace).replace("\\", "/"),
+        restrict_to_workspace=True,
+        allow_read_user_folders=True,
+    )
+    decision = evaluate_tool(
+        settings,
+        "read_text_file",
+        {"path": str(note.resolve()).replace("\\", "/")},
+    )
+    assert decision.allowed is True
 
 
 def test_evaluate_read_allowed_inside_workspace(workspace: Path):

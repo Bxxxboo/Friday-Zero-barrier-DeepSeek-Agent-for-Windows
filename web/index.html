@@ -73,7 +73,7 @@
       background: #f0ebe3;
     }
   </style>
-  <link rel="stylesheet" href="/static/styles.css?v=59" />
+  <link rel="stylesheet" href="/static/styles.css?v=66" />
 </head>
 <body>
   <div class="app-boot-overlay" id="appBootOverlay" aria-live="polite">
@@ -182,15 +182,26 @@
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
             </button>
           </div>
+          <div class="composer-quote hidden" id="composerQuote" aria-live="polite">
+            <div class="composer-quote-head">
+              <span class="composer-quote-label" data-i18n="message.quoteLabel">引用星期五</span>
+              <button type="button" class="icon-btn composer-quote-remove" id="clearQuoteBtn" data-i18n-title="message.clearQuote" title="移除引用" aria-label="移除引用">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <blockquote class="composer-quote-preview" id="composerQuotePreview"></blockquote>
+          </div>
           <textarea id="chatInput" rows="1" data-i18n-placeholder="composer.placeholder" placeholder="说说想让我帮你做什么… 可 Ctrl+V 粘贴截图 · 输入 / 选技能"></textarea>
           <div class="slash-menu hidden" id="slashMenu" role="listbox" aria-label="技能补全"></div>
         </div>
-        <button class="primary-btn stop-btn hidden" id="stopBtn" data-i18n-title="composer.stop" title="停止生成">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+        <div class="composer-actions">
+        <button class="primary-btn stop-btn hidden" id="stopBtn" data-i18n-title="composer.stop" title="停止生成" aria-label="停止生成">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>
         </button>
-        <button class="primary-btn send-btn" id="sendBtn" data-i18n-title="composer.send" title="发送">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+        <button class="primary-btn send-btn" id="sendBtn" data-i18n-title="composer.send" title="发送" aria-label="发送">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
         </button>
+        </div>
           </div>
         </div>
       </div>
@@ -564,6 +575,21 @@
           <section class="settings-section" id="panel-logs">
             <h4 data-i18n="logs.title">日志</h4>
             <p class="settings-desc" data-i18n="logs.desc">查看运行日志与诊断信息，便于排查问题。</p>
+            <div class="settings-group portable-group">
+              <h5>数据迁移</h5>
+              <p class="settings-hint">导出/导入配置包（含设置、技能、规则、插件；可选会话）。换机时请一并拷贝默认操作文件夹。</p>
+              <label class="settings-check">
+                <input type="checkbox" id="portableIncludeSessions" />
+                <span>导出时包含对话历史</span>
+              </label>
+              <div class="settings-actions">
+                <button type="button" class="ghost-btn" id="portableAuditBtn">可移植性自检</button>
+                <button type="button" class="ghost-btn" id="portableExportBtn">导出配置包</button>
+                <button type="button" class="ghost-btn" id="portableImportBtn">导入配置包</button>
+                <input type="file" id="portableImportInput" accept=".zip,application/zip" hidden />
+              </div>
+              <pre class="log-preview" id="portableReport">（尚未运行自检）</pre>
+            </div>
             <div class="settings-group diagnostics-group">
               <p class="settings-hint">应用数据与日志保存在 <code id="appdataPathHint">%APPDATA%\Friday</code></p>
               <div class="settings-actions">
@@ -603,6 +629,10 @@
                 <label class="settings-check">
                   <input type="checkbox" id="restrictToWorkspace" />
                   <span>文件访问仅限默认操作文件夹（读取、搜索、写入、移动等；联网下载到用户指定路径如 E 盘不受此限）</span>
+                </label>
+                <label class="settings-check">
+                  <input type="checkbox" id="allowReadUserFolders" checked />
+                  <span>允许只读访问桌面、文档、下载、图片等常见用户文件夹（写入仍仅限默认操作文件夹）</span>
                 </label>
                 <label class="settings-check">
                   <input type="checkbox" id="approveOncePerTurn" checked />
@@ -897,8 +927,8 @@
   <script defer src="/static/vendor/marked.min.js"></script>
   <script defer src="/static/vendor/purify.min.js"></script>
   <script defer src="/static/i18n.js?v=2"></script>
-  <script defer src="/static/utils.js?v=57"></script>
-  <script defer src="/static/sessions.js?v=53"></script>
+  <script defer src="/static/utils.js?v=59"></script>
+  <script defer src="/static/sessions.js?v=54"></script>
   <script defer src="/static/settings.js?v=57"></script>
   <script defer src="/static/weixin.js?v=1"></script>
   <script defer src="/static/onboarding.js?v=51"></script>
@@ -909,7 +939,7 @@
   <script defer src="/static/schedules.js?v=51"></script>
   <script defer src="/static/mode.js?v=52"></script>
   <script defer src="/static/statusbar.js?v=53"></script>
-  <script defer src="/static/chat.js?v=56"></script>
+  <script defer src="/static/chat.js?v=57"></script>
   <script defer src="/static/app.js?v=54"></script>
 </body>
 </html>

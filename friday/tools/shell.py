@@ -19,7 +19,10 @@ from friday.tools._decorators import register_tool
 
 _log = get_logger("shell")
 
-# ── 危险命令正则（大小写不敏感，匹配规范化后的命令） ──
+_PS_UTF8_PREFIX = (
+    "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); "
+    "$OutputEncoding = [System.Text.UTF8Encoding]::new($false); "
+)
 # 注意：攻击者可能用 `b`acktick 混淆，这里去反引号后再匹配
 _DANGEROUS_PATTERNS: list[tuple[str, str]] = [
     # 格式化磁盘
@@ -95,6 +98,7 @@ def run_powershell(command: str, timeout: int = 60) -> str:
     if danger:
         return f"⛔ 已拒绝危险命令（{danger}）。如需执行，请在 PowerShell 终端中手动操作。"
 
+    wrapped = _PS_UTF8_PREFIX + command
     _log.info("执行 PowerShell | cmd_head=%.200s | timeout=%d", command[:200], timeout)
 
     run_kwargs: dict = {
@@ -102,10 +106,12 @@ def run_powershell(command: str, timeout: int = 60) -> str:
             "powershell",
             "-NoProfile",
             "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
             "-WindowStyle",
             "Hidden",
             "-Command",
-            command,
+            wrapped,
         ],
         "capture_output": True,
         "text": True,

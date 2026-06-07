@@ -170,6 +170,10 @@ def active_rules_prompt() -> str:
     for idx, rule in enumerate(active, 1):
         title = rule.get("title") or f"规则{idx}"
         content = rule.get("content", "").strip()
+        if rule.get("source") == "plugin" and rule.get("plugin_id"):
+            from friday.plugins import substitute_plugin_text
+
+            content = substitute_plugin_text(content, str(rule["plugin_id"]))
         if content:
             lines.append(f"{idx}. [{title}] {content}")
     return "\n".join(lines)
