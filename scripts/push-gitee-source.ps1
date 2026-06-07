@@ -26,7 +26,7 @@ if (-not $GiteeToken) {
     Write-Host ""
     Write-Host "GITEE_TOKEN not set. Create one at: https://gitee.com/profile/personal_access_tokens" -ForegroundColor Yellow
     Write-Host "Then run:" -ForegroundColor Yellow
-    Write-Host "  `$env:GITEE_TOKEN='your-token'; powershell -File scripts/push-gitee-source.ps1 -GiteeUser $GiteeUser"
+    Write-Host "  `$env:GITEE_TOKEN='your-token'; scripts\push-gitee-source.cmd -GiteeUser $GiteeUser"
     Write-Host ""
     Write-Host "Or create empty repo on Gitee manually, then:" -ForegroundColor Yellow
     Write-Host "  git remote add gitee $CloneUrl"
