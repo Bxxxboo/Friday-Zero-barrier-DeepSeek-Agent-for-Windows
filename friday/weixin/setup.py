@@ -15,6 +15,8 @@ from friday.storage import UserSettings, load_settings, save_settings
 from friday.weixin.client import list_account_ids, resolve_account
 from friday.weixin.config import openclaw_state_dir, read_bridge_config, write_bridge_config
 from friday.weixin.gateway import ensure_gateway_running, gateway_status
+from friday.weixin.node_runtime import ensure_node_npm, node_env, run_npm_global
+from friday.weixin.openclaw_cli import openclaw_shell_invocation, resolve_openclaw_command, run_openclaw
 
 _log = get_logger("weixin.setup")
 
@@ -32,8 +34,6 @@ class SetupStep:
     message: str
     action: str = ""
 
-
-from friday.weixin.openclaw_cli import resolve_openclaw_command, run_openclaw
 
 _CLI_INFO_TTL_SEC = 45.0
 _cli_info_cache: tuple[float, tuple[bool, str, str]] | None = None
@@ -238,23 +238,54 @@ def sync_friday_bridge(port: int, token: str) -> tuple[bool, str]:
 
 
 def launch_weixin_login_terminal() -> tuple[bool, str]:
+    if not _openclaw_cli_available():
+        return False, "未找到 openclaw 命令，请先完成 OpenClaw 安装"
+    login_line = openclaw_shell_invocation(
+        ["channels", "login", "--channel", WEIXIN_PLUGIN_ID],
+    )
     if os.name != "nt":
-        return False, "请在终端执行：openclaw channels login --channel openclaw-weixin"
+        return False, f"请在终端执行：{login_line}"
     try:
         subprocess.Popen(
-            [
-                "cmd",
-                "/c",
-                "start",
-                "cmd",
-                "/k",
-                "openclaw channels login --channel openclaw-weixin",
-            ],
-            creationflags=subprocess.CREATE_NO_WINDOW,
+            ["cmd", "/c", "start", "cmd", "/k", login_line],
+            env=node_env(),
         )
         return True, "已打开扫码登录窗口，请用微信扫描二维码完成绑定"
     except OSError as exc:
         return False, f"无法打开登录窗口：{exc}"
+
+
+def install_openclaw_cli() -> tuple[bool, str]:
+    """安装 Node（若缺失）并通过 npm 安装 OpenClaw CLI。"""
+    invalidate_cli_info_cache()
+    if _openclaw_cli_available():
+        _, ver, _ = _openclaw_cli_info()
+        suffix = f"（{ver}）" if ver else ""
+        return True, f"OpenClaw 已安装{suffix}"
+
+    node_ok, node_msg = ensure_node_npm()
+    if not node_ok:
+        return False, node_msg
+
+    _log.info("正在通过 npm 安装 OpenClaw… | %s", node_msg)
+    try:
+        proc = run_npm_global(["install", "openclaw@latest"])
+        detail = (proc.stderr or proc.stdout or "").strip()
+        tail = detail[-400:] if detail else ""
+        if proc.returncode != 0:
+            return False, f"npm 安装 OpenClaw 失败：{tail or proc.returncode}"
+    except subprocess.TimeoutExpired:
+        return False, "安装 OpenClaw 超时，请检查网络后重试"
+    except OSError as exc:
+        return False, f"安装 OpenClaw 异常：{exc}"
+
+    invalidate_cli_info_cache()
+    if not _openclaw_cli_available():
+        return False, "OpenClaw 已安装但命令未找到，请关闭并重新打开星期五后再试"
+
+    _, ver, _ = _openclaw_cli_info()
+    suffix = f"（{ver}）" if ver else ""
+    return True, f"OpenClaw 安装完成{suffix}（{node_msg}）"
 
 
 def collect_setup_steps(*, port: int = 8765, api_token: str = "") -> list[SetupStep]:
@@ -263,7 +294,6 @@ def collect_setup_steps(*, port: int = 8765, api_token: str = "") -> list[SetupS
     bridge_installed = _plugin_installed(BRIDGE_PLUGIN_ID)
     config_ok, config_msg = _config_plugins_ready()
     accounts = list_account_ids()
-    account = resolve_account()
     gw = gateway_status()
     bridge_cfg = read_bridge_config()
     settings = load_settings()
@@ -274,8 +304,9 @@ def collect_setup_steps(*, port: int = 8765, api_token: str = "") -> list[SetupS
             title="OpenClaw 命令行",
             description="接收微信消息、转发指令到星期五",
             status="ok" if cli_ok else "error",
-            message=f"{cli_msg}" + (f"（{cli_ver}）" if cli_ver else ""),
-            action="" if cli_ok else "open_install_docs",
+            message=f"{cli_msg}" + (f"（{cli_ver}）" if cli_ver else "")
+            + ("" if cli_ok else "；可一键自动安装 Node.js + OpenClaw"),
+            action="" if cli_ok else "install_openclaw",
         ),
         SetupStep(
             id="weixin_plugin",
@@ -321,7 +352,7 @@ def collect_setup_steps(*, port: int = 8765, api_token: str = "") -> list[SetupS
             id="friday_bridge",
             title="连接星期五",
             description="写入桥接令牌，让插件找到本机星期五",
-            status="ok" if bridge_cfg and account else ("warn" if bridge_cfg else "pending"),
+            status="ok" if bridge_cfg else "pending",
             message="桥接配置已就绪" if bridge_cfg else "桥接配置未写入",
             action="" if bridge_cfg else "sync_bridge",
         ),
@@ -348,6 +379,7 @@ def setup_ready(*, port: int = 8765, api_token: str = "") -> bool:
 def run_setup_action(action: str, *, port: int, api_token: str) -> dict[str, Any]:
     action = (action or "").strip().lower()
     handlers = {
+        "install_openclaw": install_openclaw_cli,
         "install_weixin": install_weixin_plugin,
         "install_bridge": install_bridge_plugin,
         "configure": configure_openclaw_plugins,
@@ -357,18 +389,39 @@ def run_setup_action(action: str, *, port: int, api_token: str) -> dict[str, Any
     }
     if action == "full":
         messages: list[str] = []
+        if not _openclaw_cli_available():
+            ok, msg = install_openclaw_cli()
+            messages.append(f"{'✓' if ok else '✗'} {msg}")
+            if not ok:
+                invalidate_cli_info_cache()
+                steps = collect_setup_steps(port=port, api_token=api_token)
+                return {
+                    "ok": False,
+                    "message": "\n".join(messages),
+                    "steps": [_step_to_dict(s) for s in steps],
+                    "ready": False,
+                }
+        automated_ok = True
         for key in ("install_weixin", "install_bridge", "configure", "start_gateway", "sync_bridge"):
             ok, msg = handlers[key]()
             messages.append(f"{'✓' if ok else '✗'} {msg}")
-            if not ok and key in {"install_weixin", "install_bridge", "configure"}:
-                break
+            if not ok:
+                automated_ok = False
+                if key in {"install_weixin", "install_bridge", "configure"}:
+                    break
+        if automated_ok and not list_account_ids():
+            ok, msg = launch_weixin_login_terminal()
+            messages.append(f"{'→' if ok else '✗'} {msg}")
+            if ok:
+                messages.append("→ 扫码完成后点「刷新状态」")
         invalidate_cli_info_cache()
         steps = collect_setup_steps(port=port, api_token=api_token)
+        ready = setup_ready(port=port, api_token=api_token)
         return {
-            "ok": setup_ready(port=port, api_token=api_token),
+            "ok": automated_ok,
             "message": "\n".join(messages),
             "steps": [_step_to_dict(s) for s in steps],
-            "ready": setup_ready(port=port, api_token=api_token),
+            "ready": ready,
         }
     handler = handlers.get(action)
     if handler is None:

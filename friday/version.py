@@ -1,7 +1,7 @@
 """应用版本号 —— 与 PyInstaller version_info 保持一致。"""
 
-__version__ = "1.1.1"
-__version_tuple__ = (1, 1, 1, 0)
+__version__ = "1.1.2"
+__version_tuple__ = (1, 1, 2, 0)
 
 # GitHub Releases（备用，国内常需 VPN）
 GITHUB_REPO = "Bxxxboo/Friday-Zero-barrier-DeepSeek-Agent-for-Windows"

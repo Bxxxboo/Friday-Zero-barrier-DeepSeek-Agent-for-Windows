@@ -1,5 +1,11 @@
 from friday.safety import describe_approval_plain
-from friday.weixin.setup import collect_setup_steps, configure_openclaw_plugins
+from friday.weixin.openclaw_cli import openclaw_shell_invocation
+from friday.weixin.setup import (
+    collect_setup_steps,
+    configure_openclaw_plugins,
+    install_openclaw_cli,
+    launch_weixin_login_terminal,
+)
 
 
 def test_describe_powershell_desktop():
@@ -51,3 +57,52 @@ def test_configure_openclaw_plugins_idempotent(tmp_path, monkeypatch):
     assert ok
     data = __import__("json").loads(cfg.read_text(encoding="utf-8"))
     assert "openclaw-weixin" in data["plugins"]["allow"]
+
+
+def test_install_openclaw_cli_no_node(monkeypatch):
+    monkeypatch.setattr("friday.weixin.setup._openclaw_cli_available", lambda: False)
+    monkeypatch.setattr(
+        "friday.weixin.setup.ensure_node_npm",
+        lambda: (False, "无法自动安装 Node.js"),
+    )
+    ok, msg = install_openclaw_cli()
+    assert not ok
+    assert "Node" in msg
+
+
+def test_openclaw_shell_invocation_quotes_cmd_path(monkeypatch, tmp_path):
+    cmd = tmp_path / "open claw.cmd"
+    cmd.write_text("@echo off", encoding="utf-8")
+    monkeypatch.setattr(
+        "friday.weixin.openclaw_cli.resolve_openclaw_command",
+        lambda: ["cmd", "/c", str(cmd)],
+    )
+    line = openclaw_shell_invocation(["channels", "login", "--channel", "openclaw-weixin"])
+    assert f'"{cmd}"' in line
+    assert "channels login" in line
+
+
+def test_launch_weixin_login_requires_cli(monkeypatch):
+    monkeypatch.setattr("friday.weixin.setup._openclaw_cli_available", lambda: False)
+    ok, msg = launch_weixin_login_terminal()
+    assert not ok
+    assert "openclaw" in msg.lower()
+
+
+def test_launch_weixin_login_opens_terminal(monkeypatch):
+    monkeypatch.setattr("friday.weixin.setup._openclaw_cli_available", lambda: True)
+    monkeypatch.setattr(
+        "friday.weixin.setup.openclaw_shell_invocation",
+        lambda _args: "openclaw-test channels login",
+    )
+    calls: list[list[str]] = []
+
+    def fake_popen(args, **kwargs):
+        calls.append(list(args))
+        return object()
+
+    monkeypatch.setattr("friday.weixin.setup.subprocess.Popen", fake_popen)
+    ok, msg = launch_weixin_login_terminal()
+    assert ok
+    assert "扫码" in msg
+    assert calls and "openclaw-test channels login" in calls[0]

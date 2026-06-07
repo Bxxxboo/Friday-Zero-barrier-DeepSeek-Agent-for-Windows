@@ -73,10 +73,17 @@ def _parse_gateway_cmd(path: Path) -> tuple[list[str], dict[str, str]]:
 
 
 def _fallback_gateway_cmd(port: int) -> list[str] | None:
+    from friday.paths import get_appdata_dir
+    from friday.weixin.node_runtime import NODE_HOME
+
     node = shutil.which("node")
+    if not node and (NODE_HOME / "node.exe").is_file():
+        node = str(NODE_HOME / "node.exe")
     if not node:
         return None
+    npm_global = get_appdata_dir() / "runtime" / "npm-global"
     candidates = [
+        npm_global / "node_modules" / "openclaw" / "dist" / "index.js",
         Path(os.environ.get("APPDATA", "")) / "npm" / "node_modules" / "openclaw" / "dist" / "index.js",
         Path.home() / "AppData" / "Roaming" / "npm" / "node_modules" / "openclaw" / "dist" / "index.js",
     ]
@@ -87,9 +94,9 @@ def _fallback_gateway_cmd(port: int) -> list[str] | None:
 
 
 def _spawn_hidden(args: list[str], *, extra_env: dict[str, str] | None = None) -> None:
-    env = os.environ.copy()
-    if extra_env:
-        env.update(extra_env)
+    from friday.weixin.node_runtime import node_env
+
+    env = node_env(extra_env)
     subprocess.Popen(
         args,
         env=env,

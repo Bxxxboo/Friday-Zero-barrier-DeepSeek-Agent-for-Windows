@@ -1201,6 +1201,13 @@ async def weixin_status() -> dict[str, object]:
     return await asyncio.to_thread(weixin_status_payload)
 
 
+@app.get("/api/runtime/status")
+async def runtime_status() -> dict[str, object]:
+    from friday.win10_runtime import runtime_status_payload
+
+    return await asyncio.to_thread(runtime_status_payload)
+
+
 class WeixinSetupRunPayload(BaseModel):
     action: str = "full"
 

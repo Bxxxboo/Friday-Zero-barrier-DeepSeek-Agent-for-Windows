@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import secrets
 import shutil
+import subprocess
 import sys
 import threading
 import urllib.error
@@ -62,6 +63,49 @@ def _resolve_icon_path() -> str | None:
         return str(dest.resolve())
     except OSError:
         return str(src.resolve())
+
+
+def _pick_folder_powershell(initial: str = "") -> str:
+    """Windows 原生文件夹对话框（pywebview 在某些机器上打不开时的备用方案）。"""
+    if sys.platform != "win32":
+        return ""
+    init = initial.strip()
+    if init and not os.path.isdir(init):
+        init = ""
+    init_ps = init.replace("'", "''")
+    script = (
+        "Add-Type -AssemblyName System.Windows.Forms; "
+        "$d = New-Object System.Windows.Forms.FolderBrowserDialog; "
+        "$d.ShowNewFolderButton = $true; "
+        "$d.Description = '选择默认操作文件夹'; "
+    )
+    if init_ps:
+        script += f"if (Test-Path -LiteralPath '{init_ps}') {{ $d.SelectedPath = '{init_ps}' }}; "
+    script += (
+        "$r = $d.ShowDialog(); "
+        "if ($r -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $d.SelectedPath }"
+    )
+    try:
+        proc = subprocess.run(
+            ["powershell", "-NoProfile", "-STA", "-Command", script],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            encoding="utf-8",
+            errors="replace",
+        )
+        if proc.returncode != 0 and _log:
+            _log.warning(
+                "PowerShell 文件夹选择失败 | code=%s stderr=%s",
+                proc.returncode,
+                (proc.stderr or "").strip()[:200],
+            )
+        path = (proc.stdout or "").strip()
+        return path.replace("\\", "/") if path else ""
+    except Exception:
+        if _log:
+            _log.exception("PowerShell 文件夹选择异常")
+        return ""
 
 
 class WindowApi:
@@ -135,24 +179,29 @@ class WindowApi:
             self._window.destroy()
 
     def pick_folder(self, initial: str = "") -> str:
-        if not self._window:
-            return ""
-        try:
-            import webview
+        directory = initial.strip() if initial and os.path.isdir(initial.strip()) else ""
 
-            directory = initial if initial and os.path.isdir(initial) else ""
-            result = self._window.create_file_dialog(
-                webview.FileDialog.FOLDER,
-                directory=directory,
-                allow_multiple=False,
-            )
-            if result:
-                return str(result[0]).replace("\\", "/")
-            return ""
-        except Exception:
+        if self._window:
+            try:
+                import webview
+
+                result = self._window.create_file_dialog(
+                    webview.FileDialog.FOLDER,
+                    directory=directory,
+                    allow_multiple=False,
+                )
+                if result:
+                    return str(result[0]).replace("\\", "/")
+            except Exception:
+                if _log:
+                    _log.exception("pywebview 文件夹选择对话框失败，尝试备用方案")
+
+        fallback = _pick_folder_powershell(directory or initial.strip())
+        if fallback:
             if _log:
-                _log.exception("打开文件夹选择对话框失败")
-            return ""
+                _log.info("已通过 Windows 原生对话框选择文件夹")
+            return fallback
+        return ""
 
     def open_appdata_folder(self) -> bool:
         """在资源管理器中打开 %APPDATA%/Friday。"""
@@ -260,6 +309,14 @@ def main() -> None:
     _enable_dpi_awareness()
     os.environ.setdefault("NO_PROXY", "127.0.0.1,localhost")
     os.environ.setdefault("no_proxy", "127.0.0.1,localhost")
+    # 避免公司代理/VPN 拦截本机 WebSocket（测试机常见「一直正在连接」）
+    _wv2_args = "--proxy-bypass-list=<-loopback>;127.0.0.1;localhost"
+    existing_wv2 = os.environ.get("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "").strip()
+    if existing_wv2:
+        if _wv2_args not in existing_wv2:
+            os.environ["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = f"{existing_wv2} {_wv2_args}"
+    else:
+        os.environ["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = _wv2_args
     _set_windows_app_id()
 
     settings = load_settings()
@@ -426,7 +483,26 @@ def main() -> None:
     elif (path := _resolve_icon_path()):
         start_kwargs["icon"] = path
 
-    webview.start(**start_kwargs)
+    try:
+        webview.start(**start_kwargs)
+    except Exception as exc:
+        _log.exception("WebView2 窗口启动失败")
+        if sys.platform == "win32":
+            from friday.win10_runtime import check_webview2, install_webview2, notify_runtime_failure
+
+            wv2 = check_webview2()
+            msgs = [f"界面启动失败：{exc}"]
+            if not wv2.ok:
+                ok, msg = install_webview2()
+                msgs.append(f"WebView2：{msg}")
+                if ok and check_webview2().ok:
+                    try:
+                        webview.start(**start_kwargs)
+                        return
+                    except Exception:
+                        _log.exception("WebView2 安装后仍无法启动")
+            notify_runtime_failure(msgs)
+        raise
 
 
 if __name__ == "__main__":

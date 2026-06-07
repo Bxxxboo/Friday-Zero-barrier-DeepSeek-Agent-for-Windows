@@ -27,6 +27,14 @@
       await F.migrateLocalStorageSessions();
       setBootText("正在加载对话…");
       await F.fetchSessions();
+      setBootText("正在检查服务…");
+      try {
+        await F.loadSettings?.();
+      } catch (err) {
+        console.warn("loadSettings", err);
+      }
+      const health = await F.apiFetchWithTimeout("/api/health", {}, 8000);
+      if (!health.ok) throw new Error(`服务未就绪 (${health.status})`);
     };
 
     try {

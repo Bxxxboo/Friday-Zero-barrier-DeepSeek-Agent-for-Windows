@@ -1,6 +1,29 @@
 {
   "entries": [
     {
+      "version": "1.1.2",
+      "date": "2026-06-07",
+      "title": "Win10 零门槛安装：运行组件自动补齐",
+      "sections": [
+        {
+          "label": "新功能",
+          "items": [
+            "首次启动自动检测并安装 WebView2、VC++ 运行库（Win10 白屏/缺 DLL 常见修复）",
+            "新增「首次安装.ps1」：一键解除锁定、创建快捷方式并启动",
+            "Agent Python 环境支持自动 winget / 便携 Python 下载，无需手动装 Python",
+            "微信端 AI 一条龙：自动安装 Node/OpenClaw、扫码登录、长超时与桥接修复"
+          ]
+        },
+        {
+          "label": "改进",
+          "items": [
+            "安装包打包阶段自动 Unblock，减少 Zone.Identifier 导致的 pythonnet 错误",
+            "安装教程更新为零门槛 3 步流程"
+          ]
+        }
+      ]
+    },
+    {
       "version": "1.1.1",
       "date": "2026-06-07",
       "title": "打包修复：跨机运行与 API 测试",

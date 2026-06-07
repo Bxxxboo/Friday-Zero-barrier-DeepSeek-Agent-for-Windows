@@ -11,12 +11,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from friday.logging_config import get_logger
-from friday.paths import bundle_dir, is_frozen
+from friday.paths import bundle_dir, get_appdata_dir, is_frozen
 
 _log = get_logger("python_env")
 
 ENV_DIR_NAME = ".python-env"
 REQUIREMENTS_NAME = "requirements-python.txt"
+EMBED_PYTHON_VERSION = "3.12.10"
+EMBED_PYTHON_DIR = get_appdata_dir() / "runtime" / f"python-{EMBED_PYTHON_VERSION}-embed-amd64"
 _PACKAGES_OK_MARKER = ".packages_ok"
 _packages_cache: dict[str, tuple[float, bool]] = {}
 _PACKAGES_CACHE_TTL = 120.0
@@ -46,9 +48,98 @@ def _venv_python(env_dir: Path) -> Path:
     return env_dir / "bin" / "python"
 
 
-def find_system_python() -> Path | None:
+def embed_python_exe() -> Path | None:
+    exe = EMBED_PYTHON_DIR / "python.exe"
+    return exe if exe.is_file() else None
+
+
+def _configure_embed_python(root: Path) -> None:
+    for pth in root.glob("python*._pth"):
+        lines = pth.read_text(encoding="utf-8").splitlines()
+        updated: list[str] = []
+        for line in lines:
+            if line.strip() == "#import site":
+                updated.append("import site")
+            else:
+                updated.append(line)
+        pth.write_text("\n".join(updated) + "\n", encoding="utf-8")
+
+
+def _try_winget_python() -> Path | None:
+    if sys.platform != "win32":
+        return None
+    winget = shutil.which("winget")
+    if not winget:
+        return None
+    _log.info("尝试通过 winget 安装 Python 3.12（用户范围）…")
+    try:
+        proc = subprocess.run(
+            [
+                winget,
+                "install",
+                "-e",
+                "--id",
+                "Python.Python.3.12",
+                "--accept-package-agreements",
+                "--accept-source-agreements",
+                "--scope",
+                "user",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=900,
+            encoding="utf-8",
+            errors="replace",
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        if proc.returncode != 0:
+            tail = (proc.stderr or proc.stdout or "").strip()[-300:]
+            _log.warning("winget 安装 Python 失败 | %s", tail)
+            return None
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        _log.warning("winget 安装 Python 异常 | %s", exc)
+        return None
+    return find_system_python(skip_embed=True, skip_winget=True)
+
+
+def _download_embed_python() -> Path | None:
+    if embed_python_exe():
+        return embed_python_exe()
+
+    import urllib.error
+    import urllib.request
+    import zipfile
+
+    url = (
+        f"https://www.python.org/ftp/python/{EMBED_PYTHON_VERSION}/"
+        f"python-{EMBED_PYTHON_VERSION}-embed-amd64.zip"
+    )
+    EMBED_PYTHON_DIR.parent.mkdir(parents=True, exist_ok=True)
+    zip_path = EMBED_PYTHON_DIR.parent / f"python-{EMBED_PYTHON_VERSION}-embed-amd64.zip"
+    _log.info("正在下载便携 Python %s …", EMBED_PYTHON_VERSION)
+    try:
+        with urllib.request.urlopen(url, timeout=180) as resp:
+            zip_path.write_bytes(resp.read())
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            zf.extractall(EMBED_PYTHON_DIR)
+        zip_path.unlink(missing_ok=True)
+    except (OSError, urllib.error.URLError, zipfile.BadZipFile) as exc:
+        _log.warning("下载/解压便携 Python 失败 | %s", exc)
+        return None
+
+    _configure_embed_python(EMBED_PYTHON_DIR)
+    return embed_python_exe()
+
+
+def find_system_python(*, skip_embed: bool = False, skip_winget: bool = False) -> Path | None:
     """查找可用于创建 venv 的系统 Python（3.11+）。"""
     candidates: list[Path | str] = []
+
+    if not skip_embed:
+        embed = embed_python_exe()
+        if embed:
+            candidates.append(embed)
+
     if not is_frozen():
         candidates.append(Path(sys.executable))
 
@@ -86,6 +177,16 @@ def find_system_python() -> Path | None:
                     return path
         except (OSError, subprocess.SubprocessError):
             continue
+
+    if skip_winget:
+        return None
+
+    if is_frozen() and sys.platform == "win32" and not skip_embed:
+        winget_py = _try_winget_python()
+        if winget_py:
+            return winget_py
+        return _download_embed_python()
+
     return None
 
 
@@ -191,7 +292,10 @@ def setup_agent_env(workspace: str) -> tuple[bool, str]:
 
     base = find_system_python()
     if not base:
-        return False, "未找到 Python 3.11+，请先安装：winget install Python.Python.3.12"
+        return False, (
+            "无法自动准备 Python 3.11+（需联网）。"
+            "可在设置 → Python 环境 重试，或手动安装：https://www.python.org/downloads/"
+        )
 
     if env_dir.exists() and not venv_py.is_file():
         shutil.rmtree(env_dir, ignore_errors=True)
@@ -247,7 +351,7 @@ def get_env_status(workspace: str) -> PythonEnvStatus:
             "点击「初始化 Python 环境」或在对话中让星期五执行复杂 Python 任务时会自动创建。"
         )
         if not base:
-            hint = "未检测到系统 Python 3.11+，请先安装后再初始化。"
+            hint = "未检测到 Python 3.11+。在设置页点「初始化 Python 环境」可自动下载便携 Python（需联网）。"
         return PythonEnvStatus(
             ready=False,
             env_dir=str(env_dir).replace("\\", "/"),

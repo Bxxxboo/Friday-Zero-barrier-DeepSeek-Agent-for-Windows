@@ -9,6 +9,7 @@
   if (!F) return;
 
   const STEP_ACTIONS = {
+    install_openclaw: "install_openclaw",
     install_weixin: "install_weixin",
     install_bridge: "install_bridge",
     configure: "configure",
@@ -16,6 +17,8 @@
     start_gateway: "start_gateway",
     sync_bridge: "sync_bridge",
   };
+
+  const OPENCLAW_INSTALL_URL = "https://docs.openclaw.ai/install";
 
   function $(id) {
     return document.getElementById(id);
@@ -69,6 +72,11 @@
         if (step.action === "open_api_settings") {
           btn.textContent = "去配置 API";
           btn.addEventListener("click", () => F.openSettings?.("api"));
+        } else if (step.action === "open_install_docs") {
+          btn.textContent = "查看 OpenClaw 安装说明";
+          btn.addEventListener("click", () => {
+            window.open(OPENCLAW_INSTALL_URL, "_blank", "noopener");
+          });
         } else if (STEP_ACTIONS[step.action]) {
           btn.textContent = actionLabel(step.action);
           btn.addEventListener("click", () => void runSetup(STEP_ACTIONS[step.action], btn));
@@ -82,6 +90,7 @@
 
   function actionLabel(action) {
     const map = {
+      install_openclaw: "安装 OpenClaw",
       install_weixin: "安装微信通道",
       install_bridge: "安装桥接插件",
       configure: "写入配置",
@@ -106,7 +115,7 @@
     badge.className = "weixin-setup-badge warn";
     badge.textContent = "待完成";
     text.textContent = pending.length
-      ? `还有 ${pending.length} 项待处理，可点击「一键配置」或逐步完成。`
+      ? `还有 ${pending.length} 项待处理。点「一键配置」可自动安装 Node.js、OpenClaw 与插件（需联网，约 3～5 分钟）；完成后会弹出扫码窗口。`
       : "请刷新状态或检查 OpenClaw 是否已安装。";
   }
 
@@ -154,14 +163,19 @@
     const resultEl = $("weixinSetupResult");
     if (resultEl) {
       resultEl.className = "settings-result";
-      resultEl.textContent = action === "full" ? "正在一键配置（可能需要 1～3 分钟）…" : "执行中…";
+      resultEl.textContent = action === "full" ? "正在一键配置（含 OpenClaw/插件，可能需要 3～5 分钟）…" : "执行中…";
     }
     try {
-      const res = await F.apiFetch("/api/weixin/setup/run", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
-      });
+      const timeoutMs = action === "full" ? 600_000 : 120_000;
+      const res = await F.apiFetchWithTimeout(
+        "/api/weixin/setup/run",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action }),
+        },
+        timeoutMs,
+      );
       const data = await res.json();
       renderSteps(data.steps);
       updateBanner(data);

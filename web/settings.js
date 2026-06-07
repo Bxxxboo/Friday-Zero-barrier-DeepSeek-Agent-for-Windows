@@ -292,25 +292,37 @@
 
   async function pickWorkspaceFolder() {
     const input = document.getElementById("workspace");
+    const btn = document.getElementById("pickWorkspaceBtn");
     F.workspaceResult.className = "settings-result";
     F.workspaceResult.textContent = "";
 
     if (!window.pywebview?.api?.pick_folder) {
       F.workspaceResult.className = "settings-result error";
-      F.workspaceResult.textContent = "文件夹选择仅在桌面客户端中可用。";
+      F.workspaceResult.textContent =
+        "文件夹选择仅在桌面客户端（星期五.exe 或 python run.py）中可用。请直接在输入框填写路径，例如 D:/Documents/星期五，再点「保存」。";
       return;
     }
+
+    if (btn) btn.disabled = true;
+    F.workspaceResult.textContent = "正在打开文件夹选择…";
 
     try {
       const path = await window.pywebview.api.pick_folder(input.value.trim());
       if (path) {
         input.value = path;
         F.workspaceResult.className = "settings-result ok";
-        F.workspaceResult.textContent = "已选择目录，请点击保存。";
+        F.workspaceResult.textContent = "已选择目录，请点击「保存」。";
+      } else {
+        F.workspaceResult.className = "settings-result";
+        F.workspaceResult.textContent =
+          "未选择文件夹（可能已取消）。也可直接在输入框填写路径，例如 D:/Documents/星期五，再点「保存」。";
       }
     } catch {
       F.workspaceResult.className = "settings-result error";
-      F.workspaceResult.textContent = "打开文件夹选择器失败，请重试。";
+      F.workspaceResult.textContent =
+        "打开文件夹选择器失败。请直接在输入框填写路径，例如 D:/Documents/星期五，再点「保存」。";
+    } finally {
+      if (btn) btn.disabled = false;
     }
   }
 
@@ -545,7 +557,29 @@
 
   /* ── 设置面板切换 ── */
 
+  function initSettingsInputFocus() {
+    const modal = F.settingsModal;
+    if (!modal || modal.dataset.focusBound === "1") return;
+    modal.dataset.focusBound = "1";
+
+    modal.addEventListener(
+      "mousedown",
+      (event) => {
+        const input = event.target.closest?.(
+          "input:not([type=checkbox]):not([type=radio]), textarea, select"
+        );
+        if (!input || !modal.contains(input)) return;
+        event.stopPropagation();
+        if (document.activeElement !== input) {
+          input.focus({ preventScroll: true });
+        }
+      },
+      true
+    );
+  }
+
   function openSettings(panel = "api") {
+    initSettingsInputFocus();
     switchSettingsPanel(panel);
     F.settingsModal.classList.remove("hidden");
   }

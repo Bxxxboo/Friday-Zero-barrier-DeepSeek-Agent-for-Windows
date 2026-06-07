@@ -58,20 +58,27 @@
 
     if (!window.pywebview?.api?.pick_folder) {
       result.className = "settings-result error";
-      result.textContent = "请手动输入路径，或在桌面客户端中使用文件夹选择。";
+      result.textContent =
+        "请直接在输入框填写路径，例如 D:/Documents/星期五（文件夹选择需使用桌面客户端）。";
       return;
     }
 
     try {
+      result.className = "settings-result";
+      result.textContent = "正在打开文件夹选择…";
       const path = await window.pywebview.api.pick_folder(input.value.trim());
       if (path) {
         input.value = path;
         result.className = "settings-result ok";
         result.textContent = "已选择文件夹。";
+      } else {
+        result.className = "settings-result";
+        result.textContent =
+          "未选择文件夹。请手动输入路径，例如 D:/Documents/星期五。";
       }
     } catch {
       result.className = "settings-result error";
-      result.textContent = "打开文件夹选择器失败，请重试。";
+      result.textContent = "打开文件夹选择器失败，请手动输入路径。";
     }
   }
 

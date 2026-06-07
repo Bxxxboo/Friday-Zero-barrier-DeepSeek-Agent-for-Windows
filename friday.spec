@@ -73,6 +73,7 @@ a = Analysis(
         "friday.tools.shell",
         "friday.tools.python_runner",
         "friday.python_env",
+        "friday.win10_runtime",
         "friday.tools.system",
         "friday.tools.web",
         "friday.tools.web_limits",
@@ -125,8 +126,8 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[
-        str(ROOT / "scripts" / "pyi_rth_single_instance.py"),
         str(ROOT / "scripts" / "pyi_rth_pythonnet.py"),
+        str(ROOT / "scripts" / "pyi_rth_single_instance.py"),
     ],
     excludes=["tkinter"],
     noarchive=False,

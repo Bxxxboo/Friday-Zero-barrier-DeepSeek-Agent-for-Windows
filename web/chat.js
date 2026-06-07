@@ -16,11 +16,43 @@
     F.wsConnected = false;
     F.setConnectionStatus("正在连接...");
 
-    F.ws = new WebSocket(
-      `${protocol}://${location.host}/ws/chat${F.resolveApiToken() ? `?token=${encodeURIComponent(F.resolveApiToken())}` : ""}`
-    );
+    if (F.ws) {
+      try {
+        F.ws.close();
+      } catch {
+        /* ignore */
+      }
+    }
+
+    const token = F.resolveApiToken();
+    const wsUrl = `${protocol}://${location.host}/ws/chat${token ? `?token=${encodeURIComponent(token)}` : ""}`;
+    F.ws = new WebSocket(wsUrl);
+
+    let connectTimer = null;
+    const clearConnectTimer = () => {
+      if (connectTimer) {
+        clearTimeout(connectTimer);
+        connectTimer = null;
+      }
+    };
+
+    connectTimer = setTimeout(() => {
+      if (F.wsConnected) return;
+      if (F.ws?.readyState === WebSocket.CONNECTING) {
+        try {
+          F.ws.close();
+        } catch {
+          /* ignore */
+        }
+        F.setConnectionStatus(
+          "连接超时：请关闭杀毒/VPN 后重开，或查看 %APPDATA%\\Friday\\friday.log",
+          false
+        );
+      }
+    }, 15000);
 
     F.ws.onopen = () => {
+      clearConnectTimer();
       F.wsRetryCount = 0;
       F.wsConnected = true;
       F.setConnectionStatus("就绪", true);
@@ -41,13 +73,20 @@
       removeProgress();
     };
 
-    F.ws.onclose = () => {
+    F.ws.onclose = (event) => {
+      clearConnectTimer();
       F.wsConnected = false;
       F.setBusy(false);
       F.removeThinking();
       removeProgress();
+      if (event.code === 4401) {
+        F.setConnectionStatus("认证失败，请完全退出后重新打开", false);
+        return;
+      }
       F.setConnectionStatus("连接断开，重连中...");
-      setTimeout(connectWs, 1500);
+      const delay = Math.min(1500 * (1 + (F.wsRetryCount || 0)), 8000);
+      F.wsRetryCount = (F.wsRetryCount || 0) + 1;
+      setTimeout(connectWs, delay);
     };
   }
 

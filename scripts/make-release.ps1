@@ -28,7 +28,23 @@ New-Item -ItemType Directory -Path $Stage -Force | Out-Null
 
 Copy-Item (Join-Path $ReleaseRoot $GuideName) $Stage -Force
 Copy-Item (Join-Path $ReleaseRoot $ShortcutName) $Stage -Force
+$UnblockName = -join ([char]0x89E3, [char]0x9664, [char]0x9501, [char]0x5B9A) + ".ps1"
+$UnblockScript = Join-Path $ReleaseRoot $UnblockName
+if (Test-Path $UnblockScript) {
+    Copy-Item $UnblockScript $Stage -Force
+}
 Copy-Item $DistApp (Join-Path $Stage "Friday") -Recurse -Force
+
+# 打包阶段解除锁定，减少用户手动 Unblock
+Write-Host "Unblocking staged files..." -ForegroundColor Cyan
+Get-ChildItem -LiteralPath (Join-Path $Stage "Friday") -Recurse -ErrorAction SilentlyContinue |
+    Unblock-File -ErrorAction SilentlyContinue
+
+$FirstInstallName = -join ([char]0x9996, [char]0x6B21, [char]0x5B89, [char]0x88C5) + ".ps1"
+$FirstInstallScript = Join-Path $ReleaseRoot $FirstInstallName
+if (Test-Path $FirstInstallScript) {
+    Copy-Item $FirstInstallScript $Stage -Force
+}
 
 $ZipPath = Join-Path $ReleaseRoot $ZipName
 if (Test-Path $ZipPath) {

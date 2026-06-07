@@ -2353,6 +2353,14 @@ html[data-interaction-mode="ask"] .mode-btn[data-mode="ask"].active {
   font: inherit;
 }
 
+.settings-form input:focus,
+.settings-form select:focus,
+.settings-form textarea:focus {
+  outline: 2px solid rgba(212, 160, 86, 0.45);
+  outline-offset: 1px;
+  border-color: rgba(212, 160, 86, 0.55);
+}
+
 .settings-form textarea {
   resize: vertical;
   min-height: 72px;
@@ -2402,7 +2410,26 @@ html[data-interaction-mode="ask"] .mode-btn[data-mode="ask"].active {
   display: grid;
   place-items: center;
   padding: 20px;
-  z-index: 20;
+  z-index: 50;
+}
+
+/* 桌面无边框窗口：弹窗与输入框须 no-drag，否则 WebView2 可能无法聚焦/输入 */
+html.desktop .modal,
+html.desktop .settings-window,
+html.desktop .onboarding-window,
+html.desktop .modal-card,
+html.desktop .session-rename-window {
+  -webkit-app-region: no-drag;
+}
+
+html.desktop .settings-form input:not([type="checkbox"]):not([type="radio"]),
+html.desktop .settings-form select,
+html.desktop .settings-form textarea,
+html.desktop .settings-form button,
+html.desktop .onboarding-field input,
+html.desktop .onboarding-actions button,
+html.desktop .session-rename-input {
+  -webkit-app-region: no-drag;
 }
 
 .modal.hidden { display: none; }

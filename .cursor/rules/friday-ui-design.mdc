@@ -1,0 +1,46 @@
+---
+description: 修改 web/ 前端时启用已安装的 UI 设计 Skills 与 DESIGN.md
+globs:
+  - web/**
+  - DESIGN.md
+  - PRODUCT.md
+alwaysApply: false
+---
+
+# 星期五前端 UI 设计规范
+
+修改 `web/`、`DESIGN.md` 或 `PRODUCT.md` 时：
+
+## 必读
+
+1. 根目录 **DESIGN.md** — 颜色、字体、组件 token（与 `web/styles.css` 一致）
+2. 根目录 **PRODUCT.md** — 产品定位（工具型桌面应用，非营销页）
+3. **web/styles.css** — 实现单一事实来源；新样式优先用现有 CSS 变量
+
+## 已安装 Skills（`.cursor/skills/`）
+
+| Skill | 何时用 |
+|-------|--------|
+| `impeccable` | 设计审计、polish、normalize、critique、craft；改 UI 前可跑 context 脚本 |
+| `design-taste-frontend` | 避免 AI slop 模板审美；新页面/大改版 |
+| `ui-design-brain` | 选组件模式（modal、tabs、form 等）与 a11y |
+| `micro-interactions` | 按钮/列表/表单微交互、spring、easing |
+| `motion-dev-animations` | 滚动/入场动效（本项目默认 CSS，非 React Motion） |
+| `better-icons` | 需要图标时用 CLI/MCP 搜 Iconify，勿用 emoji 顶替 |
+| `frontend-design` | Anthropic 基础前端审美（与上表互补） |
+
+## 硬性约束
+
+- **Vanilla JS**：不引入 React/Vue 除非用户明确要求
+- **双主题**：dark / light 均需可读；测 `html[data-theme="light"]`
+- **WebView2 桌面**：弹窗、输入、按钮区域 `-webkit-app-region: no-drag`
+- **不硬编码色值**：用 `:root` 与 `html[data-theme="light"]` 变量
+- **中文 UI**  copy 简洁；错误提示 actionable
+
+## Impeccable 工作流（可选）
+
+```bash
+node .cursor/skills/impeccable/scripts/context.mjs
+```
+
+有 PRODUCT.md + DESIGN.md 时会自动加载。子命令见 `.cursor/skills/impeccable/reference/`。
