@@ -84,7 +84,9 @@ def upload_asset(repo: str, release_id: int, token: str, zip_path: Path) -> None
     release = _get_json(f"{API}/repos/{repo}/releases/{release_id}?access_token={token}")
     for asset in release.get("assets") or []:
         if asset.get("name") == zip_path.name:
-            aid = asset["id"]
+            aid = asset.get("id")
+            if aid is None:
+                continue
             print(f"Removing existing asset {zip_path.name} (id {aid}) ...")
             req = urllib.request.Request(
                 f"{API}/repos/{repo}/releases/assets/{aid}?access_token={token}",
