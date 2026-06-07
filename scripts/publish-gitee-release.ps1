@@ -49,11 +49,17 @@ if (-not (Test-Path $Zip)) {
 if (-not $Zip) { throw "Release zip not found. Run scripts/make-release.ps1 first." }
 
 $ReleaseId = $null
+$TagEncoded = [Uri]::EscapeDataString($Tag)
 try {
-    $existing = Invoke-RestMethod -Uri "https://gitee.com/api/v5/repos/$Repo/releases/tags/$Tag" -Body @{ access_token = $GiteeToken }
-    $ReleaseId = $existing.id
-    Write-Host "Gitee release $Tag exists (id $ReleaseId), uploading asset ..." -ForegroundColor Yellow
+    $existing = Invoke-RestMethod -Uri "https://gitee.com/api/v5/repos/$Repo/releases/tags/$TagEncoded?access_token=$GiteeToken"
+    if ($existing -and $existing.id) {
+        $ReleaseId = $existing.id
+        Write-Host "Gitee release $Tag exists (id $ReleaseId), uploading asset ..." -ForegroundColor Yellow
+    }
 } catch {
+    # fall through to create
+}
+if (-not $ReleaseId) {
     Write-Host "Creating Gitee release $Tag on $Repo ..." -ForegroundColor Cyan
     $Body = @{
         access_token = $GiteeToken
@@ -65,6 +71,7 @@ try {
     $Release = Invoke-RestMethod -Method Post -Uri "https://gitee.com/api/v5/repos/$Repo/releases" -Body $Body
     $ReleaseId = $Release.id
 }
+if (-not $ReleaseId) { throw "Failed to resolve Gitee release id for $Tag" }
 
 Write-Host "Uploading Friday-Windows.zip ($([math]::Round((Get-Item $Zip).Length / 1MB, 1)) MB) ..." -ForegroundColor Cyan
 Upload-GiteeAsset -ReleaseId $ReleaseId -ZipPath $Zip -FileName "Friday-Windows.zip"
