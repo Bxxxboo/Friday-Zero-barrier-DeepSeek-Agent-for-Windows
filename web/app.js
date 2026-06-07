@@ -91,13 +91,6 @@
     btn.addEventListener("click", () => F.switchSettingsPanel(btn.dataset.panel));
   });
 
-  document.getElementById("openAdvancedSecurityBtn")?.addEventListener("click", () => {
-    F.openAdvancedSecurity();
-  });
-  document.getElementById("securityBackBtn")?.addEventListener("click", () => {
-    F.backFromAdvancedSecurity();
-  });
-
   F.welcomePanel?.addEventListener("click", (event) => {
     const actionBtn = event.target.closest("[data-action]");
     if (actionBtn?.dataset.action === "schedules") {
@@ -121,7 +114,7 @@
   document.getElementById("visionForm")?.addEventListener("submit", F.saveVisionSettings);
   F.workspaceForm?.addEventListener("submit", F.saveWorkspace);
   document.getElementById("pickWorkspaceBtn")?.addEventListener("click", F.pickWorkspaceFolder);
-  F.generalForm?.addEventListener("submit", F.saveGeneralSettings);
+  F.appearanceForm?.addEventListener("submit", F.saveAppearanceSettings);
   F.securityForm?.addEventListener("submit", F.saveSecuritySettings);
 
   document.getElementById("applyStrictPresetBtn")?.addEventListener("click", F.applyStrictSecurityPreset);

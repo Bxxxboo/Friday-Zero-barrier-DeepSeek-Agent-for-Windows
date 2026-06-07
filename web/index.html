@@ -327,7 +327,9 @@
         <nav class="settings-nav">
           <button class="settings-nav-item active" data-panel="api">API 连接</button>
           <button class="settings-nav-item" data-panel="workspace">文件夹</button>
-          <button class="settings-nav-item" data-panel="general">通用</button>
+          <button class="settings-nav-item" data-panel="appearance">外观</button>
+          <button class="settings-nav-item" data-panel="logs">日志</button>
+          <button class="settings-nav-item" data-panel="security-updates">安全与更新</button>
           <button class="settings-nav-item" data-panel="extensions">扩展</button>
           <button class="settings-nav-item" data-panel="schedules">定时任务</button>
         </nav>
@@ -426,10 +428,10 @@
               <div class="settings-result" id="pythonEnvResult"></div>
             </div>
           </section>
-          <section class="settings-section" id="panel-general">
-            <h4>通用</h4>
-            <p class="settings-desc">界面外观与阅读体验，保存后立即生效。</p>
-            <form class="settings-form" id="generalForm">
+          <section class="settings-section" id="panel-appearance">
+            <h4>外观</h4>
+            <p class="settings-desc">界面主题、字号与默认交互模式，保存后立即生效。</p>
+            <form class="settings-form" id="appearanceForm">
               <label>
                 <span>主题</span>
                 <select id="themeMode">
@@ -458,31 +460,102 @@
               <div class="settings-actions">
                 <button type="submit" class="primary-btn">保存</button>
               </div>
-              <div class="settings-result" id="generalResult"></div>
-              <div class="settings-group diagnostics-group">
-                <h5>诊断</h5>
-                <p class="settings-hint">应用数据与日志保存在 <code id="appdataPathHint">%APPDATA%\Friday</code></p>
-                <div class="settings-actions">
-                  <button type="button" class="ghost-btn" id="openLogFolderBtn">打开日志文件夹</button>
-                  <button type="button" class="ghost-btn" id="refreshLogPreviewBtn">刷新日志摘要</button>
-                </div>
-                <pre class="log-preview" id="logPreview">（暂无日志）</pre>
+              <div class="settings-result" id="appearanceResult"></div>
+            </form>
+          </section>
+          <section class="settings-section" id="panel-logs">
+            <h4>日志</h4>
+            <p class="settings-desc">查看运行日志与诊断信息，便于排查问题。</p>
+            <div class="settings-group diagnostics-group">
+              <p class="settings-hint">应用数据与日志保存在 <code id="appdataPathHint">%APPDATA%\Friday</code></p>
+              <div class="settings-actions">
+                <button type="button" class="ghost-btn" id="openLogFolderBtn">打开日志文件夹</button>
+                <button type="button" class="ghost-btn" id="refreshLogPreviewBtn">刷新日志摘要</button>
               </div>
-              <div class="settings-group update-group">
-                <h5>版本与更新</h5>
-                <p class="settings-hint">
-                  当前版本 <strong id="appVersionLabel">—</strong>
-                  · 更新源 <a id="updateSourceLink" href="https://github.com/Bxxxboo/friday" target="_blank" rel="noopener">GitHub Releases</a>
-                </p>
-                <div class="settings-actions">
-                  <button type="button" class="ghost-btn" id="checkUpdateBtn">检查更新</button>
-                  <a class="ghost-btn hidden" id="downloadUpdateLink" href="#" target="_blank" rel="noopener">下载新版本</a>
-                </div>
-                <div class="settings-result" id="updateResult"></div>
-              </div>
-              <p class="settings-advanced-entry">
-                <button type="button" class="link-btn" id="openAdvancedSecurityBtn">高级安全设置</button>
+              <pre class="log-preview" id="logPreview">（暂无日志）</pre>
+            </div>
+            <div class="settings-result" id="logsResult"></div>
+          </section>
+          <section class="settings-section" id="panel-security-updates">
+            <h4>安全与更新</h4>
+            <p class="settings-desc">检查版本更新，并限制 AI 访问与修改文件的范围与方式。</p>
+            <div class="settings-group update-group">
+              <h5>版本与更新</h5>
+              <p class="settings-hint">
+                当前版本 <strong id="appVersionLabel">—</strong>
+                · 更新源 <a id="updateSourceLink" href="https://github.com/Bxxxboo/friday" target="_blank" rel="noopener">GitHub Releases</a>
               </p>
+              <div class="settings-actions">
+                <button type="button" class="ghost-btn" id="checkUpdateBtn">检查更新</button>
+                <a class="ghost-btn hidden" id="downloadUpdateLink" href="#" target="_blank" rel="noopener">下载新版本</a>
+              </div>
+              <div class="settings-result" id="updateResult"></div>
+            </div>
+            <form class="settings-form" id="securityForm">
+              <div class="settings-group">
+                <h5>路径与审批</h5>
+                <label class="settings-check">
+                  <input type="checkbox" id="restrictToWorkspace" />
+                  <span>文件访问仅限默认操作文件夹（读取、搜索、写入、移动等；联网下载到用户指定路径如 E 盘不受此限）</span>
+                </label>
+                <label class="settings-check">
+                  <input type="checkbox" id="approveOncePerTurn" checked />
+                  <span>当前对话只需确认一次（大文件、非官方下载仍单独确认；新建对话后重新计数）</span>
+                </label>
+                <label class="settings-check">
+                  <input type="checkbox" id="requireApprovalWrites" />
+                  <span>修改文件、联网下载或剪贴板前需我批准（写入、移动、整理、创建文档、下载文件、写入剪贴板）</span>
+                </label>
+                <label class="settings-check">
+                  <input type="checkbox" id="requireApprovalExec" />
+                  <span>执行 PowerShell / Python 前需我批准</span>
+                </label>
+              </div>
+              <div class="settings-group">
+                <h5>允许使用的工具</h5>
+                <p class="settings-hint">取消勾选将完全禁用对应能力，AI 无法调用。</p>
+                <label class="settings-check">
+                  <input type="checkbox" id="allowWriteFiles" />
+                  <span>允许写入文本文件</span>
+                </label>
+                <label class="settings-check">
+                  <input type="checkbox" id="allowMoveFiles" />
+                  <span>允许移动 / 重命名文件</span>
+                </label>
+                <label class="settings-check">
+                  <input type="checkbox" id="allowOrganize" />
+                  <span>允许整理目录</span>
+                </label>
+                <label class="settings-check">
+                  <input type="checkbox" id="allowCreateDocuments" />
+                  <span>允许创建 Word / PPT 文档</span>
+                </label>
+                <label class="settings-check">
+                  <input type="checkbox" id="allowPowershell" />
+                  <span>允许执行 PowerShell 命令</span>
+                </label>
+                <label class="settings-check">
+                  <input type="checkbox" id="allowPython" />
+                  <span>允许执行 Python 代码（工作区 .python-env）</span>
+                </label>
+                <label class="settings-check">
+                  <input type="checkbox" id="allowWebBrowse" />
+                  <span>允许浏览网页（查找下载链接、阅读公开页面）</span>
+                </label>
+                <label class="settings-check">
+                  <input type="checkbox" id="allowDownloads" />
+                  <span>允许联网下载文件到本地</span>
+                </label>
+                <label class="settings-check">
+                  <input type="checkbox" id="requireTrustedDownloads" checked />
+                  <span>仅允许官方/可信来源下载（TLS 校验 + 官方域名库；非官方需额外确认）</span>
+                </label>
+              </div>
+              <div class="settings-actions">
+                <button type="button" class="ghost-btn" id="applyStrictPresetBtn">应用严格预设</button>
+                <button type="submit" class="primary-btn">保存安全设置</button>
+              </div>
+              <div class="settings-result" id="securityResult"></div>
             </form>
           </section>
           <section class="settings-section" id="panel-extensions">
@@ -648,77 +721,6 @@
             </div>
             <div class="settings-result" id="scheduleResult"></div>
           </section>
-          <section class="settings-section" id="panel-security">
-            <button type="button" class="link-btn settings-back-link hidden" id="securityBackBtn">← 返回通用设置</button>
-            <h4>高级安全设置</h4>
-            <p class="settings-desc">限制 AI 访问与修改文件的范围与方式，防止误操作。建议保持「仅限默认文件夹」开启。</p>
-            <form class="settings-form" id="securityForm">
-              <div class="settings-group">
-                <h5>路径与审批</h5>
-                <label class="settings-check">
-                  <input type="checkbox" id="restrictToWorkspace" />
-                  <span>文件访问仅限默认操作文件夹（读取、搜索、写入、移动等；联网下载到用户指定路径如 E 盘不受此限）</span>
-                </label>
-                <label class="settings-check">
-                  <input type="checkbox" id="approveOncePerTurn" checked />
-                  <span>当前对话只需确认一次（大文件、非官方下载仍单独确认；新建对话后重新计数）</span>
-                </label>
-                <label class="settings-check">
-                  <input type="checkbox" id="requireApprovalWrites" />
-                  <span>修改文件、联网下载或剪贴板前需我批准（写入、移动、整理、创建文档、下载文件、写入剪贴板）</span>
-                </label>
-                <label class="settings-check">
-                  <input type="checkbox" id="requireApprovalExec" />
-                  <span>执行 PowerShell / Python 前需我批准</span>
-                </label>
-              </div>
-              <div class="settings-group">
-                <h5>允许使用的工具</h5>
-                <p class="settings-hint">取消勾选将完全禁用对应能力，AI 无法调用。</p>
-                <label class="settings-check">
-                  <input type="checkbox" id="allowWriteFiles" />
-                  <span>允许写入文本文件</span>
-                </label>
-                <label class="settings-check">
-                  <input type="checkbox" id="allowMoveFiles" />
-                  <span>允许移动 / 重命名文件</span>
-                </label>
-                <label class="settings-check">
-                  <input type="checkbox" id="allowOrganize" />
-                  <span>允许整理目录</span>
-                </label>
-                <label class="settings-check">
-                  <input type="checkbox" id="allowCreateDocuments" />
-                  <span>允许创建 Word / PPT 文档</span>
-                </label>
-                <label class="settings-check">
-                  <input type="checkbox" id="allowPowershell" />
-                  <span>允许执行 PowerShell 命令</span>
-                </label>
-                <label class="settings-check">
-                  <input type="checkbox" id="allowPython" />
-                  <span>允许执行 Python 代码（工作区 .python-env）</span>
-                </label>
-                <label class="settings-check">
-                  <input type="checkbox" id="allowWebBrowse" />
-                  <span>允许浏览网页（查找下载链接、阅读公开页面）</span>
-                </label>
-                <label class="settings-check">
-                  <input type="checkbox" id="allowDownloads" />
-                  <span>允许联网下载文件到本地</span>
-                </label>
-                <label class="settings-check">
-                  <input type="checkbox" id="requireTrustedDownloads" checked />
-                  <span>仅允许官方/可信来源下载（TLS 校验 + 官方域名库；非官方需额外确认）</span>
-                </label>
-              </div>
-              <div class="settings-actions">
-                <button type="button" class="ghost-btn" id="applyStrictPresetBtn">应用严格预设</button>
-                <button type="submit" class="primary-btn">保存</button>
-              </div>
-              <div class="settings-result" id="securityResult"></div>
-            </form>
-          </section>
         </div>
       </div>
     </div>
@@ -744,9 +746,9 @@
 
   <script defer src="/static/vendor/marked.min.js"></script>
   <script defer src="/static/vendor/purify.min.js"></script>
-  <script defer src="/static/utils.js?v=53"></script>
+  <script defer src="/static/utils.js?v=54"></script>
   <script defer src="/static/sessions.js?v=51"></script>
-  <script defer src="/static/settings.js?v=54"></script>
+  <script defer src="/static/settings.js?v=55"></script>
   <script defer src="/static/onboarding.js?v=51"></script>
   <script defer src="/static/skills.js?v=51"></script>
   <script defer src="/static/extensions.js?v=51"></script>
@@ -755,6 +757,6 @@
   <script defer src="/static/mode.js?v=51"></script>
   <script defer src="/static/statusbar.js?v=52"></script>
   <script defer src="/static/chat.js?v=53"></script>
-  <script defer src="/static/app.js?v=51"></script>
+  <script defer src="/static/app.js?v=52"></script>
 </body>
 </html>

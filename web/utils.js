@@ -21,11 +21,12 @@
   const apiStatus = $("apiStatus");
   const settingsForm = $("settingsForm");
   const workspaceForm = $("workspaceForm");
-  const generalForm = $("generalForm");
+  const appearanceForm = $("appearanceForm");
   const securityForm = $("securityForm");
   const settingsResult = $("settingsResult");
   const workspaceResult = $("workspaceResult");
-  const generalResult = $("generalResult");
+  const appearanceResult = $("appearanceResult");
+  const logsResult = $("logsResult");
   const securityResult = $("securityResult");
   const settingsModal = $("settingsModal");
   const onboardingModal = $("onboardingModal");
@@ -268,11 +269,12 @@
     apiStatus,
     settingsForm,
     workspaceForm,
-    generalForm,
+    appearanceForm,
     securityForm,
     settingsResult,
     workspaceResult,
-    generalResult,
+    appearanceResult,
+    logsResult,
     securityResult,
     settingsModal,
     onboardingModal,

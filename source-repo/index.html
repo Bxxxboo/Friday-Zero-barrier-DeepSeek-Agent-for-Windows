@@ -129,7 +129,8 @@
         <li>安装 <a href="https://git-scm.com/download/win">Git</a>，注册 <a href="https://gitee.com">Gitee</a> 并创建私人令牌</li>
         <li>在项目根目录运行：<br /><code>$env:GITEE_TOKEN='令牌'; scripts\push-gitee-source.cmd -GiteeUser 你的用户名</code></li>
         <li>脚本会推送代码到 Gitee，并更新本页的克隆地址</li>
-        <li>打开上方「GitHub 导入页」，粘贴地址，Owner 填 <strong>Bxxxboo</strong>，Repository name 填 <strong>friday</strong></li>
+        <li>导入前确认 Gitee 仓库为<strong>公开</strong>（私有仓库 GitHub 无法拉取会报 Authentication failed）</li>
+        <li>打开上方「GitHub 导入页」，粘贴地址（不要末尾斜杠），Owner 填 <strong>Bxxxboo</strong>，Repository name 填 <strong>friday</strong></li>
         <li>导入完成后，在 GitHub 打 tag <code>v1.0.0</code> 并上传 Release 安装包（或运行 <code>scripts/publish-github.ps1</code>）</li>
       </ol>
     </div>

@@ -1,5 +1,5 @@
 /* ================================================================= *
- *  settings.js — Friday 设置页：API / 文件夹 / 通用 / 安全 + 主题
+ *  settings.js — Friday 设置页：API / 文件夹 / 外观 / 日志 / 安全与更新 + 主题
  *  依赖 utils.js
  * ================================================================= */
 
@@ -247,10 +247,10 @@
     F.workspaceResult.textContent = "默认文件夹已保存。";
   }
 
-  async function saveGeneralSettings(event) {
+  async function saveAppearanceSettings(event) {
     event.preventDefault();
-    F.generalResult.className = "settings-result";
-    F.generalResult.textContent = "保存中...";
+    F.appearanceResult.className = "settings-result";
+    F.appearanceResult.textContent = "保存中...";
     const payload = {
       theme: document.getElementById("themeMode").value,
       font_size: document.getElementById("fontSize").value,
@@ -264,8 +264,8 @@
     const data = await res.json();
     applyUiSettings(data);
     F.setInteractionMode?.(data.interaction_mode || payload.interaction_mode, { persist: false });
-    F.generalResult.className = "settings-result ok";
-    F.generalResult.textContent = "通用设置已保存。";
+    F.appearanceResult.className = "settings-result ok";
+    F.appearanceResult.textContent = "外观设置已保存。";
   }
 
   async function saveSecuritySettings(event) {
@@ -393,22 +393,9 @@
     document.querySelectorAll(".settings-section").forEach((section) => {
       section.classList.toggle("active", section.id === `panel-${panel}`);
     });
-    const backBtn = document.getElementById("securityBackBtn");
-    if (backBtn) {
-      backBtn.classList.toggle("hidden", panel !== "security");
-    }
-    if (panel === "general") {
+    if (panel === "logs") {
       void refreshLogPreview();
     }
-  }
-
-  function openAdvancedSecurity() {
-    switchSettingsPanel("security");
-    F.settingsModal.classList.remove("hidden");
-  }
-
-  function backFromAdvancedSecurity() {
-    switchSettingsPanel("general");
   }
 
   /* ── 诊断 / 日志 ── */
@@ -431,18 +418,27 @@
   }
 
   async function openLogFolder() {
+    const resultEl = F.logsResult;
     if (window.pywebview?.api?.open_appdata_folder) {
       await window.pywebview.api.open_appdata_folder();
+      if (resultEl) {
+        resultEl.className = "settings-result ok";
+        resultEl.textContent = "已打开日志文件夹。";
+      }
       return;
     }
     try {
       const res = await F.apiFetch("/api/diagnostics/appdata");
       const data = await res.json();
-      F.generalResult.className = "settings-result";
-      F.generalResult.textContent = `日志目录：${data.path}`;
+      if (resultEl) {
+        resultEl.className = "settings-result";
+        resultEl.textContent = `日志目录：${data.path}`;
+      }
     } catch {
-      F.generalResult.className = "settings-result error";
-      F.generalResult.textContent = "无法获取日志目录。";
+      if (resultEl) {
+        resultEl.className = "settings-result error";
+        resultEl.textContent = "无法获取日志目录。";
+      }
     }
   }
 
@@ -462,7 +458,7 @@
   F.saveSettings = saveSettings;
   F.pickWorkspaceFolder = pickWorkspaceFolder;
   F.saveWorkspace = saveWorkspace;
-  F.saveGeneralSettings = saveGeneralSettings;
+  F.saveAppearanceSettings = saveAppearanceSettings;
   F.saveSecuritySettings = saveSecuritySettings;
   F.testSettings = testSettings;
   F.saveVisionSettings = saveVisionSettings;
@@ -470,8 +466,6 @@
   F.openSettings = openSettings;
   F.closeSettings = closeSettings;
   F.switchSettingsPanel = switchSettingsPanel;
-  F.openAdvancedSecurity = openAdvancedSecurity;
-  F.backFromAdvancedSecurity = backFromAdvancedSecurity;
   F.refreshLogPreview = refreshLogPreview;
   F.openLogFolder = openLogFolder;
 

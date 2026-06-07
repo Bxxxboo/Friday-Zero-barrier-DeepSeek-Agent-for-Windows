@@ -51,6 +51,12 @@ if (-not $Check) {
         auto_init = $false
     }
     Invoke-RestMethod -Method Post -Uri "https://gitee.com/api/v5/user/repos" -Body $Body | Out-Null
+} elseif ($Check.private -eq $true) {
+    Write-Host "Setting Gitee repo to public (required for GitHub import) ..." -ForegroundColor Cyan
+    Invoke-RestMethod -Method Patch -Uri "https://gitee.com/api/v5/repos/$GiteeUser/$RepoName" -Body @{
+        access_token = $GiteeToken
+        private = $false
+    } | Out-Null
 }
 
 $RemoteUrl = "https://oauth2:${GiteeToken}@gitee.com/$GiteeUser/$RepoName.git"
