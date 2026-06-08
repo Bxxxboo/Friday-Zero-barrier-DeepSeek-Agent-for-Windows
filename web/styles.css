@@ -3633,3 +3633,66 @@ html[data-theme="light"] .message.approval.approved {
 html[data-theme="light"] .schedule-card:hover {
   border-color: rgba(184, 134, 46, 0.22);
 }
+
+/* ── Plan / Todo panel ── */
+.plan-panel {
+  margin: 0 16px 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+.plan-panel-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+}
+.plan-panel.collapsed .plan-panel-body { display: none; }
+.plan-panel.collapsed .plan-panel-chevron { transform: rotate(-90deg); }
+.plan-panel-body { padding: 0 12px 12px; }
+.plan-panel-body textarea {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+}
+.plan-todo-list { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.plan-todo-row { display: flex; gap: 8px; align-items: center; }
+.plan-todo-text { flex: 1; }
+.plan-panel-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* ── File change diff card ── */
+.message.file-change {
+  border-left: 3px solid var(--accent);
+  background: var(--surface-2);
+  padding: 10px 12px;
+}
+.file-change-head { font-weight: 600; margin-bottom: 4px; word-break: break-all; }
+.file-change-meta { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.file-change-diff {
+  max-height: 220px;
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.45;
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 8px;
+  white-space: pre-wrap;
+}
+.file-change-actions { margin-top: 8px; }
+
+/* ── MCP settings ── */
+.mcp-server-list { display: flex; flex-direction: column; gap: 12px; margin: 12px 0; }
+.mcp-server-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}

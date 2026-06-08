@@ -227,11 +227,18 @@ class SettingsResponse(BaseModel):
     weixin_bridge_enabled: bool = True
     acknowledged_changelog_version: str = ""
     portability_notices: list[str] = []
+    launch_at_logon: bool = False
+    launch_at_logon_available: bool = False
+    launch_at_logon_detail: str = ""
 
 
 class TestResponse(BaseModel):
     ok: bool
     message: str
+
+
+class AutostartPayload(BaseModel):
+    enabled: bool
 
 
 class ChatPayload(BaseModel):
@@ -297,6 +304,8 @@ class SessionDetailResponse(BaseModel):
     updated_at: float
     created_at: float
     messages: list[DisplayMessageResponse]
+    plan_markdown: str = ""
+    todos: list[dict[str, Any]] = []
 
 
 class OperationResponse(BaseModel):
@@ -638,6 +647,129 @@ async def update_settings(payload: SettingsPayload) -> SettingsResponse:
     return _to_response(merged)
 
 
+@app.get("/api/autostart")
+async def get_autostart() -> dict[str, object]:
+    from friday.autostart import autostart_status
+
+    return autostart_status()
+
+
+@app.put("/api/autostart")
+async def set_autostart(payload: AutostartPayload) -> dict[str, object]:
+    from friday.autostart import set_autostart_enabled
+
+    return set_autostart_enabled(payload.enabled)
+
+
+@app.get("/api/weixin/gateway/autostart")
+async def get_openclaw_autostart() -> dict[str, object]:
+    from friday.openclaw_autostart import openclaw_autostart_status
+
+    return openclaw_autostart_status()
+
+
+@app.put("/api/weixin/gateway/autostart")
+async def set_openclaw_autostart(payload: AutostartPayload) -> dict[str, object]:
+    from friday.openclaw_autostart import set_openclaw_autostart_enabled
+
+    return set_openclaw_autostart_enabled(payload.enabled)
+
+
+class SessionPlanPayload(BaseModel):
+    plan_markdown: str | None = None
+    todos: list[dict[str, Any]] | None = None
+
+
+@app.get("/api/sessions/{session_id}/plan")
+async def get_session_plan_api(session_id: str) -> dict[str, Any]:
+    from friday.plan import get_session_plan
+
+    result = get_session_plan(session_id)
+    if not result.get("ok"):
+        raise HTTPException(status_code=404, detail="会话不存在")
+    return result
+
+
+@app.put("/api/sessions/{session_id}/plan")
+async def put_session_plan_api(session_id: str, payload: SessionPlanPayload) -> dict[str, Any]:
+    from friday.plan import update_session_plan
+
+    if not session_exists(session_id):
+        raise HTTPException(status_code=404, detail="会话不存在")
+    return update_session_plan(
+        session_id,
+        plan_markdown=payload.plan_markdown,
+        todos=payload.todos,
+    )
+
+
+class MCPServerPayload(BaseModel):
+    id: str = ""
+    name: str = ""
+    command: str = ""
+    args: list[str] = []
+    env: dict[str, str] = {}
+    enabled: bool = True
+    cwd: str = ""
+
+
+class MCPConfigPayload(BaseModel):
+    servers: list[MCPServerPayload] = []
+
+
+@app.get("/api/mcp/servers")
+async def get_mcp_servers() -> dict[str, Any]:
+    from friday.mcp_client import load_mcp_config, mcp_config_path
+
+    config = load_mcp_config()
+    return {"path": str(mcp_config_path()), "servers": config.get("servers") or []}
+
+
+@app.put("/api/mcp/servers")
+async def put_mcp_servers(payload: MCPConfigPayload) -> dict[str, Any]:
+    import uuid
+
+    from friday.mcp_client import default_mcp_config, save_mcp_config
+
+    servers: list[dict[str, Any]] = []
+    for item in payload.servers:
+        entry = item.model_dump()
+        if not entry.get("id"):
+            entry["id"] = uuid.uuid4().hex[:10]
+        servers.append(entry)
+    config = default_mcp_config()
+    config["servers"] = servers
+    save_mcp_config(config)
+    clear_agent_cache()
+    return {"ok": True, "servers": servers}
+
+
+@app.post("/api/open-path")
+async def open_path_in_explorer(payload: dict[str, Any]) -> dict[str, bool]:
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    raw = str(payload.get("path", "")).strip()
+    if not raw:
+        raise HTTPException(status_code=400, detail="缺少 path")
+    target = Path(raw).expanduser().resolve()
+    if sys.platform != "win32":
+        return {"ok": False}
+    try:
+        if target.is_file():
+            subprocess.run(["explorer", "/select,", str(target)], check=False)
+        elif target.is_dir():
+            subprocess.run(["explorer", str(target)], check=False)
+        elif target.parent.exists():
+            subprocess.run(["explorer", "/select,", str(target)], check=False)
+        else:
+            raise HTTPException(status_code=404, detail="路径不存在")
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return {"ok": True}
+
+
 @app.get("/api/python-env")
 async def get_python_env_status() -> dict[str, object]:
     from friday.python_env import env_dict
@@ -888,6 +1020,13 @@ def _to_response(cfg: UserSettings) -> SettingsResponse:
     from friday.vision import masked_vision_key, vision_ready
 
     notices = pop_startup_notices()
+    autostart = {}
+    try:
+        from friday.autostart import autostart_status
+
+        autostart = autostart_status()
+    except Exception:
+        autostart = {"enabled": False, "available": False, "detail": ""}
     return SettingsResponse(
         api_key_masked=cfg.masked_key(),
         base_url=cfg.base_url,
@@ -930,6 +1069,9 @@ def _to_response(cfg: UserSettings) -> SettingsResponse:
         weixin_bridge_enabled=getattr(cfg, "weixin_bridge_enabled", True),
         acknowledged_changelog_version=getattr(cfg, "acknowledged_changelog_version", "") or "",
         portability_notices=notices,
+        launch_at_logon=bool(autostart.get("enabled")),
+        launch_at_logon_available=bool(autostart.get("available")),
+        launch_at_logon_detail=str(autostart.get("detail") or ""),
     )
 
 
@@ -940,6 +1082,8 @@ def _session_to_detail(session: ChatSession) -> SessionDetailResponse:
         title=session.title,
         updated_at=session.updated_at,
         created_at=session.created_at,
+        plan_markdown=getattr(session, "plan_markdown", "") or "",
+        todos=list(getattr(session, "todos", None) or []),
         messages=[
             DisplayMessageResponse(
                 role=item["role"],
@@ -966,22 +1110,16 @@ def _brain_config_changed(old: UserSettings | None, new: UserSettings) -> bool:
 
 
 def _apply_chat_settings(agent: Any, settings: UserSettings, *, yolo_unlocked: bool = False) -> None:
-    from friday.brain import DeepSeekBrain, build_system_prompt
+    from friday.brain import DeepSeekBrain
     from openai import OpenAI
 
     prev = agent.settings
-    agent.settings = settings
-    agent.yolo_unlocked = yolo_unlocked
     if agent.brain is None or _brain_config_changed(prev, settings):
         agent.brain = DeepSeekBrain(settings)
     else:
         agent.brain.settings = settings
         agent.brain.client = OpenAI(api_key=settings.api_key, base_url=settings.base_url)
-    if agent.messages and agent.messages[0].get("role") == "system":
-        agent.messages[0] = {
-            "role": "system",
-            "content": build_system_prompt(settings, yolo_unlocked=yolo_unlocked),
-        }
+    agent.refresh_prefix_if_needed(settings, yolo_unlocked=yolo_unlocked)
 
 
 def _get_agent(session_id: str, settings: UserSettings, approval_bridge: Any) -> Any:
@@ -1187,6 +1325,13 @@ async def _run_chat(
 
     vision_summary = await _prefetch_vision(text, image_path, settings, emit)
     user_message = _compose_user_message(text, image_path, vision_summary)
+
+    from friday.plan import plan_prompt_block
+
+    session = get_session(session_id)
+    plan_block = plan_prompt_block(session)
+    if plan_block:
+        user_message = f"{plan_block}\n{user_message}"
 
     def on_event(event_type: str, payload: dict[str, Any]) -> None:
         asyncio.run_coroutine_threadsafe(emit(event_type, payload), loop)
@@ -1784,10 +1929,16 @@ async def get_status_bar(session_id: str = "") -> dict[str, object]:
 
     prompt_tokens = 0
     completion_tokens = 0
+    cache_hit_tokens = 0
+    cache_miss_tokens = 0
+    cache_hit_rate = 0.0
     if session_id and session_id in _agent_cache:
         usage = _agent_cache[session_id].usage_snapshot()
         prompt_tokens = int(usage.get("tokens_prompt", 0) or 0)
         completion_tokens = int(usage.get("tokens_completion", 0) or 0)
+        cache_hit_tokens = int(usage.get("cache_hit_tokens", 0) or 0)
+        cache_miss_tokens = int(usage.get("cache_miss_tokens", 0) or 0)
+        cache_hit_rate = float(usage.get("cache_hit_rate", 0) or 0)
 
     vision_on = bool(cfg.vision_enabled)
     image_gen_on = bool(cfg.image_gen_enabled)
@@ -1803,6 +1954,9 @@ async def get_status_bar(session_id: str = "") -> dict[str, object]:
         "tokens_prompt": prompt_tokens,
         "tokens_completion": completion_tokens,
         "tokens_total": prompt_tokens + completion_tokens,
+        "cache_hit_tokens": cache_hit_tokens,
+        "cache_miss_tokens": cache_miss_tokens,
+        "cache_hit_rate": cache_hit_rate,
         "tasks": len(list_schedules()),
         "interaction_mode": getattr(cfg, "interaction_mode", "agent"),
         "python_ready": python_ready_light(workspace),

@@ -42,9 +42,25 @@ def _request(
     elif raw is not None:
         headers["Content-Type"] = content_type
     req = urllib.request.Request(url, data=body, headers=headers, method=method)
-    with urllib.request.urlopen(req, timeout=120) as resp:
-        text = resp.read().decode("utf-8")
-        return json.loads(text) if text else {}
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            text = resp.read().decode("utf-8")
+            return json.loads(text) if text else {}
+    except urllib.error.HTTPError as exc:
+        detail = ""
+        try:
+            detail = exc.read().decode("utf-8", errors="replace")
+        except OSError:
+            pass
+        if exc.code == 403:
+            hint = (
+                "GitHub 403：Token 无权写入 Release/Assets。"
+                "Classic PAT 需勾选 repo；Fine-grained 需对该仓库授权 Contents: Read and write。"
+            )
+            raise urllib.error.HTTPError(
+                exc.url, exc.code, f"{exc.reason} — {hint}\n{detail[:500]}", exc.headers, exc.fp
+            ) from exc
+        raise
 
 
 def render_notes() -> str:
@@ -75,12 +91,17 @@ def main() -> int:
         release = _request("GET", f"{API}/repos/{repo}/releases/tags/{tag}", token)
         release_id = release["id"]
         print(f"Updating release {tag} (id {release_id}) ...")
-        _request(
-            "PATCH",
-            f"{API}/repos/{repo}/releases/{release_id}",
-            token,
-            data={"name": title, "body": notes},
-        )
+        try:
+            _request(
+                "PATCH",
+                f"{API}/repos/{repo}/releases/{release_id}",
+                token,
+                data={"name": title, "body": notes},
+            )
+        except urllib.error.HTTPError as exc:
+            if exc.code != 403:
+                raise
+            print("Warning: 无法更新 Release 说明（403），继续尝试上传 zip …", file=sys.stderr)
     except urllib.error.HTTPError as exc:
         if exc.code != 404:
             raise
@@ -89,7 +110,13 @@ def main() -> int:
             "POST",
             f"{API}/repos/{repo}/releases",
             token,
-            data={"tag_name": tag, "name": title, "body": notes},
+            data={
+                "tag_name": tag,
+                "target_commitish": "main",
+                "name": title,
+                "body": notes,
+                "make_latest": "true",
+            },
         )
         release_id = release["id"]
 

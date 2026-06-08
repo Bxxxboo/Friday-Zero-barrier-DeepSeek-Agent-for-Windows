@@ -45,6 +45,9 @@
   let streamingNode = null;
   let streamingText = "";
   let composerQuoteText = "";
+  let stickToBottom = true;
+
+  const SCROLL_STICK_THRESHOLD = 72;
 
   const MIGRATION_KEY = "friday_migrated_v1";
   const LEGACY_SESSIONS_KEY = "friday_sessions";
@@ -353,9 +356,31 @@
     updateQueueIndicator();
   }
 
-  function scrollToBottom() {
+  function isNearBottom(el = chatScroll) {
+    if (!el) return true;
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    return distance <= SCROLL_STICK_THRESHOLD;
+  }
+
+  function updateScrollStick() {
     if (!chatScroll || chatScroll.classList.contains("hidden")) return;
+    stickToBottom = isNearBottom(chatScroll);
+  }
+
+  function resetScrollStick(stick = true) {
+    stickToBottom = stick;
+  }
+
+  /** 滚到底部。force=true 时无视用户上滑；流式输出默认仅在贴底时跟随。 */
+  function scrollToBottom(force = false) {
+    if (!chatScroll || chatScroll.classList.contains("hidden")) return;
+    if (!force && !stickToBottom) return;
     chatScroll.scrollTop = chatScroll.scrollHeight;
+    if (force) stickToBottom = true;
+  }
+
+  if (chatScroll) {
+    chatScroll.addEventListener("scroll", updateScrollStick, { passive: true });
   }
 
   function showThinking() {
@@ -516,6 +541,8 @@
     updateInputState,
     updateQueueIndicator,
     scrollToBottom,
+    resetScrollStick,
+    isNearBottom,
     showThinking,
     removeThinking,
     getActiveSession,

@@ -43,6 +43,7 @@
     if (tab === "skills") loadSkillsPanel();
     if (tab === "rules") loadRulesPanel();
     if (tab === "plugins") loadPluginsPanel();
+    if (tab === "mcp") loadMcpPanel();
   }
 
   /* ── 技能 ── */
@@ -427,4 +428,99 @@
   F.loadSkillsPanel = loadSkillsPanel;
   F.loadRulesPanel = loadRulesPanel;
   F.loadPluginsPanel = loadPluginsPanel;
+
+  /* ── MCP ── */
+
+  const mcpListEl = document.getElementById("mcpServerList");
+  const mcpResultEl = document.getElementById("mcpResult");
+  let mcpServers = [];
+
+  function renderMcpServers() {
+    if (!mcpListEl) return;
+    mcpListEl.innerHTML = "";
+    mcpServers.forEach((srv, idx) => {
+      const card = document.createElement("div");
+      card.className = "mcp-server-card";
+      card.innerHTML = `
+        <label class="settings-check"><input type="checkbox" data-mcp-enabled="${idx}" ${srv.enabled ? "checked" : ""}/> 启用</label>
+        <label><span>名称</span><input type="text" data-mcp-name="${idx}" value="${srv.name || ""}"/></label>
+        <label><span>命令</span><input type="text" data-mcp-command="${idx}" value="${srv.command || ""}" placeholder="npx 或 python 路径"/></label>
+        <label><span>参数（空格分隔）</span><input type="text" data-mcp-args="${idx}" value="${(srv.args || []).join(" ")}"/></label>
+        <label><span>工作目录（可选）</span><input type="text" data-mcp-cwd="${idx}" value="${srv.cwd || ""}"/></label>
+        <button type="button" class="ghost-btn" data-mcp-remove="${idx}">删除</button>
+      `;
+      mcpListEl.appendChild(card);
+    });
+    mcpListEl.querySelectorAll("[data-mcp-remove]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        mcpServers.splice(Number(btn.dataset.mcpRemove), 1);
+        renderMcpServers();
+      });
+    });
+  }
+
+  function collectMcpServersFromDom() {
+    return mcpServers.map((srv, idx) => {
+      const enabled = mcpListEl?.querySelector(`[data-mcp-enabled="${idx}"]`);
+      const name = mcpListEl?.querySelector(`[data-mcp-name="${idx}"]`);
+      const command = mcpListEl?.querySelector(`[data-mcp-command="${idx}"]`);
+      const args = mcpListEl?.querySelector(`[data-mcp-args="${idx}"]`);
+      const cwd = mcpListEl?.querySelector(`[data-mcp-cwd="${idx}"]`);
+      return {
+        id: srv.id || "",
+        name: name?.value?.trim() || srv.name || "MCP",
+        command: command?.value?.trim() || "",
+        args: (args?.value || "").trim().split(/\s+/).filter(Boolean),
+        env: srv.env || {},
+        enabled: enabled?.checked !== false,
+        cwd: cwd?.value?.trim() || "",
+      };
+    });
+  }
+
+  async function loadMcpPanel() {
+    try {
+      const res = await F.apiFetch("/api/mcp/servers");
+      const data = await res.json();
+      mcpServers = Array.isArray(data.servers) ? data.servers : [];
+      renderMcpServers();
+    } catch {
+      showResult(mcpResultEl, "加载 MCP 配置失败", false);
+    }
+  }
+
+  async function saveMcpPanel() {
+    mcpServers = collectMcpServersFromDom();
+    try {
+      const res = await F.apiFetch("/api/mcp/servers", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ servers: mcpServers }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showResult(mcpResultEl, "保存失败", false);
+        return;
+      }
+      mcpServers = data.servers || mcpServers;
+      showResult(mcpResultEl, "MCP 配置已保存（新会话生效）", true);
+    } catch {
+      showResult(mcpResultEl, "保存失败", false);
+    }
+  }
+
+  document.getElementById("mcpAddServerBtn")?.addEventListener("click", () => {
+    mcpServers.push({
+      id: "",
+      name: "MCP Server",
+      command: "",
+      args: [],
+      env: {},
+      enabled: true,
+      cwd: "",
+    });
+    renderMcpServers();
+  });
+  document.getElementById("mcpSaveBtn")?.addEventListener("click", () => void saveMcpPanel());
+  F.loadMcpPanel = loadMcpPanel;
 })();

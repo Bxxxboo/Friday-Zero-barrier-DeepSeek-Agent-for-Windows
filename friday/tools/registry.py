@@ -42,7 +42,7 @@ _DOWNLOAD_BLOCKED_TOOLS = frozenset({
     "open_url",
 })
 
-_EAGER_MODULES = ("filesystem", "shell", "python_runner", "system", "extensions", "vision", "image_gen")
+_EAGER_MODULES = ("filesystem", "shell", "python_runner", "system", "extensions", "vision", "image_gen", "plan_tools")
 _LAZY_MODULES = ("documents", "media", "web")
 _IMPORTED: set[str] = set()
 
@@ -116,27 +116,10 @@ def is_download_task_context(text: str) -> bool:
     return bool(_DOWNLOAD_INTENT_RE.search(text or ""))
 
 
-def get_tool_definitions_for_messages(
-    messages: list[dict[str, Any]],
-    *,
-    settings: Any | None = None,
-) -> list[dict[str, Any]]:
-    """根据最近用户消息与交互模式裁剪工具列表。"""
+def get_frozen_tool_definitions(settings: Any | None = None) -> list[dict[str, Any]]:
+    """会话级冻结工具列表：仅按交互模式裁剪，不按单条用户消息动态隐藏（利于前缀缓存）。"""
     ensure_all_tools()
-    recent_user = ""
-    for msg in reversed(messages or []):
-        if msg.get("role") == "user":
-            recent_user = str(msg.get("content", ""))
-            break
-
     defs = TOOL_DEFINITIONS
-    if is_download_task_context(recent_user):
-        defs = [
-            d for d in defs
-            if (d.get("function") or {}).get("name") not in _DOWNLOAD_BLOCKED_TOOLS
-        ]
-        _log.info("下载任务上下文 | 已隐藏 PowerShell/open_url | tools=%d", len(defs))
-
     if settings is not None:
         from friday.interaction_modes import normalize_mode, tool_allowed_in_mode
 
@@ -146,8 +129,39 @@ def get_tool_definitions_for_messages(
                 d for d in defs
                 if tool_allowed_in_mode((d.get("function") or {}).get("name", ""), mode)
             ]
-            _log.info("Ask 模式 | 仅暴露只读工具 | tools=%d", len(defs))
+            _log.info("Ask 模式 | 冻结只读工具 | tools=%d", len(defs))
 
+    from friday.context import sort_tool_definitions
+    from friday.tools.mcp_bridge import mcp_tool_definitions
+
+    return sort_tool_definitions(defs + mcp_tool_definitions())
+
+
+def get_all_tool_definitions(settings: Any | None = None) -> list[dict[str, Any]]:
+    """内置工具 + MCP 工具（用于 API schema 展示）。"""
+    return get_frozen_tool_definitions(settings)
+
+
+def get_tool_definitions_for_messages(
+    messages: list[dict[str, Any]],
+    *,
+    settings: Any | None = None,
+) -> list[dict[str, Any]]:
+    """根据最近用户消息与交互模式裁剪工具列表（非缓存路径，兼容旧调用）。"""
+    ensure_all_tools()
+    recent_user = ""
+    for msg in reversed(messages or []):
+        if msg.get("role") == "user":
+            recent_user = str(msg.get("content", ""))
+            break
+
+    defs = get_frozen_tool_definitions(settings)
+    if is_download_task_context(recent_user):
+        defs = [
+            d for d in defs
+            if (d.get("function") or {}).get("name") not in _DOWNLOAD_BLOCKED_TOOLS
+        ]
+        _log.info("下载任务上下文 | 已隐藏 PowerShell/open_url | tools=%d", len(defs))
     return defs
 
 
@@ -188,6 +202,13 @@ def execute_tool(
     *,
     cancel_event: threading.Event | None = None,
 ) -> str:
+    if name.startswith("mcp_"):
+        from friday.tools.mcp_bridge import execute_mcp_tool
+
+        result = execute_mcp_tool(name, arguments)
+        if result is not None:
+            return result
+
     _ensure_tool_module(name)
     if name not in TOOL_MAP:
         return f"未知工具: {name}"

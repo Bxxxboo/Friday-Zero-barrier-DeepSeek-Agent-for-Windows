@@ -194,7 +194,7 @@
     F.streamingText = "";
     F.streamingNode.textContent = "";
     F.chatLog.appendChild(F.streamingNode);
-    F.scrollToBottom();
+    F.scrollToBottom(true);
   }
 
   function appendStreamingDelta(delta) {
@@ -317,10 +317,57 @@
         F.removeThinking();
         appendMessage("system", data.message || "Ask 模式下不能执行此操作，请切换到 Agent 或 Yolo。", false);
         break;
+      case "file_change":
+        showFileChangeCard(data);
+        break;
       case "operation_logged":
         F.onOperationLogged?.();
         break;
     }
+  }
+
+  /* ── 文件变更 diff ── */
+
+  function showFileChangeCard(data) {
+    if (!data?.path) return;
+    F.welcomePanel.classList.add("hidden");
+    F.chatScroll.classList.remove("hidden");
+
+    const node = document.createElement("div");
+    node.className = "message file-change";
+
+    const head = document.createElement("div");
+    head.className = "file-change-head";
+    head.textContent = data.is_new
+      ? `📝 新建文件：${data.path}`
+      : `📝 已修改：${data.path}`;
+
+    const meta = document.createElement("div");
+    meta.className = "file-change-meta";
+    meta.textContent = `${data.old_chars || 0} → ${data.new_chars || 0} 字符`;
+
+    const pre = document.createElement("pre");
+    pre.className = "file-change-diff";
+    pre.textContent = data.diff || "";
+
+    const actions = document.createElement("div");
+    actions.className = "file-change-actions";
+    const openBtn = document.createElement("button");
+    openBtn.type = "button";
+    openBtn.className = "ghost-btn";
+    openBtn.textContent = "在文件夹中打开";
+    openBtn.addEventListener("click", () => {
+      void F.apiFetch("/api/open-path", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: data.path }),
+      });
+    });
+    actions.appendChild(openBtn);
+
+    node.append(head, meta, pre, actions);
+    F.chatMessages.appendChild(node);
+    F.scrollToBottom();
   }
 
   function appendMessage(kind, text, trackLocal = true, extra = {}) {
@@ -348,7 +395,7 @@
       F.attachAssistantMessageActions(node, text);
     }
     F.chatLog.appendChild(node);
-    F.scrollToBottom();
+    F.scrollToBottom(true);
 
     if (!trackLocal) return;
     const session = F.getActiveSession();
@@ -706,7 +753,7 @@
     }
     F.chatLog.appendChild(node);
     pendingApprovalNode = node;
-    F.scrollToBottom();
+    F.scrollToBottom(true);
   }
 
   async function resolveApproval(approved) {

@@ -38,6 +38,8 @@ _BUILTIN: list[dict[str, Any]] = [
      "prompt": "帮我截一张当前屏幕的截图，保存到我的文档目录。"},
     {"id": "daily-image-gen", "label": "生成图片", "icon": "🎨", "category": "daily",
      "prompt": "根据我的描述生成一张图片，保存到「生成的图片」文件夹，并告诉我保存路径。"},
+    {"id": "plan-task", "label": "制定计划", "icon": "📋", "category": "daily",
+     "prompt": "请为当前任务制定详细计划（Markdown），并用 update_session_plan / update_session_todos 写入计划面板；然后按步骤执行第一项。"},
     {"id": "daily-dup", "label": "查重复文件", "icon": "🗂", "category": "daily",
      "prompt": "在我的文档和下载文件夹中查找重复文件，先列出结果不要直接删除。"},
      {"id": "net-download", "label": "下载软件", "icon": "⬇️", "category": "daily",

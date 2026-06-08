@@ -51,6 +51,8 @@
     session.messages = F.toUiMessages(data.messages);
     F.activeSessionId = sessionId;
     F.chatTitle.textContent = data.title;
+    F.applySessionPlan?.(data);
+    void F.loadSessionPlan?.(sessionId);
     renderMessages(session.messages);
     renderSessionList();
     if (activate) {
@@ -243,7 +245,8 @@
       F.chatLog.appendChild(node);
     });
     updateEmptyState(messages);
-    F.scrollToBottom();
+    F.resetScrollStick(true);
+    F.scrollToBottom(true);
   }
 
   /* ── 切换 / 删除 ── */

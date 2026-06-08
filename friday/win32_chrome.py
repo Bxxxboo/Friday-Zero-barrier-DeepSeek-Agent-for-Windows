@@ -20,6 +20,14 @@ SWP_NOSIZE = 0x0001
 SWP_NOZORDER = 0x0004
 SWP_NOACTIVATE = 0x0010
 SWP_FRAMECHANGED = 0x0020
+GWLP_WNDPROC = -4
+WM_MOUSEACTIVATE = 0x0021
+MA_ACTIVATE = 1
+GA_ROOT = 2
+ASFW_ANY = 0xFFFFFFFF
+HWND_TOPMOST = -1
+HWND_NOTOPMOST = -2
+SWP_SHOWWINDOW = 0x0040
 
 # DWM
 DWMWA_NCRENDERING_POLICY = 2
@@ -108,6 +116,149 @@ def find_app_window() -> int | None:
 
     user32.EnumWindows(_callback, 0)
     return found[0] if found else None
+
+
+_subclass_procs: dict[int, tuple[int, object]] = {}
+if sys.platform == "win32":
+    _user32 = ctypes.windll.user32
+    if hasattr(_user32, "GetWindowLongPtrW"):
+        _GetWindowLongPtr = _user32.GetWindowLongPtrW
+        _SetWindowLongPtr = _user32.SetWindowLongPtrW
+    else:
+        _GetWindowLongPtr = _user32.GetWindowLongW
+        _SetWindowLongPtr = _user32.SetWindowLongW
+    _CallWindowProcW = _user32.CallWindowProcW
+    _LRESULT = ctypes.c_ssize_t
+    _WNDPROC = ctypes.WINFUNCTYPE(
+        _LRESULT,
+        wintypes.HWND,
+        wintypes.UINT,
+        wintypes.WPARAM,
+        wintypes.LPARAM,
+    )
+else:
+    _GetWindowLongPtr = _SetWindowLongPtr = _CallWindowProcW = None
+    _WNDPROC = None
+
+
+def _window_root(hwnd: int) -> int:
+    if sys.platform != "win32" or not hwnd:
+        return hwnd
+    root = ctypes.windll.user32.GetAncestor(hwnd, GA_ROOT)
+    return int(root or hwnd)
+
+
+def is_window_foreground(hwnd: int) -> bool:
+    if sys.platform != "win32" or not hwnd:
+        return False
+    user32 = ctypes.windll.user32
+    root = _window_root(hwnd)
+    return user32.GetForegroundWindow() == root
+
+
+def _subclass_hwnd_for_click_activate(hwnd: int, root_hwnd: int) -> None:
+    if sys.platform != "win32" or not hwnd or not _WNDPROC:
+        return
+    if hwnd in _subclass_procs:
+        return
+    user32 = ctypes.windll.user32
+    if not user32.IsWindow(hwnd):
+        return
+    old_proc = _GetWindowLongPtr(hwnd, GWLP_WNDPROC)
+    if not old_proc:
+        return
+
+    @_WNDPROC
+    def proc(h: int, msg: int, wparam: int, lparam: int) -> int:
+        if msg == WM_MOUSEACTIVATE:
+            target_root = _window_root(h)
+            if user32.GetForegroundWindow() != target_root:
+                focus_window(target_root or root_hwnd)
+            return MA_ACTIVATE
+        return _CallWindowProcW(old_proc, h, msg, wparam, lparam)
+
+    _subclass_procs[hwnd] = (old_proc, proc)
+    _SetWindowLongPtr(hwnd, GWLP_WNDPROC, ctypes.cast(proc, ctypes.c_void_p).value)
+
+
+def install_click_to_focus(root_hwnd: int) -> None:
+    """WebView2 子窗口常返回 MA_NOACTIVATE，点击被遮挡露出的区域无法置顶。"""
+    if sys.platform != "win32" or not root_hwnd:
+        return
+    _subclass_hwnd_for_click_activate(root_hwnd, root_hwnd)
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def _enum_child(child: int, _lparam: int) -> bool:
+        _subclass_hwnd_for_click_activate(child, root_hwnd)
+        return True
+
+    ctypes.windll.user32.EnumChildWindows(root_hwnd, _enum_child, 0)
+
+
+def focus_window(hwnd: int) -> bool:
+    """把指定 HWND 提到前台（无边框 WebView 点击时常需显式调用）。"""
+    if sys.platform != "win32" or not hwnd:
+        return False
+
+    user32 = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
+    root = _window_root(hwnd)
+    target = root or hwnd
+    if user32.GetForegroundWindow() == target:
+        return True
+
+    try:
+        user32.AllowSetForegroundWindow(ASFW_ANY)
+    except (AttributeError, OSError):
+        pass
+
+    if user32.IsIconic(target):
+        user32.ShowWindow(target, 9)
+    else:
+        user32.ShowWindow(target, 5)
+
+    foreground = user32.GetForegroundWindow()
+    fg_thread = user32.GetWindowThreadProcessId(foreground, None)
+    target_thread = user32.GetWindowThreadProcessId(target, None)
+    current_thread = kernel32.GetCurrentThreadId()
+    attached: list[tuple[int, int]] = []
+    try:
+        for thread in (fg_thread, target_thread):
+            if thread and thread != current_thread:
+                if user32.AttachThreadInput(thread, current_thread, True):
+                    attached.append((thread, current_thread))
+        user32.BringWindowToTop(target)
+        user32.SetForegroundWindow(target)
+        if user32.GetForegroundWindow() != target:
+            user32.SetWindowPos(
+                target,
+                HWND_TOPMOST,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
+            )
+            user32.SetWindowPos(
+                target,
+                HWND_NOTOPMOST,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
+            )
+            user32.SetForegroundWindow(target)
+        if user32.GetForegroundWindow() != target:
+            VK_MENU = 0x12
+            KEYEVENTF_KEYUP = 0x0002
+            user32.keybd_event(VK_MENU, 0, 0, 0)
+            user32.SetForegroundWindow(target)
+            user32.keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0)
+    finally:
+        for thread, curr in reversed(attached):
+            user32.AttachThreadInput(thread, curr, False)
+    return user32.GetForegroundWindow() == target
 
 
 def clear_dwm_extended_frame(hwnd: int) -> None:
@@ -234,5 +385,6 @@ def set_taskbar_thumbnail_clip(hwnd: int) -> None:
 
 def tune_desktop_window(hwnd: int, bg_hex: str, *, dark: bool, clip_thumbnail: bool = True) -> None:
     apply_desktop_window_chrome(hwnd, bg_hex, dark=dark)
+    install_click_to_focus(hwnd)
     if clip_thumbnail:
         set_taskbar_thumbnail_clip(hwnd)

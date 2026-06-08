@@ -180,6 +180,7 @@
       renderSteps(data.steps);
       updateBanner(data);
       setResult(data.ok || data.ready, (data.message || "").replace(/\n/g, " · ") || (data.ok ? "完成" : "未完成"));
+      void refreshOpenclawAutostart();
     } catch {
       setResult(false, "请求失败，请稍后重试。");
     } finally {
@@ -203,10 +204,63 @@
 
   F.refreshWeixinSetup = refreshWeixinSetup;
 
+  let openclawAutostartBusy = false;
+
+  async function refreshOpenclawAutostart() {
+    const checkbox = $("openclawGatewayAutostart");
+    const hint = $("openclawAutostartResult");
+    if (!checkbox) return;
+    try {
+      const res = await F.apiFetch("/api/weixin/gateway/autostart");
+      const data = await res.json();
+      checkbox.disabled = data.available === false;
+      checkbox.checked = !!data.enabled;
+      if (hint) {
+        hint.className = "settings-result ok";
+        hint.textContent = data.detail || "";
+      }
+    } catch {
+      if (hint) {
+        hint.className = "settings-result error";
+        hint.textContent = "无法读取 Gateway 自启状态";
+      }
+    }
+  }
+
+  async function setOpenclawAutostart(enabled) {
+    if (openclawAutostartBusy) return;
+    openclawAutostartBusy = true;
+    const hint = $("openclawAutostartResult");
+    try {
+      const res = await F.apiFetch("/api/weixin/gateway/autostart", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      });
+      const data = await res.json();
+      await refreshOpenclawAutostart();
+      if (hint) {
+        hint.className = data.ok ? "settings-result ok" : "settings-result error";
+        hint.textContent = data.message || data.detail || "";
+      }
+    } catch {
+      if (hint) {
+        hint.className = "settings-result error";
+        hint.textContent = "设置失败";
+      }
+    } finally {
+      openclawAutostartBusy = false;
+    }
+  }
+
   $("weixinSetupFullBtn")?.addEventListener("click", () => void runSetup("full"));
   $("weixinSetupRefreshBtn")?.addEventListener("click", () => void refreshWeixinSetup());
   $("weixinSetupLoginBtn")?.addEventListener("click", () => void runSetup("login"));
   $("weixinBridgeEnabled")?.addEventListener("change", (e) => {
     void toggleBridge(!!e.target.checked);
   });
+  $("openclawGatewayAutostart")?.addEventListener("change", (e) => {
+    void setOpenclawAutostart(!!e.target.checked);
+  });
+  void refreshOpenclawAutostart();
 })();

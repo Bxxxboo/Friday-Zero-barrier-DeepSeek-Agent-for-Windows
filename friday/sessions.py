@@ -33,6 +33,8 @@ class ChatSession:
     agent_messages: list[dict[str, Any]] = field(default_factory=list)
     display_messages: list[dict[str, Any]] = field(default_factory=list)
     title_pinned: bool = False
+    plan_markdown: str = ""
+    todos: list[dict[str, Any]] = field(default_factory=list)
 
     def to_summary(self) -> SessionSummary:
         return SessionSummary(
@@ -165,6 +167,8 @@ def _parse_session_data(data: dict[str, Any]) -> ChatSession | None:
             agent_messages=agent_messages,
             display_messages=display,
             title_pinned=bool(data.get("title_pinned", False)),
+            plan_markdown=str(data.get("plan_markdown", "") or ""),
+            todos=list(data.get("todos") or []) if isinstance(data.get("todos"), list) else [],
         )
     except (KeyError, TypeError, ValueError):
         return None
@@ -195,6 +199,8 @@ def _save_session(session: ChatSession) -> None:
         "created_at": session.created_at,
         "updated_at": session.updated_at,
         "title_pinned": session.title_pinned,
+        "plan_markdown": session.plan_markdown,
+        "todos": session.todos,
         "display_messages": display,
         "agent_messages": _compress_agent_messages(session.agent_messages),
     }
@@ -256,6 +262,17 @@ def get_session(session_id: str) -> ChatSession | None:
         return None
     if int(data.get("format_version", 1)) < SESSION_FORMAT_VERSION:
         _save_session(session)
+    return session
+
+
+def save_session_fields(session_id: str, **fields: Any) -> ChatSession | None:
+    session = get_session(session_id)
+    if session is None:
+        return None
+    for key, value in fields.items():
+        if hasattr(session, key):
+            setattr(session, key, value)
+    _save_session(session)
     return session
 
 

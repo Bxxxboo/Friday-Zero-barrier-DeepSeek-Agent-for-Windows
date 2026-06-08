@@ -2,6 +2,25 @@
 
 版本说明与 `assets/changelog.json` 同步；应用内「更新公告」亦读取该文件。
 
+## 1.2.0（2026-06-08）
+
+**缓存优化、变更审查、Plan/MCP 与自启完善**
+
+### 新功能
+
+- DeepSeek 前缀缓存：冻结 system/tools、append-only 上下文折叠、状态栏 cache 命中率
+- Agent 写文件后在聊天区展示 diff 摘要，支持在资源管理器中打开
+- 会话 Plan / Todo 面板与 `update_session_plan` / `update_session_todos` 工具
+- MCP stdio 客户端：设置 → 扩展 → MCP，配置随配置包 portable 迁移
+- OpenClaw Gateway 开机自启开关（设置 → 微信端 AI）
+- 星期五本体开机自启（设置 → 启动）
+
+### 改进
+
+- 工具输出智能压缩、重复工具循环检测、前缀漂移日志
+- 配置包导出/导入包含 `mcp_servers.json`
+- 内置技能「制定计划」
+
 ## 1.1.3（2026-06-08）
 
 **可移植性迁移、对话体验与 UI 抛光**

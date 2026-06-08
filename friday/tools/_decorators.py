@@ -42,7 +42,10 @@ def register_tool(
 
 
 def build_definitions() -> list[dict[str, Any]]:
-    return [info["definition"] for info in _REGISTRY.values()]
+    from friday.context import sort_tool_definitions
+
+    items = [info["definition"] for info in _REGISTRY.values()]
+    return sort_tool_definitions(items)
 
 
 def build_tool_map() -> dict[str, Callable[..., str]]:

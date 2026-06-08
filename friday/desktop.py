@@ -182,6 +182,32 @@ class WindowApi:
         if self._window:
             self._window.restore()
 
+    def activate_window(self) -> bool:
+        """点击界面时把窗口提到前台。"""
+        if self._window:
+            try:
+                self._window.show()
+            except Exception:
+                pass
+        if sys.platform != "win32":
+            return True
+        hwnd = self._resolve_hwnd()
+        if not hwnd:
+            return False
+        from friday.win32_chrome import focus_window
+
+        return focus_window(hwnd)
+
+    def is_window_foreground(self) -> bool:
+        if sys.platform != "win32":
+            return True
+        hwnd = self._resolve_hwnd()
+        if not hwnd:
+            return False
+        from friday.win32_chrome import is_window_foreground
+
+        return is_window_foreground(hwnd)
+
     def close_window(self) -> None:
         if self._window:
             self._window.destroy()

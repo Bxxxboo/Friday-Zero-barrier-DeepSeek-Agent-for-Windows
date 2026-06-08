@@ -49,27 +49,9 @@ def focus_existing_window() -> bool:
     if sys.platform != "win32":
         return True
 
-    import ctypes
-    from ctypes import wintypes
+    from friday.win32_chrome import focus_window
 
-    user32 = ctypes.windll.user32
-    kernel32 = ctypes.windll.kernel32
-
-    user32.ShowWindow(hwnd, 9 if user32.IsIconic(hwnd) else 5)
-
-    foreground = user32.GetForegroundWindow()
-    fg_thread = user32.GetWindowThreadProcessId(foreground, None)
-    current_thread = kernel32.GetCurrentThreadId()
-    attached = False
-    if fg_thread and fg_thread != current_thread:
-        attached = bool(user32.AttachThreadInput(fg_thread, current_thread, True))
-    try:
-        user32.BringWindowToTop(hwnd)
-        user32.SetForegroundWindow(hwnd)
-    finally:
-        if attached:
-            user32.AttachThreadInput(fg_thread, current_thread, False)
-    return True
+    return focus_window(hwnd)
 
 
 def _pid_listening_on(port: int) -> int | None:

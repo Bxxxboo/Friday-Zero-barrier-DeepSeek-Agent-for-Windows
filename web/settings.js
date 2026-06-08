@@ -1,5 +1,5 @@
 /* ================================================================= *
- *  settings.js — Friday 设置页：API / 文件夹 / 外观 / 日志 / 安全与更新 + 主题
+ *  settings.js — Friday 设置页：API / 文件夹 / 外观 / 数据移植与日志 / 安全与更新 + 主题
  *  依赖 utils.js
  * ================================================================= */
 
@@ -88,6 +88,62 @@
     document.getElementById("allowWebBrowse").checked = data.allow_web_browse;
     document.getElementById("allowDownloads").checked = data.allow_downloads;
     document.getElementById("requireTrustedDownloads").checked = data.require_trusted_downloads;
+  }
+
+  let autostartBusy = false;
+
+  function applyAutostartUi(data) {
+    const checkbox = document.getElementById("launchAtLogon");
+    const hint = document.getElementById("launchAtLogonHint");
+    if (!checkbox) return;
+    checkbox.disabled = data.launch_at_logon_available === false;
+    checkbox.checked = !!data.launch_at_logon;
+    if (hint) {
+      hint.textContent = data.launch_at_logon_detail || "";
+    }
+  }
+
+  async function toggleAutostart(enabled) {
+    if (autostartBusy) return;
+    autostartBusy = true;
+    const checkbox = document.getElementById("launchAtLogon");
+    const resultEl = document.getElementById("autostartResult");
+    if (resultEl) {
+      resultEl.className = "settings-result";
+      resultEl.textContent = enabled ? "正在开启…" : "正在关闭…";
+    }
+    try {
+      const res = await F.apiFetch("/api/autostart", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: !!enabled }),
+      });
+      const data = await res.json();
+      applyAutostartUi({
+        launch_at_logon: !!data.enabled,
+        launch_at_logon_available: data.available !== false,
+        launch_at_logon_detail: data.detail || data.message || "",
+      });
+      if (resultEl) {
+        resultEl.className = data.ok ? "settings-result ok" : "settings-result error";
+        if (data.ok) {
+          resultEl.textContent = data.enabled ? t("autostart.enabled") : t("autostart.disabled");
+        } else {
+          resultEl.textContent = data.message || t("autostart.failed");
+          if (checkbox) checkbox.checked = !enabled;
+        }
+      } else if (!data.ok && checkbox) {
+        checkbox.checked = !enabled;
+      }
+    } catch {
+      if (resultEl) {
+        resultEl.className = "settings-result error";
+        resultEl.textContent = t("autostart.failed");
+      }
+      if (checkbox) checkbox.checked = !enabled;
+    } finally {
+      autostartBusy = false;
+    }
   }
 
   function collectSecuritySettings() {
@@ -182,11 +238,10 @@
     document.getElementById("fontSize").value = data.font_size || "medium";
     const langEl = document.getElementById("uiLanguage");
     if (langEl) langEl.value = data.ui_language || "zh";
-    const modeDefault = document.getElementById("interactionModeDefault");
-    if (modeDefault) modeDefault.value = data.interaction_mode || "agent";
     F.setInteractionMode?.(data.interaction_mode || "agent", { persist: false, skipYoloGate: true });
     void F.refreshYoloUnlockState?.();
     fillSecurityForm(data);
+    applyAutostartUi(data);
     applyUiSettings(data);
     F.apiReady = data.api_ready;
     F.updateApiStatus(data.api_ready);
@@ -361,7 +416,6 @@
       ui_language: document.getElementById("uiLanguage")?.value || "zh",
       theme: document.getElementById("themeMode").value,
       font_size: document.getElementById("fontSize").value,
-      interaction_mode: document.getElementById("interactionModeDefault")?.value || "agent",
     };
     const res = await F.apiFetch("/api/settings", {
       method: "PUT",
@@ -370,7 +424,6 @@
     });
     const data = await res.json();
     applyUiSettings(data);
-    F.setInteractionMode?.(data.interaction_mode || payload.interaction_mode, { persist: false });
     F.appearanceResult.className = "settings-result ok";
     F.appearanceResult.textContent = t("appearance.saved");
   }
@@ -612,7 +665,7 @@
     }
   }
 
-  /* ── 诊断 / 日志 ── */
+  /* ── 数据移植 / 日志 ── */
 
   async function refreshLogPreview() {
     const preview = document.getElementById("logPreview");
@@ -744,31 +797,6 @@
   document.getElementById("openLogFolderBtn")?.addEventListener("click", openLogFolder);
   document.getElementById("refreshLogPreviewBtn")?.addEventListener("click", refreshLogPreview);
 
-  async function runPortableAudit() {
-    const reportEl = document.getElementById("portableReport");
-    const resultEl = document.getElementById("logsResult");
-    if (reportEl) reportEl.textContent = "正在自检…";
-    try {
-      const res = await F.apiFetch("/api/portable/audit");
-      const data = await res.json();
-      const lines = (data.items || []).map((item) => {
-        const mark = item.ok ? "✓" : "✗";
-        return `${mark} ${item.label}${item.detail ? ` — ${item.detail}` : ""}`;
-      });
-      if (reportEl) reportEl.textContent = lines.join("\n") || "（无检查项）";
-      if (resultEl) {
-        resultEl.className = "settings-result ok";
-        resultEl.textContent = "自检完成";
-      }
-    } catch {
-      if (reportEl) reportEl.textContent = "自检失败，请稍后重试。";
-      if (resultEl) {
-        resultEl.className = "settings-result error";
-        resultEl.textContent = "自检失败";
-      }
-    }
-  }
-
   async function exportPortableBundle() {
     const btn = document.getElementById("portableExportBtn");
     const resultEl = document.getElementById("logsResult");
@@ -847,7 +875,6 @@
     }
   }
 
-  document.getElementById("portableAuditBtn")?.addEventListener("click", () => void runPortableAudit());
   document.getElementById("portableExportBtn")?.addEventListener("click", () => void exportPortableBundle());
   document.getElementById("portableImportBtn")?.addEventListener("click", () => {
     document.getElementById("portableImportInput")?.click();
@@ -928,6 +955,9 @@
   }
 
   document.getElementById("checkUpdateBtn")?.addEventListener("click", checkForUpdates);
+  document.getElementById("launchAtLogon")?.addEventListener("change", (event) => {
+    void toggleAutostart(event.target.checked);
+  });
   document.getElementById("viewChangelogBtn")?.addEventListener("click", () => {
     void F.showChangelogHistory?.();
   });

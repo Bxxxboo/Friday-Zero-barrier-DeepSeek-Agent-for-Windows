@@ -198,6 +198,32 @@
     });
   }
 
+  function initWindowActivation() {
+    if (!document.documentElement.classList.contains("desktop")) return;
+    let activating = false;
+    const requestActivate = () => {
+      const api = window.pywebview?.api;
+      if (!api?.activate_window || activating) return;
+      const runActivate = () => {
+        activating = true;
+        Promise.resolve(api.activate_window()).finally(() => {
+          activating = false;
+        });
+      };
+      if (api.is_window_foreground) {
+        Promise.resolve(api.is_window_foreground())
+          .then((foreground) => {
+            if (!foreground) runActivate();
+          })
+          .catch(runActivate);
+        return;
+      }
+      runActivate();
+    };
+    document.addEventListener("pointerdown", requestActivate, true);
+    document.addEventListener("mousedown", requestActivate, true);
+  }
+
   function bindTitlebarBtn(id, handler) {
     const btn = document.getElementById(id);
     if (!btn) return;
@@ -261,6 +287,7 @@
 
   if (document.documentElement.classList.contains("desktop")) {
     initDesktopSurfaceRefresh();
+    initWindowActivation();
     window.addEventListener("pywebviewready", initFramelessWindow);
     tryInitFrameless();
   } else {

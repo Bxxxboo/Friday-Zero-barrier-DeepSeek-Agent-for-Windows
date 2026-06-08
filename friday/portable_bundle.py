@@ -16,7 +16,7 @@ from friday.paths import get_appdata_dir
 _log = get_logger("portable_bundle")
 
 BUNDLE_VERSION = 1
-_CONFIG_FILES = ("settings.json", "skills.json", "rules.json", "plugins.json")
+_CONFIG_FILES = ("settings.json", "skills.json", "rules.json", "plugins.json", "mcp_servers.json")
 
 
 def _bundle_info() -> dict[str, Any]:

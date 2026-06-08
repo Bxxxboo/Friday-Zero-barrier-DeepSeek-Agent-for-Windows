@@ -22,6 +22,8 @@
     imageGenDot: document.getElementById("statusImageGenDot"),
     imageGenText: document.getElementById("statusImageGenText"),
     tokens: document.getElementById("statusTokens"),
+    cacheWrap: document.getElementById("statusCacheWrap"),
+    cacheHit: document.getElementById("statusCacheHit"),
     tasks: document.getElementById("statusTasks"),
     workspace: document.getElementById("statusWorkspace"),
     model: document.getElementById("statusModel"),
@@ -49,6 +51,21 @@
     if (!usage || els.tokens == null) return;
     if (usage.tokens_total != null) {
       els.tokens.textContent = formatTokens(usage.tokens_total);
+    }
+    if (els.cacheWrap && els.cacheHit) {
+      const hit = Number(usage.cache_hit_tokens || 0);
+      const miss = Number(usage.cache_miss_tokens || 0);
+      const total = hit + miss;
+      if (total > 0) {
+        const rate = usage.cache_hit_rate != null
+          ? Number(usage.cache_hit_rate) * 100
+          : (hit / total) * 100;
+        els.cacheHit.textContent = `${rate.toFixed(0)}%`;
+        els.cacheWrap.hidden = false;
+        els.cacheWrap.title = `缓存命中 ${formatTokens(hit)} / ${formatTokens(total)} tokens`;
+      } else {
+        els.cacheWrap.hidden = true;
+      }
     }
   }
 
@@ -87,6 +104,21 @@
 
     if (els.tokens && data.tokens_total != null) {
       els.tokens.textContent = formatTokens(data.tokens_total);
+    }
+    if (els.cacheWrap && els.cacheHit) {
+      const hit = Number(data.cache_hit_tokens || 0);
+      const miss = Number(data.cache_miss_tokens || 0);
+      const total = hit + miss;
+      if (total > 0) {
+        const rate = data.cache_hit_rate != null
+          ? Number(data.cache_hit_rate) * 100
+          : (hit / total) * 100;
+        els.cacheHit.textContent = `${rate.toFixed(0)}%`;
+        els.cacheWrap.hidden = false;
+        els.cacheWrap.title = `缓存命中 ${formatTokens(hit)} / ${formatTokens(total)} tokens`;
+      } else {
+        els.cacheWrap.hidden = true;
+      }
     }
     if (els.tasks && data.tasks != null) {
       els.tasks.textContent = String(data.tasks);

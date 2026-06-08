@@ -4,7 +4,7 @@ from typing import Any, Callable
 
 import threading
 
-from friday.brain import build_system_prompt, ChatCompletionResult, DeepSeekBrain
+from friday.brain import ChatCompletionResult, DeepSeekBrain, UsageStats
 from friday.config import MAX_TOOL_RESULT_CHARS, MAX_TOOL_ROUNDS
 from friday.logging_config import get_logger
 from friday.safety import (
@@ -39,9 +39,7 @@ class FridayAgent:
         self.settings = settings
         self.brain = DeepSeekBrain(settings)
         self.request_approval = request_approval
-        self.messages: list[dict[str, Any]] = [
-            {"role": "system", "content": build_system_prompt(settings)}
-        ]
+        self.messages: list[dict[str, Any]] = []
         self._round_count = 0
         self._cancel_event = threading.Event()  # #2 取消机制
         self.operation_meta: dict[str, Any] = {}
@@ -49,6 +47,73 @@ class FridayAgent:
         self.yolo_unlocked = False
         self.session_prompt_tokens = 0
         self.session_completion_tokens = 0
+        self.session_cache_hit_tokens = 0
+        self.session_cache_miss_tokens = 0
+        self._frozen_prefix: Any = None
+        self._pin_prefix(force=True)
+
+    def _pin_prefix(self, *, force: bool = False) -> bool:
+        """冻结 system + tools，会话内保持字节稳定以利于前缀缓存。"""
+        from friday.prefix_cache import build_frozen_prefix, log_prefix_drift
+
+        frozen = build_frozen_prefix(self.settings, yolo_unlocked=self.yolo_unlocked)
+        changed = force or (
+            self._frozen_prefix is None
+            or frozen.fingerprint != self._frozen_prefix.fingerprint
+        )
+        self._frozen_prefix = frozen
+        if self.messages and self.messages[0].get("role") == "system":
+            self.messages[0] = {"role": "system", "content": frozen.system_prompt}
+        else:
+            self.messages = [{"role": "system", "content": frozen.system_prompt}, *self.messages]
+        if changed:
+            _log.info(
+                "前缀已冻结 | fingerprint=%s tools=%d",
+                frozen.fingerprint[:12],
+                len(frozen.tool_definitions),
+            )
+        else:
+            drift = self._prefix_drift_reasons()
+            if drift:
+                log_prefix_drift(drift, fingerprint=frozen.fingerprint)
+        return changed
+
+    def _prefix_drift_reasons(self) -> list[str]:
+        if self._frozen_prefix is None:
+            return []
+        from friday.prefix_cache import detect_prefix_drift
+
+        return detect_prefix_drift(
+            self._frozen_prefix,
+            self.messages,
+            self.settings,
+            yolo_unlocked=self.yolo_unlocked,
+        )
+
+    def refresh_prefix_if_needed(
+        self,
+        settings: UserSettings,
+        *,
+        yolo_unlocked: bool = False,
+    ) -> bool:
+        """设置变更影响前缀时重新冻结（会重置缓存命中）。"""
+        from friday.prefix_cache import compute_settings_fingerprint, log_prefix_drift
+
+        prev_fp = (
+            self._frozen_prefix.settings_fingerprint
+            if self._frozen_prefix is not None
+            else ""
+        )
+        self.settings = settings
+        self.yolo_unlocked = yolo_unlocked
+        new_fp = compute_settings_fingerprint(settings, yolo_unlocked=yolo_unlocked)
+        if new_fp != prev_fp:
+            _log.info("设置影响前缀，重新冻结 | was=%s now=%s", prev_fp[:12], new_fp[:12])
+            return self._pin_prefix(force=True)
+        drift = self._prefix_drift_reasons()
+        if drift and self._frozen_prefix is not None:
+            log_prefix_drift(drift, fingerprint=self._frozen_prefix.fingerprint)
+        return False
 
     # ── 生命周期 ──
 
@@ -60,25 +125,43 @@ class FridayAgent:
     def reset(self) -> None:
         self._cancel_event.clear()
         self._turn_approval = TurnApprovalState()
-        self.messages = [{"role": "system", "content": build_system_prompt(self.settings)}]
+        self.messages = []
         self._round_count = 0
         self.session_prompt_tokens = 0
         self.session_completion_tokens = 0
+        self.session_cache_hit_tokens = 0
+        self.session_cache_miss_tokens = 0
+        self._pin_prefix(force=True)
 
     def _finalize_usage(self) -> None:
         """将本轮 brain 计数累加到会话总量，并清零本轮计数。"""
-        self.session_prompt_tokens += self.brain.total_prompt_tokens
-        self.session_completion_tokens += self.brain.total_completion_tokens
+        self.session_prompt_tokens += self.brain.usage_stats.prompt_tokens or self.brain.total_prompt_tokens
+        self.session_completion_tokens += (
+            self.brain.usage_stats.completion_tokens or self.brain.total_completion_tokens
+        )
+        self.session_cache_hit_tokens += self.brain.usage_stats.cache_hit_tokens
+        self.session_cache_miss_tokens += self.brain.usage_stats.cache_miss_tokens
+        self.brain.usage_stats = UsageStats()
         self.brain.total_prompt_tokens = 0
         self.brain.total_completion_tokens = 0
 
-    def usage_snapshot(self) -> dict[str, int]:
-        prompt = self.session_prompt_tokens + self.brain.total_prompt_tokens
-        completion = self.session_completion_tokens + self.brain.total_completion_tokens
+    def usage_snapshot(self) -> dict[str, int | float]:
+        stats = self.brain.usage_stats
+        prompt = self.session_prompt_tokens + stats.prompt_tokens + self.brain.total_prompt_tokens
+        completion = (
+            self.session_completion_tokens + stats.completion_tokens + self.brain.total_completion_tokens
+        )
+        cache_hit = self.session_cache_hit_tokens + stats.cache_hit_tokens
+        cache_miss = self.session_cache_miss_tokens + stats.cache_miss_tokens
+        cache_total = cache_hit + cache_miss
+        rate = (cache_hit / cache_total) if cache_total > 0 else 0.0
         return {
-            "tokens_prompt": prompt,
-            "tokens_completion": completion,
-            "tokens_total": prompt + completion,
+            "tokens_prompt": int(prompt),
+            "tokens_completion": int(completion),
+            "tokens_total": int(prompt + completion),
+            "cache_hit_tokens": int(cache_hit),
+            "cache_miss_tokens": int(cache_miss),
+            "cache_hit_rate": round(rate, 4),
         }
 
     def _finish_run(self, content: str) -> str:
@@ -89,12 +172,8 @@ class FridayAgent:
         if not messages:
             self.reset()
             return
-        self.messages = messages
-        system_prompt = build_system_prompt(self.settings)
-        if not self.messages or self.messages[0].get("role") != "system":
-            self.messages = [{"role": "system", "content": system_prompt}, *self.messages]
-        else:
-            self.messages[0] = {"role": "system", "content": system_prompt}
+        self.messages = list(messages)
+        self._pin_prefix(force=True)
 
     # ── 事件发射 ──
 
@@ -106,8 +185,23 @@ class FridayAgent:
 
     def _consume_stream(self, on_event: EventCallback | None, *, tools: bool = True) -> ChatCompletionResult:
         """与模型交互一次，返回 delta + finish 结果。"""
-        # ── 上下文管理：发送前截断超限消息 ──
-        self.messages = self.brain.trim_messages(self.messages)
+        if self._frozen_prefix is None:
+            self._pin_prefix(force=True)
+
+        drift = self._prefix_drift_reasons()
+        if drift:
+            from friday.prefix_cache import log_prefix_drift
+
+            log_prefix_drift(drift, fingerprint=self._frozen_prefix.fingerprint)
+
+        prepared = self.brain.prepare_messages(
+            self.messages,
+            tool_definitions=self._frozen_prefix.tool_definitions if tools else None,
+        )
+        if prepared is not self.messages and prepared != self.messages:
+            self.messages = prepared
+
+        tool_defs = self._frozen_prefix.tool_definitions if tools else None
 
         stream_started = False
         finish: ChatCompletionResult | None = None
@@ -115,6 +209,7 @@ class FridayAgent:
         for kind, payload in self.brain.iter_chat(
             self.messages,
             tools=tools,
+            tool_definitions=tool_defs,
             should_cancel=self._cancel_event.is_set,
         ):
             if self._cancel_event.is_set():
@@ -309,9 +404,26 @@ class FridayAgent:
         if self._cancel_event.is_set():
             return CANCELLED_MESSAGE
 
+        pending_old_text = ""
+        if name == "write_text_file":
+            from friday.file_diff import read_text_if_exists
+
+            pending_old_text = read_text_if_exists(str(args.get("path", "")))
+
         result = execute_tool(name, exec_args, cancel_event=self._cancel_event)
         if self._cancel_event.is_set() or result == CANCELLED_TOOL_MESSAGE:
             return CANCELLED_MESSAGE
+
+        if name == "write_text_file" and result.startswith("已写入"):
+            from friday.file_diff import build_file_change_payload
+
+            path_arg = str(args.get("path", ""))
+            payload = build_file_change_payload(
+                path_arg,
+                pending_old_text,
+                str(args.get("content", "")),
+            )
+            self._emit(on_event, "file_change", payload)
 
         meta = self.operation_meta or {}
         entry = log_operation(
@@ -331,16 +443,22 @@ class FridayAgent:
         return result
 
     def _append_tool_result(self, call_id: str, name: str, result: str) -> None:
-        """截断并追加工具结果到消息历史。"""
-        if len(result) > MAX_TOOL_RESULT_CHARS:
-            original_len = len(result)
-            _log.info("工具 %s 输出截断 (%d -> %d 字符)", name, original_len, MAX_TOOL_RESULT_CHARS)
-            result = result[:MAX_TOOL_RESULT_CHARS] + f"\n... (已截断，共 {original_len} 字符)"
+        """压缩并追加工具结果到消息历史。"""
+        from friday.context import compress_tool_result
 
+        original_len = len(result)
+        compressed = compress_tool_result(name, result, max_chars=MAX_TOOL_RESULT_CHARS)
+        if len(compressed) < original_len:
+            _log.info(
+                "工具 %s 输出压缩 (%d -> %d 字符)",
+                name,
+                original_len,
+                len(compressed),
+            )
         self.messages.append({
             "role": "tool",
             "tool_call_id": call_id,
-            "content": result,
+            "content": compressed,
         })
 
     def _execute_round(self, finish: ChatCompletionResult, on_event: EventCallback | None) -> None:
@@ -382,6 +500,11 @@ class FridayAgent:
 
     def run(self, user_text: str, on_event: EventCallback | None = None) -> str:
         self._cancel_event.clear()
+        from friday.agent_context import current_session_id
+
+        session_id = str((self.operation_meta or {}).get("session_id", ""))
+        if session_id:
+            current_session_id.set(session_id)
         # 保留 _turn_approval：当前对话内首次确认后，后续操作自动继续
         if is_download_task_context(user_text):
             hint = (
@@ -389,16 +512,23 @@ class FridayAgent:
                 "必须使用 download_software 或 download_file，严禁 run_powershell / open_url。"
                 "一次 download_software 调用即可，不要分多步试探链接。"
             )
-            if self.messages and self.messages[0].get("role") == "system":
-                base = self.messages[0]["content"]
-                if "【当前任务：下载/安装软件】" not in base:
-                    self.messages[0] = {"role": "system", "content": base + hint}
+            user_text = user_text + hint
         self.messages.append({"role": "user", "content": user_text})
 
         for self._round_count in range(MAX_TOOL_ROUNDS):
             if self._cancel_event.is_set():
                 _log.info("对话已取消 @ round %d", self._round_count)
                 return self._finish_run(CANCELLED_MESSAGE)
+
+            from friday.context import detect_repeated_tool_loop
+
+            looping, loop_hint = detect_repeated_tool_loop(self.messages)
+            if looping:
+                self._emit(on_event, "progress", {
+                    "round": self._round_count + 1,
+                    "max_rounds": MAX_TOOL_ROUNDS,
+                    "hint": loop_hint,
+                })
 
             finish = self._consume_stream(on_event)
             if self._cancel_event.is_set():
