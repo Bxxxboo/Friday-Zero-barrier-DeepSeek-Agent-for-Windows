@@ -21,8 +21,24 @@ _log = get_logger("plugins")
 _MANIFEST = "friday-plugin.json"
 _USER_AGENT = "Friday-Desktop/1.0"
 
-# 推荐插件目录（原 demo-office / vision-bridge / storage-analyzer 已改为内置，见 friday.bundled）
-_PLUGIN_CATALOG: list[dict[str, str]] = []
+# 推荐插件目录（内置 vision-bridge / storage-analyzer 见 friday.bundled，不在此列出）
+_PLUGIN_CATALOG: list[dict[str, str]] = [
+    {
+        "id": "scipilot-figure-skill",
+        "name": "SciPilot 科研数据可视化",
+        "description": "先做数据剖析与选图判断，再产出出版级科研图表（Nature/Science/IEEE 等规范）。",
+        "source": "local:scipilot-figure-skill",
+    },
+    {
+        "id": "karpathy-guidelines",
+        "name": "Karpathy 编码准则",
+        "description": "先思考再写码、保持简单、精准改动、目标可验证（forrestchang/andrej-karpathy-skills）。",
+        "source": "local:karpathy-guidelines",
+    },
+]
+
+_CATALOG_CACHE_TTL_SEC = 300.0
+_catalog_text_cache: tuple[float, str] | None = None
 
 _GITHUB_RE = re.compile(
     r"^(?:https?://github\.com/)?(?P<owner>[\w.-]+)/(?P<repo>[\w.-]+)(?:/(?:tree|blob)/(?P<ref>[\w./-]+))?(?:\.git)?/?$",
@@ -219,8 +235,10 @@ def parse_github_skill_source(source: str) -> tuple[str, str, str, str]:
         raise ValueError("格式应为 owner/repo/skill 或 owner/repo@ref/skill")
 
     skill_path = skill_path.strip("/")
+    if skill_path == ".":
+        skill_path = "."
     if not owner or not repo or not skill_path:
-        raise ValueError("格式应为 owner/repo/skill 或 owner/repo@ref/skill")
+        raise ValueError("格式应为 owner/repo/skill 或 owner/repo@ref/skill（整仓 Skill 用 owner/repo/.）")
     return owner, repo.replace(".git", ""), ref.strip() or "main", skill_path
 
 
@@ -247,14 +265,19 @@ def _download_github_skill_folder(
     skill_path: str,
     dest: Path,
 ) -> None:
-    prefix = skill_path.strip("/") + "/"
     tree = _fetch_github_tree(owner, repo, ref)
-    blobs = [
-        item for item in tree
-        if item.get("type") == "blob" and str(item.get("path", "")).startswith(prefix)
-    ]
+    root_skill = skill_path.strip("/") == "."
+    if root_skill:
+        blobs = [item for item in tree if item.get("type") == "blob"]
+    else:
+        prefix = skill_path.strip("/") + "/"
+        blobs = [
+            item for item in tree
+            if item.get("type") == "blob" and str(item.get("path", "")).startswith(prefix)
+        ]
     if not blobs:
-        raise ValueError(f"仓库中未找到 skill 目录「{skill_path}」")
+        label = "仓库根目录" if root_skill else skill_path
+        raise ValueError(f"仓库中未找到 skill 目录「{label}」")
 
     import shutil
 
@@ -263,7 +286,12 @@ def _download_github_skill_folder(
     dest.mkdir(parents=True, exist_ok=True)
 
     for item in blobs:
-        rel = str(item["path"])[len(prefix):]
+        full_path = str(item["path"])
+        if root_skill:
+            rel = full_path
+        else:
+            prefix = skill_path.strip("/") + "/"
+            rel = full_path[len(prefix):]
         if not rel:
             continue
         target = dest / rel
@@ -281,6 +309,8 @@ def install_github_skill(source: str) -> dict[str, Any]:
     """从 GitHub 仓库子目录安装 Agent Skill（含脚本与 SKILL.md）。"""
     owner, repo, ref, skill_path = parse_github_skill_source(source)
     plugin_id = skill_path.split("/")[-1].strip()
+    if plugin_id == "." or not plugin_id or not re.match(r"^[\w-]+$", plugin_id):
+        plugin_id = repo.replace(".git", "")
     if not plugin_id or not re.match(r"^[\w-]+$", plugin_id):
         raise ValueError("skill 目录名无法作为插件 ID")
 
@@ -441,17 +471,37 @@ def resolve_plugin_source(source: str) -> str:
     return raw
 
 
-def format_plugin_catalog() -> str:
+def format_plugin_catalog(*, force_refresh: bool = False) -> str:
+    global _catalog_text_cache
+    now = time.time()
+    if (
+        not force_refresh
+        and _catalog_text_cache is not None
+        and now - _catalog_text_cache[0] < _CATALOG_CACHE_TTL_SEC
+    ):
+        return _catalog_text_cache[1]
+
     if not _PLUGIN_CATALOG:
-        return (
+        text = (
             "图片视觉桥接、存储分析等能力已内置于星期五，无需安装。"
             "可在设置 → 扩展 → 插件 从 GitHub 安装其他 friday-plugin.json 扩展包。"
+            "\nGitHub Agent Skill 用 skill:owner/repo/目录 格式；整仓即 Skill 示例："
+            " skill:Haojae/scipilot-figure-skill/. （仓库根目录有 SKILL.md 时用 /. 作路径）"
         )
-    lines = ["推荐插件（设置 → 扩展 → 插件 也可一键安装）："]
-    for item in _PLUGIN_CATALOG:
-        lines.append(f"- {item['name']}（id: {item['id']}）→ {item['source']}")
-        lines.append(f"  {item.get('description', '')}")
-    return "\n".join(lines)
+    else:
+        lines = ["推荐插件（设置 → 扩展 → 插件 也可一键安装）："]
+        for item in _PLUGIN_CATALOG:
+            lines.append(f"- {item['name']}（id: {item['id']}）→ {item['source']}")
+            lines.append(f"  {item.get('description', '')}")
+        text = "\n".join(lines)
+
+    _catalog_text_cache = (now, text)
+    return text
+
+
+def invalidate_plugin_catalog_cache() -> None:
+    global _catalog_text_cache
+    _catalog_text_cache = None
 
 
 def _validate_manifest(data: dict[str, Any]) -> dict[str, Any]:

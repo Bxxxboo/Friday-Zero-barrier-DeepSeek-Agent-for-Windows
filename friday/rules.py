@@ -14,19 +14,59 @@ _log = get_logger("rules")
 
 BUILTIN_RESPONSE_RULE_ID = "builtin:cursor-style-reply"
 BUILTIN_FILE_SAFETY_RULE_ID = "builtin:file-safety"
+BUILTIN_TASK_SCOPE_RULE_ID = "builtin:task-scope"
+BUILTIN_SOLUTION_FIRST_RULE_ID = "builtin:solution-first"
+
+_SOLUTION_FIRST_CONTENT = (
+    "非平凡任务先出方案与利弊，用户明确同意后再改代码。"
+    "必须先出方案：新功能、较大 UI/架构、跨多文件、需求有歧义、多种实现路径、破坏性变更。"
+    "可直接动手：用户说「直接改/开始实现/按方案 A」、单行 typo、纯只读排查、"
+    "或用户规则规定必须立即执行的流程。"
+    "方案阶段用简体中文交付：需求理解、推荐方案（可含备选）、优缺点、影响范围、验证方式、请用户决策；"
+    "此阶段禁止改业务代码或跑会改变环境的命令（只读排查除外）。"
+    "实现中若与方案重大偏差，暂停并征求确认。"
+)
 
 _BUILTIN_RULES: tuple[dict[str, Any], ...] = (
+    {
+        "id": BUILTIN_SOLUTION_FIRST_RULE_ID,
+        "title": "先方案、后改码（solution-first）",
+        "content": _SOLUTION_FIRST_CONTENT,
+        "enabled": True,
+        "always_apply": True,
+        "hidden": True,
+        "source": "builtin",
+    },
     {
         "id": BUILTIN_RESPONSE_RULE_ID,
         "title": "回复习惯（像 Cursor 一样具体）",
         "content": (
             "完成任务或一段执行后：① 用具体事实说明刚刚完成了什么（文件、路径、数量、结果）；"
-            "② 给出 2～4 条可执行的下一步建议（禁止只说「继续」或「告诉我下一步」）；"
-            "③ 若未做完，说明剩余项并给出一句用户可直接复制发送的后续指令。"
+            "② 简单任务（如单次生图/写文件已成功）2～4 句即可，不必写长篇「剩余项/下一步」；"
+            "复杂任务再给 2～4 条与本任务直接相关的下一步建议（禁止只说「继续」）；"
+            "③ 若当前任务未做完，只说明其剩余项，并给出一句用户可直接复制发送的后续指令。"
             "禁止空泛收尾如「这部分任务已完成，请说继续」。"
         ),
         "enabled": True,
         "always_apply": True,
+        "hidden": True,
+        "source": "builtin",
+    },
+    {
+        "id": BUILTIN_TASK_SCOPE_RULE_ID,
+        "title": "任务范围（勿串台）",
+        "content": (
+            "收尾时的「刚刚完成了什么」「剩余未完成」「下一步建议」只能围绕"
+            "本轮对话里用户当前明确委托的任务及其直接后续"
+            "（例如刚生成的图片是否满意、是否调整 prompt 或尺寸重生成）。"
+            "禁止把历史会话、早前已完成或已搁置的其他话题"
+            "（如版本升级、微信桥接、Python 环境、无关 bug）写进剩余项或建议。"
+            "用户在本轮未提及的事项，视为与本任务无关，不要主动带回；"
+            "只有用户在本轮重新提出时，才可继续该话题。"
+        ),
+        "enabled": True,
+        "always_apply": True,
+        "hidden": True,
         "source": "builtin",
     },
     {
@@ -46,6 +86,7 @@ _BUILTIN_RULES: tuple[dict[str, Any], ...] = (
         ),
         "enabled": True,
         "always_apply": True,
+        "hidden": True,
         "source": "builtin",
     },
 )
@@ -84,7 +125,10 @@ def list_rules(*, include_disabled: bool = True, for_ui: bool = False) -> list[d
     ensure_builtin_rules()
     items = _load_all()
     if for_ui:
-        items = [r for r in items if not r.get("hidden")]
+        items = [
+            r for r in items
+            if not r.get("hidden") and r.get("source") != "builtin"
+        ]
     if include_disabled:
         return items
     return [r for r in items if r.get("enabled")]
@@ -164,15 +208,48 @@ def upsert_plugin_rules(plugin_id: str, rules: list[dict[str, Any]]) -> list[dic
 
 def ensure_builtin_rules() -> None:
     items = _load_all()
-    existing = {r["id"] for r in items}
-    added = False
+    by_id = {r["id"]: idx for idx, r in enumerate(items)}
+    changed = False
     for raw in _BUILTIN_RULES:
-        if raw["id"] in existing:
-            continue
-        items.append(_normalize_rule(raw, source="builtin"))
-        added = True
-    if added:
+        rid = raw["id"]
+        normalized = _normalize_rule(raw, source="builtin")
+        if rid in by_id:
+            idx = by_id[rid]
+            existing = items[idx]
+            if existing.get("source") != "builtin":
+                continue
+            for key in ("title", "content", "hidden"):
+                if existing.get(key) != normalized.get(key):
+                    existing[key] = normalized[key]
+                    changed = True
+            items[idx] = existing
+        else:
+            items.append(normalized)
+            by_id[rid] = len(items) - 1
+            changed = True
+    if changed:
         _save_all(items)
+
+
+def _rule_content_for_prompt(rule: dict[str, Any]) -> str:
+    content = rule.get("content", "").strip()
+    if rule.get("source") == "plugin" and rule.get("plugin_id"):
+        from friday.plugins import substitute_plugin_text
+
+        content = substitute_plugin_text(content, str(rule["plugin_id"]))
+    return content
+
+
+def _append_rule_lines(lines: list[str], rules: list[dict[str, Any]], *, start: int = 1) -> int:
+    idx = start
+    for rule in rules:
+        content = _rule_content_for_prompt(rule)
+        if not content:
+            continue
+        title = rule.get("title") or f"规则{idx}"
+        lines.append(f"{idx}. [{title}] {content}")
+        idx += 1
+    return idx
 
 
 def active_rules_prompt() -> str:
@@ -180,20 +257,24 @@ def active_rules_prompt() -> str:
     from friday.bundled import hidden_builtin_rules
 
     ensure_builtin_rules()
-    active = [r for r in _load_all() if r.get("enabled") and r.get("always_apply")]
+    all_active = [r for r in _load_all() if r.get("enabled") and r.get("always_apply")]
+    builtin = [r for r in all_active if r.get("source") == "builtin"]
+    user = [r for r in all_active if r.get("source") != "builtin"]
     for rule in hidden_builtin_rules():
         if rule.get("enabled") and rule.get("always_apply"):
-            active.append(rule)
-    if not active:
+            builtin.append(rule)
+    if not builtin and not user:
         return ""
-    lines = ["\n用户自定义规则（必须遵守）："]
-    for idx, rule in enumerate(active, 1):
-        title = rule.get("title") or f"规则{idx}"
-        content = rule.get("content", "").strip()
-        if rule.get("source") == "plugin" and rule.get("plugin_id"):
-            from friday.plugins import substitute_plugin_text
 
-            content = substitute_plugin_text(content, str(rule["plugin_id"]))
-        if content:
-            lines.append(f"{idx}. [{title}] {content}")
+    lines: list[str] = []
+    if builtin:
+        lines.append("\n内置行为准则（默认遵守）：")
+        _append_rule_lines(lines, builtin)
+    if user:
+        header = "\n用户自定义规则（必须遵守"
+        if builtin:
+            header += "；与内置冲突时以本条为准"
+        header += "）："
+        lines.append(header)
+        _append_rule_lines(lines, user)
     return "\n".join(lines)

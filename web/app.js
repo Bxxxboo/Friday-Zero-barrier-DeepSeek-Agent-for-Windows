@@ -68,6 +68,26 @@
       }
       const health = await F.apiFetchWithTimeout("/api/health", {}, 8000);
       if (!health.ok) throw new Error(`服务未就绪 (${health.status})`);
+      let healthBody = null;
+      try {
+        healthBody = await health.json();
+      } catch {
+        throw new Error("服务未就绪 (invalid health response)");
+      }
+      const healthDeadline = Date.now() + 8000;
+      while (healthBody?.status !== "ok" && Date.now() < healthDeadline) {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        const retry = await F.apiFetchWithTimeout("/api/health", {}, 3000);
+        if (!retry.ok) continue;
+        try {
+          healthBody = await retry.json();
+        } catch {
+          /* keep polling */
+        }
+      }
+      if (healthBody?.status !== "ok") {
+        throw new Error("服务未就绪 (starting)");
+      }
     };
 
     const waitBootMinimum = async () => {
@@ -241,6 +261,53 @@
     const bg = theme === "light" ? "#f0ebe3" : "#0a0d12";
     api.sync_window_chrome(bg, theme === "dark");
   }
+
+  function isFridayInternalUrl(href) {
+    try {
+      const url = new URL(href, window.location.origin);
+      if (url.protocol !== "http:" && url.protocol !== "https:") return true;
+      return url.hostname === "localhost" || url.hostname === "127.0.0.1";
+    } catch {
+      return true;
+    }
+  }
+
+  function isExternalHttpUrl(href) {
+    try {
+      const url = new URL(href, window.location.origin);
+      return (url.protocol === "http:" || url.protocol === "https:") && !isFridayInternalUrl(href);
+    } catch {
+      return false;
+    }
+  }
+
+  function openExternalLink(href) {
+    const api = window.pywebview?.api;
+    if (api?.open_external_url) {
+      return Promise.resolve(api.open_external_url(href)).catch(() => {
+        window.open(href, "_blank", "noopener,noreferrer");
+      });
+    }
+    window.open(href, "_blank", "noopener,noreferrer");
+    return Promise.resolve();
+  }
+
+  function initExternalLinkGuard() {
+    if (document.documentElement.dataset.externalLinkGuard === "1") return;
+    document.documentElement.dataset.externalLinkGuard = "1";
+    document.addEventListener("click", (event) => {
+      const anchor = event.target.closest?.("a[href]");
+      if (!anchor) return;
+      const href = anchor.getAttribute("href")?.trim();
+      if (!href || href.startsWith("#") || /^javascript:/i.test(href)) return;
+      if (!isExternalHttpUrl(href)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      void openExternalLink(href);
+    }, true);
+  }
+
+  initExternalLinkGuard();
 
   function initDesktopSurfaceRefresh() {
     document.addEventListener("visibilitychange", () => {

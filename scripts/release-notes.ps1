@@ -15,7 +15,8 @@ if (-not $Version) {
 }
 
 if (-not (Test-Path $ChangelogPath)) {
-    Write-Output "## Friday $Version`n`nWindows AI desktop butler.`n`nDownload ``Friday-Windows.zip`` from attachments."
+    $zipName = "Friday-Windows-$Version.zip"
+    Write-Output "## Friday $Version`n`nWindows AI desktop butler.`n`nDownload ``$zipName`` from attachments."
     exit 0
 }
 
@@ -51,6 +52,7 @@ if ($All) {
 }
 
 $match = $entries | Where-Object { $_.version -eq $Version } | Select-Object -First 1
+$zipName = "Friday-Windows-$Version.zip"
 if (-not $match) {
     Write-Output @"
 ## 星期五 v$Version
@@ -58,7 +60,7 @@ if (-not $match) {
 Windows AI 电脑管家。
 
 ### 安装
-1. 下载 ``Friday-Windows.zip``
+1. 下载 ``$zipName``
 2. 解压后运行 ``星期五.exe``
 3. 详见压缩包内 ``安装教程.txt``
 "@
@@ -69,7 +71,7 @@ $body = Format-Entry $match
 $body += @"
 
 ### 安装
-1. 下载 ``Friday-Windows.zip``
+1. 下载 ``$zipName``
 2. 解压后运行 ``星期五.exe``
 3. 详见压缩包内 ``安装教程.txt``
 

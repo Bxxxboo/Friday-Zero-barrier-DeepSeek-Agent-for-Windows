@@ -1,6 +1,38 @@
 {
   "entries": [
     {
+      "version": "1.2.5",
+      "date": "2026-06-10",
+      "title": "生成物存储管理、微信扫码体验、E2E 与插件生态",
+      "sections": [
+        {
+          "label": "新功能",
+          "items": [
+            "工作区生成物管理（artifacts）：scratch/session/delivered 生命周期、trash 软删除、TTL 自动回收；设置页存储占用与手动 GC",
+            "单工具快路径（fast_finish）：插件/规则列表等只读查询跳过大模型总结轮",
+            "Playwright E2E 冒烟（5 用例）与 qa_deep_smoke 深度验收脚本",
+            "SciPilot 科研配图插件推荐与本地 skill；恢复 Karpathy 编码准则 catalog",
+            "启动时轮询 health 直至后端就绪"
+          ]
+        },
+        {
+          "label": "改进",
+          "items": [
+            "微信扫码：优先终端二维码，不再自动打开浏览器；备用链接在设置页手动打开",
+            "规则/插件 catalog 与 GitHub skill 安装说明增强",
+            "安装包命名 Friday-Windows-{version}.zip；发布脚本对齐"
+          ]
+        },
+        {
+          "label": "修复",
+          "items": [
+            "会话 activate API 500",
+            "插件 catalog 推荐列表为空"
+          ]
+        }
+      ]
+    },
+    {
       "version": "1.2.4",
       "date": "2026-06-10",
       "title": "一键更新、报错提示优化、微信审批与界面焕新",

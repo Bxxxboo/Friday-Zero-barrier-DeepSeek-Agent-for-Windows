@@ -144,6 +144,12 @@ def write_text_file(path: str, content: str) -> str:
     target = _resolve(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
+    try:
+        from friday.artifacts import maybe_register_written_file
+
+        maybe_register_written_file(target)
+    except Exception:
+        pass
     return f"已写入: {target}"
 
 

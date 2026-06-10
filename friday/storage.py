@@ -137,6 +137,11 @@ class UserSettings:
     image_gen_custom_endpoints: list = field(default_factory=list)
     image_gen_custom_active: str = ""
     onboarding_completed: bool = False
+    artifact_scratch_ttl_hours: int = 24
+    artifact_session_ttl_days: int = 30
+    artifact_trash_ttl_days: int = 7
+    artifact_session_delete_grace_days: int = 7
+    artifact_auto_gc_enabled: bool = True
 
     @classmethod
     def from_dict(cls, data: dict) -> "UserSettings":

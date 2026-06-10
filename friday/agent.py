@@ -158,6 +158,14 @@ class FridayAgent:
         if self.brain._turn_api_calls > 0:
             _log.info("本次对话共调用 %d 次 API | %s", self.brain._turn_api_calls, self.brain.usage_summary())
         self._finalize_usage()
+        session_id = str((self.operation_meta or {}).get("session_id", ""))
+        if session_id:
+            try:
+                from friday.artifacts import finalize_agent_turn
+
+                finalize_agent_turn(session_id)
+            except Exception:
+                _log.exception("生成物回收失败 | session=%s", session_id)
         return content
 
     def load_history(self, messages: list[dict[str, Any]] | None) -> None:
@@ -206,6 +214,7 @@ class FridayAgent:
 
         stream_started = False
         finish: ChatCompletionResult | None = None
+        pending_tool_names: list[str] = []
 
         for kind, payload in self.brain.iter_chat(
             self.messages,
@@ -221,16 +230,73 @@ class FridayAgent:
                         self._emit(on_event, "assistant_start", {})
                         stream_started = True
                     self._emit(on_event, "assistant_delta", {"delta": payload})
+            elif kind == "reasoning_delta":
+                self._emit(on_event, "reasoning_delta", {"delta": payload})
             elif kind == "finish":
                 finish = payload
 
         if finish is None:
             finish = ChatCompletionResult()
 
+        if finish.tool_calls:
+            for call in finish.tool_calls:
+                name = str((call.get("function") or {}).get("name", "")).strip()
+                if name and name not in pending_tool_names:
+                    pending_tool_names.append(name)
+            if pending_tool_names:
+                from friday.tools.registry import tool_display_name
+
+                labels = [tool_display_name(n) for n in pending_tool_names]
+                self._emit(on_event, "agent_step", {
+                    "message": f"准备执行：{'、'.join(labels)}",
+                })
+
         if finish.tool_calls and stream_started:
             self._emit(on_event, "assistant_clear", {})
 
         return finish
+
+    def _last_round_tool_results(
+        self,
+        finish: ChatCompletionResult,
+    ) -> list[tuple[str, dict[str, Any], str]]:
+        meta: dict[str, tuple[str, dict[str, Any]]] = {}
+        order: list[str] = []
+        for call in finish.tool_calls:
+            name, args, call_id = self._parse_tool_call(call)
+            if not call_id:
+                continue
+            order.append(call_id)
+            meta[call_id] = (name, args)
+        by_id: dict[str, str] = {}
+        for msg in self.messages:
+            if msg.get("role") != "tool":
+                continue
+            cid = str(msg.get("tool_call_id", ""))
+            if cid in meta:
+                by_id[cid] = str(msg.get("content", ""))
+        return [(meta[cid][0], meta[cid][1], by_id.get(cid, "")) for cid in order if cid in meta]
+
+    def _try_fast_finish_after_tools(
+        self,
+        finish: ChatCompletionResult,
+    ) -> str | None:
+        from friday.fast_finish import try_fast_finish_reply
+
+        session_id = str((self.operation_meta or {}).get("session_id", ""))
+        pending = 0
+        if session_id:
+            from friday.plan import get_session_plan
+
+            todos = get_session_plan(session_id).get("todos") or []
+            pending = sum(
+                1 for item in todos if isinstance(item, dict) and not item.get("done")
+            )
+        return try_fast_finish_reply(
+            self._last_round_tool_results(finish),
+            user_goal=self._approval_user_goal(),
+            pending_todos=pending,
+        )
 
     def _wrap_up_reply(self, on_event: EventCallback | None, *, reason: str = "round_limit") -> str:
         """工具轮次用尽或需收尾时，让模型用自然语言总结已完成工作与下一步计划。"""
@@ -240,10 +306,8 @@ class FridayAgent:
         if reason == "round_limit":
             hint = (
                 "【系统提示】本轮工具调用次数已达上限，请不要再调用任何工具。"
-                "请仅根据上文已执行的操作，按系统提示中的「任务完成后的回复格式」向用户回复："
-                "① 刚刚具体完成了什么（文件、路径、数量、结果）；"
-                "② 若还有未完成部分，说明剩余什么；"
-                "③ 给出 2～4 条可执行的下一步建议，并给出一句用户可直接复制发送的后续指令。"
+                "请仅根据上文已执行的操作向用户回复：简单任务 2～4 句说明交付物即可；"
+                "复杂任务再按「任务完成后的回复格式」说明完成了什么、剩余项与下一步。"
                 "禁止只说「已完成」或「请说继续」。"
             )
         else:
@@ -665,6 +729,13 @@ class FridayAgent:
                 _log.info("对话已取消 @ round %d", self._round_count)
                 return self._finish_run(CANCELLED_MESSAGE)
 
+            if self._round_count == 0:
+                self._emit(on_event, "agent_step", {"message": "理解任务并规划步骤…"})
+            else:
+                self._emit(on_event, "agent_step", {
+                    "message": f"第 {self._round_count + 1} 轮：正在选择下一步…",
+                })
+
             from friday.context import detect_repeated_tool_loop
 
             looping, loop_hint = detect_repeated_tool_loop(self.messages)
@@ -712,6 +783,18 @@ class FridayAgent:
             if self._cancel_event.is_set():
                 _log.info("对话已取消 @ round %d (工具执行)", self._round_count)
                 return self._finish_run(CANCELLED_MESSAGE)
+
+            fast_reply = self._try_fast_finish_after_tools(finish)
+            if fast_reply:
+                _log.info("快速收尾 | round=%d skip_summary=1", self._round_count + 1)
+                self.messages.append({"role": "assistant", "content": fast_reply})
+                if session_id:
+                    from friday.plan import auto_complete_todos_from_assistant
+
+                    assistant_result = auto_complete_todos_from_assistant(session_id, fast_reply)
+                    if assistant_result.get("changed"):
+                        self._emit_plan_update(on_event)
+                return self._finish_run(fast_reply)
 
         _log.warning("达到最大轮次限制 rounds=%d", max_rounds)
         return self._wrap_up_reply(on_event, reason="round_limit")

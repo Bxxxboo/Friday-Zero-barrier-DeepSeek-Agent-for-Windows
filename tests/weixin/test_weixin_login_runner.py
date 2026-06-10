@@ -69,7 +69,7 @@ def test_write_login_cmd_contains_env_and_node(tmp_path, monkeypatch):
     assert "pause" in text
 
 
-def test_run_weixin_login_console_opens_browser(monkeypatch):
+def test_run_weixin_login_console_caches_url_without_browser(monkeypatch):
     output = (
         "正在启动微信扫码登录...\n"
         "若二维码未能显示或无法使用，你可以访问以下链接以继续：\n"
@@ -86,7 +86,7 @@ def test_run_weixin_login_console_opens_browser(monkeypatch):
         def wait(self):
             return 0
 
-    opened: list[str] = []
+    noted: list[str] = []
 
     monkeypatch.setattr(
         "friday.weixin.login_runner.resolve_openclaw_command",
@@ -95,14 +95,14 @@ def test_run_weixin_login_console_opens_browser(monkeypatch):
     monkeypatch.setattr("friday.weixin.login_runner._prepare_console", lambda: None)
     monkeypatch.setattr("friday.weixin.login_runner.subprocess.Popen", lambda *a, **k: _FakeProc())
     monkeypatch.setattr(
-        "friday.weixin.login_runner._open_login_url",
-        lambda url: opened.append(url) or True,
+        "friday.weixin.login_runner._note_login_url",
+        lambda url: noted.append(url),
     )
 
     code = run_weixin_login_console()
     assert code == 0
-    assert opened
-    assert opened[0].startswith("https://liteapp.weixin.qq.com/")
+    assert noted
+    assert noted[0].startswith("https://liteapp.weixin.qq.com/")
 
 
 def test_launch_weixin_login_console_prefers_windows_terminal(monkeypatch, tmp_path):
@@ -136,7 +136,7 @@ def test_launch_weixin_login_console_prefers_windows_terminal(monkeypatch, tmp_p
 
     ok, msg = launch_weixin_login_console()
     assert ok
-    assert "浏览器" in msg
+    assert "终端" in msg
     assert calls
     assert calls[0][0].endswith("wt.exe")
     assert "Friday 微信扫码" in calls[0]

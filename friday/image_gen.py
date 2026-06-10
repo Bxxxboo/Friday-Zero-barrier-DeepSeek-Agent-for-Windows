@@ -647,6 +647,12 @@ def generate_image(
             image_size,
             actual_size,
         )
+        try:
+            from friday.artifacts import register_generated_image
+
+            register_generated_image(out_path)
+        except Exception:
+            _log.exception("登记生图文件失败")
         return {
             "ok": True,
             "path": str(out_path).replace("\\", "/"),

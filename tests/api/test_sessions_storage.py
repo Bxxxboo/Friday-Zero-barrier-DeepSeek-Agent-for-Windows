@@ -17,14 +17,24 @@ def test_session_save_compresses_tool_messages(tmp_appdata):
     long_result = "x" * 5000
     messages = [
         {"role": "user", "content": "查文件"},
-        {"role": "assistant", "content": "好的"},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "id": "1",
+                    "type": "function",
+                    "function": {"name": "read_text_file", "arguments": "{}"},
+                }
+            ],
+        },
         {"role": "tool", "tool_call_id": "1", "content": long_result},
     ]
     save_agent_state(session.id, messages, user_text="查文件")
 
     raw = json.loads((tmp_appdata / "sessions" / f"{session.id}.json").read_text(encoding="utf-8"))
     assert raw["format_version"] == SESSION_FORMAT_VERSION
-    assert len(raw["display_messages"]) == 2
+    assert len(raw["display_messages"]) == 1
     tool_content = raw["agent_messages"][-1]["content"]
     assert len(tool_content) < len(long_result)
     assert "已压缩" in tool_content
@@ -68,6 +78,26 @@ def test_session_save_persists_generated_images(tmp_appdata):
 
     api_display = session_display_messages(loaded)
     assert api_display[-1].get("generated_images") == [{"path": img_path}]
+
+
+def test_build_display_messages_hides_internal_system_hints(tmp_appdata):
+    from friday.sessions import build_display_messages, save_agent_state
+
+    session = create_session()
+    messages = [
+        {"role": "user", "content": "看看 GitHub 上有什么 rules"},
+        {"role": "assistant", "content": "让我搜索一下"},
+        {
+            "role": "user",
+            "content": "【系统提示】已连续 3 次调用 browse_webpage 但进展不明显，请停止重复试探。",
+        },
+        {"role": "assistant", "content": "好的，我换个方式。"},
+    ]
+    save_agent_state(session.id, messages, user_text="看看 GitHub 上有什么 rules")
+
+    display = build_display_messages(messages)
+    assert [m["content"] for m in display if m["role"] == "user"] == ["看看 GitHub 上有什么 rules"]
+    assert not any("【系统提示】" in m.get("content", "") for m in display)
 
 
 def test_migrate_old_session_format(tmp_appdata):

@@ -12,7 +12,7 @@ def test_migrate_v6_marks_onboarding_completed_for_configured_user():
     )
     migrated = _migrate_settings_schema(settings, 5)
     assert migrated.onboarding_completed is True
-    assert CURRENT_SETTINGS_SCHEMA_VERSION == 6
+    assert CURRENT_SETTINGS_SCHEMA_VERSION == 7
 
 
 def test_migrate_v6_leaves_fresh_user_unmarked():

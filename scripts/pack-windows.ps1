@@ -15,15 +15,7 @@ Set-Location $Root
 
 . (Join-Path $PSScriptRoot "friday-dist.ps1")
 
-function Get-FridayVersion {
-    $versionFile = Join-Path $Root "friday\version.py"
-    if (-not (Test-Path $versionFile)) { return "unknown" }
-    $line = Get-Content $versionFile -Encoding UTF8 | Where-Object { $_ -match '__version__' } | Select-Object -First 1
-    if ($line -match '__version__\s*=\s*"([^"]+)"') { return $Matches[1] }
-    return "unknown"
-}
-
-$version = Get-FridayVersion
+$version = Get-FridayVersion -Root $Root
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host " Friday Windows pack  v$version" -ForegroundColor Cyan
@@ -44,13 +36,14 @@ if (-not $SkipBuild) {
     }
 }
 
-Write-Host "[2/2] Create release/Friday-Windows.zip ..." -ForegroundColor Yellow
+$zipName = Get-FridayReleaseZipName -Root $Root
+Write-Host "[2/2] Create release/$zipName ..." -ForegroundColor Yellow
 & (Join-Path $Root "scripts\make-release.ps1")
 if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
     throw "make-release.ps1 failed with exit code $LASTEXITCODE"
 }
 
-$zip = Join-Path $Root "release\Friday-Windows.zip"
+$zip = Get-FridayReleaseZipPath -Root $Root
 if (-not (Test-Path $zip)) {
     throw "Zip not created: $zip"
 }

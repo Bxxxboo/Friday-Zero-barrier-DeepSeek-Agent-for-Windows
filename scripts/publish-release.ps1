@@ -68,9 +68,10 @@ if (-not $SkipGithubRelease) {
         if (-not $SkipBuild) {
             powershell -ExecutionPolicy Bypass -File scripts\make-release.ps1
         }
-        $Zip = Join-Path $PWD "release\Friday-Windows.zip"
+        . (Join-Path $Root "scripts\friday-dist.ps1")
+        $Zip = Get-FridayReleaseZipPath -Root $Root
         if (-not (Test-Path $Zip)) {
-            throw "release/Friday-Windows.zip not found"
+            throw "Release zip not found: $Zip"
         }
         $ReleaseNotes = & (Join-Path $Root "scripts\release-notes.ps1") | Out-String
         $ReleaseNotes = $ReleaseNotes.Trim()

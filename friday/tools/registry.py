@@ -277,6 +277,56 @@ def execute_tool(
             return f"工具执行失败: {exc}"
 
 
+_TOOL_DISPLAY_NAMES: dict[str, str] = {
+    "list_directory": "扫描目录",
+    "search_files": "搜索文件",
+    "read_text_file": "读取文件",
+    "read_pdf": "读取 PDF",
+    "read_excel": "读取 Excel",
+    "write_text_file": "写入文件",
+    "move_file": "移动文件",
+    "organize_directory": "整理目录",
+    "batch_rename": "批量重命名",
+    "find_duplicates": "查找重复",
+    "zip_files": "压缩文件",
+    "unzip_file": "解压文件",
+    "create_docx": "生成 Word",
+    "create_pptx": "生成 PPT",
+    "get_system_status": "查看系统",
+    "get_disk_usage": "查看磁盘",
+    "get_top_processes": "查看进程",
+    "run_powershell": "执行 PowerShell",
+    "run_python": "运行 Python",
+    "run_python_script": "运行脚本",
+    "python_env_info": "检查 Python 环境",
+    "delete_file": "删除文件",
+    "delete_directory": "删除目录",
+    "copy_file": "复制文件",
+    "get_file_info": "查看文件详情",
+    "open_url": "打开网页",
+    "open_app": "启动应用",
+    "screenshot": "截屏",
+    "clipboard_read": "读剪贴板",
+    "clipboard_write": "写剪贴板",
+    "get_network_info": "查看网络",
+    "browse_webpage": "浏览网页",
+    "verify_download_source": "验证下载源",
+    "download_file": "下载文件",
+    "download_software": "下载软件",
+    "describe_image": "识别截图",
+    "vision_status": "检查视觉",
+    "generate_image": "生成图片",
+    "image_gen_status": "检查生图",
+    "update_session_plan": "更新计划",
+    "remember_user_fact": "记住偏好",
+}
+
+
+def tool_display_name(name: str) -> str:
+    key = (name or "").strip()
+    return _TOOL_DISPLAY_NAMES.get(key, key or "操作")
+
+
 def parse_tool_arguments(raw: str) -> dict[str, Any]:
     if not raw:
         return {}

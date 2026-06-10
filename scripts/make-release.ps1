@@ -6,10 +6,22 @@ Set-Location (Split-Path -Parent $PSScriptRoot)
 $DistApp = Get-FridayDistDir -Root $PWD
 $Exe = Get-FridayExe -DistDir $DistApp
 
-if (-not $Exe) {
+$VersionLine = Select-String -Path (Join-Path $PWD "friday\version.py") -Pattern '__version__ = "(.+)"' | Select-Object -First 1
+$TargetVersion = if ($VersionLine) { $VersionLine.Matches[0].Groups[1].Value } else { "" }
+
+$needsBuild = -not $Exe
+if ($Exe -and $TargetVersion) {
+    $builtVersion = ($Exe.VersionInfo.ProductVersion -replace '\.0$', '')
+    if ($builtVersion -ne $TargetVersion) {
+        Write-Host "Dist exe is v$builtVersion, need v$TargetVersion — rebuilding..." -ForegroundColor Yellow
+        $needsBuild = $true
+    }
+}
+
+if ($needsBuild) {
     Write-Host "Building exe..." -ForegroundColor Yellow
     & (Join-Path $PWD "scripts\build.ps1")
-    $Exe = Get-ChildItem $DistApp -Filter "*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+    $Exe = Get-FridayExe -DistDir (Get-FridayDistDir -Root $PWD)
     if (-not $Exe) {
         throw "Build failed."
     }
@@ -18,13 +30,22 @@ if (-not $Exe) {
 $ReleaseRoot = Join-Path $PWD "release"
 $GuideName = -join ([char]0x5B89, [char]0x88C5, [char]0x6559, [char]0x7A0B) + ".txt"
 $ShortcutName = -join ([char]0x521B, [char]0x5EFA, [char]0x684C, [char]0x9762, [char]0x5FEB, [char]0x6377, [char]0x65B9, [char]0x5F0F) + ".ps1"
-$ZipName = "Friday-Windows.zip"
+if (-not $TargetVersion) {
+    $TargetVersion = Get-FridayVersion -Root $PWD
+}
+$ZipName = "Friday-Windows-$TargetVersion.zip"
 
 $Stage = Join-Path $ReleaseRoot "stage"
 if (Test-Path $Stage) {
     Remove-Item $Stage -Recurse -Force
 }
 New-Item -ItemType Directory -Path $Stage -Force | Out-Null
+
+@(
+    "Friday Windows $TargetVersion"
+    "Build: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+    "Exe: Friday\星期五.exe"
+) | Set-Content -Path (Join-Path $Stage "VERSION.txt") -Encoding UTF8
 
 Copy-Item (Join-Path $ReleaseRoot $GuideName) $Stage -Force
 Copy-Item (Join-Path $ReleaseRoot $ShortcutName) $Stage -Force

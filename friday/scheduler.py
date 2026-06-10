@@ -16,6 +16,7 @@ _stop = threading.Event()
 _running_ids: set[str] = set()
 _lock = threading.Lock()
 _gateway_health_ticks = 0
+_gc_ticks = 0
 
 
 def _execute_task(task_id: str, title: str, prompt: str) -> None:
@@ -94,8 +95,19 @@ def _maybe_ensure_openclaw_gateway() -> None:
 
 
 def _tick() -> None:
+    global _gc_ticks
     now = time.time()
     _maybe_ensure_openclaw_gateway()
+    _gc_ticks += 1
+    if _gc_ticks >= 30:
+        _gc_ticks = 0
+        try:
+            from friday.artifacts import run_gc
+            from friday.storage import load_settings
+
+            run_gc(settings=load_settings())
+        except Exception:
+            _log.exception("定时生成物回收失败")
     for task in due_schedules(now):
         _log.info("触发定时任务 | id=%s title=%s", task.id, task.title)
         worker = threading.Thread(

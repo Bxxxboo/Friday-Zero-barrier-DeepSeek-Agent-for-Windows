@@ -88,7 +88,10 @@ def install_friday_plugin(source: str) -> str:
 
 @register_tool(
     name="list_friday_plugins",
-    description="列出已安装的星期五扩展插件",
+    description=(
+        "列出已安装的星期五扩展插件。"
+        "用户问插件/技能/规则时，须与 list_plugin_catalog 在同一轮一并调用，不要单独调用后再开下一轮。"
+    ),
     parameters={"type": "object", "properties": {}},
 )
 def list_friday_plugins() -> str:
@@ -106,7 +109,10 @@ def list_friday_plugins() -> str:
 
 @register_tool(
     name="list_plugin_catalog",
-    description="列出星期五内置推荐的扩展插件及正确安装来源（安装失败或用户只给插件名时先查此列表）",
+    description=(
+        "列出星期五内置推荐的扩展插件及正确安装来源。"
+        "用户问插件/技能/规则/GitHub skill 时，须与 list_friday_plugins 在同一轮一并调用。"
+    ),
     parameters={"type": "object", "properties": {}},
 )
 def list_plugin_catalog() -> str:

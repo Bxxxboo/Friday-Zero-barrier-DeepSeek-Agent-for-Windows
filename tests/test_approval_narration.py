@@ -74,9 +74,16 @@ def test_enrich_approval_summary_async_calls_back_when_narrated_differs():
     narrated = "准备在你电脑上运行一条简单命令，输出 hello 做连通性测试。"
     received: list[str] = []
 
+    class _Settings:
+        api_ready = True
+        api_key = "sk-test"
+        base_url = "https://api.example.com/v1"
+        model = "test"
+
     with patch("friday.approval_narration.narrate_approval", return_value=narrated):
         enrich_approval_summary_async(
             action,
+            settings=_Settings(),
             on_narrated=received.append,
         )
         import time

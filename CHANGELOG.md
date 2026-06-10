@@ -2,6 +2,35 @@
 
 版本说明与 `assets/changelog.json` 同步；应用内「更新公告」亦读取该文件。
 
+## 1.2.5（2026-06-10）
+
+**生成物存储管理、微信扫码体验、E2E 与插件生态**
+
+### 新功能
+
+- **工作区生成物管理**（`artifacts`）：登记 scratch/session/delivered 生命周期、软删除 trash、TTL 自动回收；设置页可查看占用并手动 GC
+- **单工具快路径**（`fast_finish`）：列出插件/规则等只读查询成功后直接返回，跳过大模型总结轮
+- **Playwright E2E** 冒烟（5 用例）与 `scripts/qa_deep_smoke.py` 深度验收脚本
+- 内置 **SciPilot 科研配图** 插件推荐与本地 skill 包；恢复 Karpathy 编码准则 catalog 项
+- 前端启动时轮询 `/health` 直至 `status === "ok"`，避免后端未就绪误报
+
+### 改进
+
+- **微信扫码登录**：优先扫描终端二维码；检测到链接仅缓存备用 URL，不再自动弹出浏览器（需时在设置页点「浏览器打开扫码页」）
+- 规则/插件系统增强：GitHub skill 安装格式说明、扩展 catalog 与 `list_plugin_catalog` 工具
+- Windows 安装包统一命名为 `Friday-Windows-{version}.zip`；发布/打包脚本与 release notes 流程对齐
+
+### 修复
+
+- `POST /api/sessions/{id}/activate` 返回类型错误导致 500
+- 插件 catalog 推荐列表为空时的回归
+
+### 测试
+
+- 新增/扩充：artifacts、fast_finish、E2E、plugin catalog、sessions activate、微信 login_runner 等
+
+---
+
 ## 1.2.4（2026-06-10）
 
 **一键更新、报错提示优化、微信审批与界面焕新**

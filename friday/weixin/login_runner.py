@@ -1,4 +1,4 @@
-"""微信扫码登录控制台：转发 openclaw 输出，并在浏览器打开备用链接。"""
+"""微信扫码登录控制台：转发 openclaw 输出，终端二维码优先，浏览器链接作备用。"""
 
 from __future__ import annotations
 
@@ -194,12 +194,27 @@ def _prepare_console() -> None:
     print()
     print("=" * 52)
     print("  微信扫码登录")
-    print("  终端字符二维码在 Windows 下常无法扫描")
-    print("  检测到链接后会自动在浏览器打开，请用微信扫描网页二维码")
+    print("  请优先扫描下方终端二维码")
+    print("  若无法扫描，可到星期五设置页点「浏览器打开扫码页」")
     print("=" * 52)
     print()
     print("正在启动 OpenClaw 登录流程，请稍候…")
     print()
+
+
+def _print_browser_fallback_hint(url: str) -> None:
+    print()
+    print("请优先扫描上方终端里的二维码。")
+    print("若二维码无法显示或无法扫描，请到星期五设置 → 微信桥接，点「浏览器打开扫码页」。")
+    print(f"备用链接：{url}")
+    print()
+
+
+def _note_login_url(url: str) -> None:
+    """缓存扫码链接并提示备用方式，不自动打开浏览器。"""
+    cleaned = url.rstrip(").,]")
+    _cache_login_url(cleaned)
+    _print_browser_fallback_hint(cleaned)
 
 
 def _open_login_url(url: str) -> bool:
@@ -263,8 +278,8 @@ def _write_login_cmd() -> Path:
         "echo.",
         "echo ====================================================",
         "echo   微信扫码登录",
-        "echo   浏览器将自动打开扫码页（请勿扫终端字符二维码）",
-        "echo   若未弹出浏览器，请回到星期五点「浏览器打开扫码页」",
+        "echo   请优先扫描下方终端二维码",
+        "echo   若无法扫描，回到星期五点「浏览器打开扫码页」",
         "echo ====================================================",
         "echo.",
     ]
@@ -304,10 +319,9 @@ def _write_login_bridge_mjs() -> Path:
     path = _login_bridge_mjs_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        """import { spawn, exec } from "node:child_process";
+        """import { spawn } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { platform } from "node:os";
 
 const shellFile = process.env.FRIDAY_OPENCLAW_LOGIN_SHELL_FILE;
 if (!shellFile) {
@@ -318,24 +332,24 @@ if (!shellFile) {
 console.log("");
 console.log("=".repeat(52));
 console.log("  微信扫码登录");
-console.log("  浏览器将自动打开扫码页（请勿扫描终端字符二维码）");
-console.log("  若 30 秒内未弹出浏览器，请回到星期五设置页点「浏览器打开扫码页」");
+console.log("  请优先扫描下方终端二维码");
+console.log("  若无法扫描，回到星期五点「浏览器打开扫码页」");
 console.log("=".repeat(52));
 console.log("");
 console.log("正在启动 OpenClaw 登录流程，请稍候…");
 console.log("");
 
 const URL_RE = /https:\\/\\/(?:liteapp\\.weixin\\.qq\\.com|[\\w.-]*weixin\\.qq\\.com)\\/[^\\s)\\]\\",]+/gi;
-let opened = false;
+let urlNoted = false;
 
-function maybeOpen(chunk) {
-  if (opened) return;
+function maybeNoteUrl(chunk) {
+  if (urlNoted) return;
   const text = String(chunk);
   const matches = text.match(URL_RE) || [];
   for (const raw of matches) {
     const url = raw.replace(/[).,\\]]+$/, "");
     if (!/weixin|liteapp/i.test(url)) continue;
-    opened = true;
+    urlNoted = true;
     const cachePath = process.env.FRIDAY_WEIXIN_LOGIN_URL_FILE;
     if (cachePath) {
       try {
@@ -345,14 +359,10 @@ function maybeOpen(chunk) {
         /* non-critical */
       }
     }
-    if (platform() === "win32") {
-      exec(`start "" "${url}"`);
-    } else {
-      exec(`xdg-open "${url}"`);
-    }
     console.log("");
-    console.log("已在浏览器打开扫码页面，请用微信扫描网页二维码。");
-    console.log("可忽略终端里错位的字符二维码。");
+    console.log("请优先扫描上方终端里的二维码。");
+    console.log("若二维码无法显示或无法扫描，请到星期五设置 → 微信桥接，点「浏览器打开扫码页」。");
+    console.log(`备用链接：${url}`);
     console.log("");
     break;
   }
@@ -367,7 +377,7 @@ const child = spawn("cmd.exe", ["/c", shellFile], {
 child.stdout.setEncoding("utf8");
 child.stdout.on("data", (chunk) => {
   process.stdout.write(chunk);
-  maybeOpen(chunk);
+  maybeNoteUrl(chunk);
 });
 
 child.on("close", (code) => process.exit(code ?? 1));
@@ -416,7 +426,7 @@ def run_weixin_login_console() -> int:
         errors="replace",
         bufsize=1,
     )
-    browser_opened = False
+    url_noted = False
     try:
         stream = proc.stdout
         if stream is None:
@@ -424,17 +434,13 @@ def run_weixin_login_console() -> int:
         for line in stream:
             sys.stdout.write(line)
             sys.stdout.flush()
-            if browser_opened:
+            if url_noted:
                 continue
             url = extract_login_url(line)
             if not url:
                 continue
-            if _open_login_url(url):
-                browser_opened = True
-                print()
-                print("已在浏览器打开扫码页面，请用微信扫描网页上的二维码。")
-                print("可忽略终端里错位的字符二维码。")
-                print()
+            _note_login_url(url)
+            url_noted = True
     finally:
         return proc.wait()
 
@@ -449,8 +455,8 @@ def launch_weixin_login_console() -> tuple[bool, str]:
         _spawn_login_console(wt=wt)
         if using_node:
             return True, (
-                "已打开扫码窗口；浏览器会自动弹出扫码页（约 10～30 秒）。"
-                "请勿扫描终端字符二维码。"
+                "已打开扫码窗口。请优先扫描终端里的二维码；"
+                "若无法扫描，再点「浏览器打开扫码页」。"
             )
         if wt:
             return True, (
@@ -459,7 +465,7 @@ def launch_weixin_login_console() -> tuple[bool, str]:
             )
         return True, (
             "已打开扫码窗口（经典 CMD）。"
-            "请勿扫描终端字符二维码；也可在设置页点「浏览器打开扫码页」。"
+            "请优先扫描终端二维码；若不行，在设置页点「浏览器打开扫码页」。"
         )
     except OSError as exc:
         _log.warning("无法打开扫码窗口 | %s", exc)

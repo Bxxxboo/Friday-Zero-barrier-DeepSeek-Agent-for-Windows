@@ -1,0 +1,36 @@
+{
+  "id": "scipilot-figure-skill",
+  "name": "SciPilot 科研数据可视化顾问",
+  "title": "SciPilot 科研数据可视化顾问",
+  "version": "1.0.0",
+  "description": "科研数据可视化 skill——先做数据剖析与选图判断，再产出出版级图表。支持 Nature/Science/IEEE/Elsevier/PNAS/中文核心期刊规范。",
+  "author": "Haojae",
+  "skills": [
+    {
+      "name": "scipilot-figure",
+      "title": "科研数据可视化顾问",
+      "description": "先分析数据特征与论证目标，再推荐图型并绘制出版级图表。",
+      "triggers": [
+        "论文配图",
+        "科研画图",
+        "数据可视化",
+        "不知道用什么图",
+        "怎么展示数据",
+        "用什么图好",
+        "期刊投稿图",
+        "figure",
+        "出版级图表",
+        "matplotlib",
+        "seaborn",
+        "plotly",
+        "误差棒",
+        "显著性标注",
+        "色盲安全配色",
+        "矢量图导出",
+        "中文论文图表",
+        "多面板"
+      ],
+      "rules": "SKILL.md"
+    }
+  ]
+}

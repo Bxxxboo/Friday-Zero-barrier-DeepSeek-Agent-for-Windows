@@ -82,6 +82,16 @@ def _slim_display_messages(agent_messages: list[dict[str, Any]]) -> list[dict[st
     return build_display_messages(agent_messages)
 
 
+def _user_message_for_display(content: str) -> str:
+    """从 agent 内部 user 消息提取可展示文本，过滤系统注入内容。"""
+    text = str(content or "").strip()
+    if not text or text.startswith("【系统提示】"):
+        return ""
+    if "\n\n【当前任务：" in text:
+        text = text.split("\n\n【当前任务：", 1)[0].strip()
+    return text
+
+
 def build_display_messages(agent_messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """从 agent 历史构建展示消息，将 generate_image 结果挂到紧随的 assistant 回复。"""
     from friday.image_gen import extract_path_from_tool_result
@@ -89,6 +99,7 @@ def build_display_messages(agent_messages: list[dict[str, Any]]) -> list[dict[st
     display: list[dict[str, Any]] = []
     pending_images: list[dict[str, str]] = []
     tool_names: dict[str, str] = {}
+    pending_calls: dict[str, str] = {}
 
     for msg in agent_messages:
         role = str(msg.get("role", ""))
@@ -96,7 +107,7 @@ def build_display_messages(agent_messages: list[dict[str, Any]]) -> list[dict[st
             continue
         if role == "user":
             pending_images = []
-            content = str(msg.get("content", "")).strip()
+            content = _user_message_for_display(msg.get("content", ""))
             if content:
                 display.append({"role": "user", "content": content})
             continue
@@ -108,6 +119,7 @@ def build_display_messages(agent_messages: list[dict[str, Any]]) -> list[dict[st
                 call_id = str(call.get("id", "")).strip()
                 if call_id:
                     tool_names[call_id] = str(fn.get("name", ""))
+                    pending_calls[call_id] = tool_names[call_id]
             content = str(msg.get("content", "")).strip()
             if content or pending_images:
                 item: dict[str, Any] = {"role": "assistant", "content": content}
@@ -118,11 +130,15 @@ def build_display_messages(agent_messages: list[dict[str, Any]]) -> list[dict[st
             continue
         if role == "tool":
             call_id = str(msg.get("tool_call_id", "")).strip()
+            pending_calls.pop(call_id, None)
             if tool_names.get(call_id) == "generate_image":
                 path = extract_path_from_tool_result(str(msg.get("content", "")))
                 if path:
                     pending_images.append({"path": path})
             continue
+
+    if pending_calls:
+        display.append({"role": "assistant", "content": "（正在处理…）"})
 
     if pending_images:
         display.append(
@@ -305,6 +321,12 @@ def save_agent_state(
         session.title = title[:32] + ("…" if len(title) > 32 else "")
 
     _save_session(session)
+    try:
+        from friday.artifacts import sync_session_references
+
+        sync_session_references(session_id)
+    except Exception:
+        _log.exception("同步会话生成物引用失败 | id=%s", session_id)
     index = _read_index()
     if session.id in index["order"]:
         index["order"].remove(session.id)
@@ -390,6 +412,13 @@ def delete_session(session_id: str) -> tuple[ChatSession | None, str]:
         index["active_session_id"] = next_id
         _write_index(next_id, index["order"])
         next_session = get_session(next_id)
+    try:
+        from friday.artifacts import on_session_deleted, run_gc
+
+        on_session_deleted(session_id)
+        run_gc()
+    except Exception:
+        _log.exception("会话删除后生成物回收失败 | id=%s", session_id)
     return next_session, next_id or ""
 
 
@@ -419,7 +448,9 @@ def display_messages_from_agent(agent_messages: list[dict[str, Any]]) -> list[di
             })
             continue
         if content:
-            display.append({"role": role, "content": content})
+            visible = _user_message_for_display(content) if role == "user" else str(content).strip()
+            if visible:
+                display.append({"role": role, "content": visible})
     return display
 
 

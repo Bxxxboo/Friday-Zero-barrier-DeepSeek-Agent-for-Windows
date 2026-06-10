@@ -156,20 +156,42 @@ def switch_category_profile(
 
     saved = profiles.get(new_id) or {}
     current_key = str(getattr(settings, c["api_key"], "") or "").strip()
-    resolved_key = _resolve_profile_api_key(
-        category,
-        new_id,
-        current_key,
-        str(saved.get("api_key") or ""),
-    )
     current_base = str(getattr(settings, c["base_url"], "") or "").strip()
-    base_url = (saved.get("base_url") or current_base or _preset_default_base_url(category, new_id)).strip()
     current_model = str(getattr(settings, c["model"], "") or "").strip()
-    model = _normalize_model(
-        category,
-        new_id,
-        (saved.get("model") or current_model or _default_model(category, new_id)).strip(),
-    )
+    switching_builtin = old_id != new_id and not is_custom_provider_id(new_id)
+    if switching_builtin:
+        resolved_key = _resolve_profile_api_key(
+            category,
+            new_id,
+            current_key,
+            str(saved.get("api_key") or ""),
+        )
+        if (
+            not saved.get("api_key")
+            and new_id not in ("ark",)
+            and resolved_key == current_key
+            and current_key
+        ):
+            resolved_key = ""
+        base_url = (saved.get("base_url") or _preset_default_base_url(category, new_id)).strip()
+        model = _normalize_model(
+            category,
+            new_id,
+            (saved.get("model") or current_model or _default_model(category, new_id)).strip(),
+        )
+    else:
+        resolved_key = _resolve_profile_api_key(
+            category,
+            new_id,
+            current_key,
+            str(saved.get("api_key") or ""),
+        )
+        base_url = (saved.get("base_url") or current_base or _preset_default_base_url(category, new_id)).strip()
+        model = _normalize_model(
+            category,
+            new_id,
+            (saved.get("model") or current_model or _default_model(category, new_id)).strip(),
+        )
     patch: dict[str, Any] = {
         c["provider"]: new_id,
         c["api_key"]: resolved_key,

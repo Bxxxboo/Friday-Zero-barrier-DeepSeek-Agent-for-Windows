@@ -78,4 +78,10 @@ def save_pasted_image(
     path.write_bytes(data)
     normalized = str(path.resolve()).replace("\\", "/")
     _log.info("保存粘贴截图 | path=%s bytes=%d", normalized, len(data))
+    try:
+        from friday.artifacts import register_pasted_image
+
+        register_pasted_image(path)
+    except Exception:
+        _log.exception("登记粘贴截图失败")
     return normalized, filename

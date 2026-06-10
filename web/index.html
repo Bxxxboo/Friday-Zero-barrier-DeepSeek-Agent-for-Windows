@@ -115,7 +115,7 @@
       transform: none;
     }
   </style>
-  <link rel="stylesheet" href="/static/styles.css?v=86" />
+  <link rel="stylesheet" href="/static/styles.css?v=87" />
 </head>
 <body>
   <div class="app-boot-overlay" id="appBootOverlay" aria-live="polite">
@@ -903,6 +903,38 @@
               </div>
               <pre class="log-preview" id="portableReport" data-i18n="logs.reportPlaceholder">（导入/导出结果将显示在此）</pre>
             </div>
+            <div class="settings-group artifact-storage-group">
+              <h5>生成物与回收</h5>
+              <p class="settings-hint">
+                临时脚本与中间文件登记在 <code>{工作区}/.friday/artifacts/</code>，过期后移入
+                <code>.friday/trash/</code> 再自动清除。生图等交付物默认长期保留。
+              </p>
+              <p class="settings-hint" id="artifactStorageSummary">（加载占用信息…）</p>
+              <div class="settings-form artifact-settings-form">
+                <label>
+                  <span>临时文件 TTL（小时）</span>
+                  <input type="number" id="artifactScratchTtlHours" min="1" max="720" value="24" />
+                </label>
+                <label>
+                  <span>会话关联文件 TTL（天）</span>
+                  <input type="number" id="artifactSessionTtlDays" min="1" max="365" value="30" />
+                </label>
+                <label>
+                  <span>回收站保留（天）</span>
+                  <input type="number" id="artifactTrashTtlDays" min="1" max="90" value="7" />
+                </label>
+                <label class="settings-check">
+                  <input type="checkbox" id="artifactAutoGcEnabled" checked />
+                  <span>任务结束后自动回收过期文件</span>
+                </label>
+              </div>
+              <div class="settings-actions">
+                <button type="button" class="ghost-btn" id="artifactRefreshSummaryBtn">刷新占用</button>
+                <button type="button" class="ghost-btn" id="artifactRunGcBtn">立即回收</button>
+                <button type="button" class="primary-btn" id="artifactSavePolicyBtn">保存回收策略</button>
+              </div>
+              <div class="settings-result" id="artifactStorageResult"></div>
+            </div>
             <div class="settings-group diagnostics-group">
               <h5 data-i18n="logs.diagnostics">日志与诊断</h5>
               <p class="settings-hint">应用数据与日志保存在 <code id="appdataPathHint">%APPDATA%\Friday</code></p>
@@ -1006,7 +1038,7 @@
           <section class="settings-section" id="panel-weixin">
             <h4 data-i18n="settings.weixin.title">微信桥接</h4>
             <p class="settings-desc">
-              用手机微信给「星期五」发文字，即可远程指挥这台电脑。点「一键配置」会自动安装 Node.js（若无）、OpenClaw、微信插件与桥接，并弹出扫码窗口；<strong>请用浏览器里的网页二维码扫码</strong>（终端字符二维码在 Windows 上无法使用）。扫码后点「刷新状态」。
+              用手机微信给「星期五」发文字，即可远程指挥这台电脑。点「一键配置」会自动安装 Node.js（若无）、OpenClaw、微信插件与桥接，并弹出扫码窗口；<strong>请优先扫描终端里的二维码</strong>，若无法扫描再点「浏览器打开扫码页」。扫码后点「刷新状态」。
             </p>
             <div class="weixin-setup-banner" id="weixinSetupBanner">
               <span class="weixin-setup-badge" id="weixinSetupBadge">检测中…</span>
@@ -1168,11 +1200,11 @@
   <script defer src="/static/vendor/marked.min.js"></script>
   <script defer src="/static/vendor/purify.min.js"></script>
   <script defer src="/static/i18n.js?v=7"></script>
-  <script defer src="/static/utils.js?v=64"></script>
+  <script defer src="/static/utils.js?v=67"></script>
   <script defer src="/static/errorHints.js?v=2"></script>
   <script defer src="/static/providers.js?v=14"></script>
   <script defer src="/static/sessions.js?v=56"></script>
-  <script defer src="/static/settings.js?v=73"></script>
+  <script defer src="/static/settings.js?v=74"></script>
   <script defer src="/static/settings-python-env.js?v=1"></script>
   <script defer src="/static/weixin.js?v=6"></script>
   <script defer src="/static/onboarding.js?v=53"></script>
@@ -1186,8 +1218,8 @@
   <script defer src="/static/plan.js?v=9"></script>
   <script defer src="/static/vendor/gsap.min.js"></script>
   <script defer src="/static/motion.js?v=1"></script>
-  <script defer src="/static/chat.js?v=64"></script>
-  <script defer src="/static/app.js?v=61"></script>
+  <script defer src="/static/chat.js?v=65"></script>
+  <script defer src="/static/app.js?v=62"></script>
 </body>
 </html>
 

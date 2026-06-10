@@ -22,6 +22,8 @@ function Require-Command([string]$Name) {
 Require-Command git
 Require-Command gh
 
+. (Join-Path $PWD "scripts\friday-dist.ps1")
+
 if ($Bump) {
     powershell -ExecutionPolicy Bypass -File scripts\bump-version.ps1 -Part $Bump
 }
@@ -48,16 +50,17 @@ $Tag = "v$Version"
 Write-Host "Building release $Tag ..." -ForegroundColor Cyan
 powershell -ExecutionPolicy Bypass -File scripts\make-release.ps1
 
-$Zip = Join-Path $PWD "release\Friday-Windows.zip"
-if (-not (Test-Path $Zip)) { throw "Release zip not found in release/" }
+$Zip = Get-FridayReleaseZipPath -Root $PWD
+if (-not (Test-Path $Zip)) { throw "Release zip not found: $Zip" }
 
+$zipLabel = Get-FridayReleaseZipName -Root $PWD
 $Notes = @"
 ## Friday $Version
 
 Windows AI desktop butler.
 
 ### Install
-1. Download ``Friday-Windows.zip``
+1. Download ``$zipLabel``
 2. Extract and run ``星期五.exe``
 3. See ``安装教程.txt`` inside the archive
 "@

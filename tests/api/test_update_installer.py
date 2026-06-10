@@ -16,7 +16,7 @@ import urllib.error
 
 
 def test_validate_download_url():
-    assert _validate_download_url("https://gitee.com/Bxxxboo/friday/releases/download/v1/Friday-Windows.zip")
+    assert _validate_download_url("https://gitee.com/Bxxxboo/friday/releases/download/v1/Friday-Windows-1.2.4.zip")
     assert _validate_download_url("https://github.com/user/repo/releases/download/v1/a.zip")
     assert not _validate_download_url("http://evil.example/update.zip")
     assert not _validate_download_url("")

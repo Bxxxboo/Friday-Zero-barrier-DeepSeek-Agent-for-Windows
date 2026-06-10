@@ -143,6 +143,16 @@ async def _lifespan(app: FastAPI):
         ensure_builtin_rules()
         migrate_session_files()
         ensure_default_session()
+        try:
+            from friday.artifacts import ensure_friday_dirs, run_gc
+
+            cfg = load_settings()
+            ensure_friday_dirs(cfg)
+            run_gc(settings=cfg)
+        except Exception:
+            from friday.logging_config import get_logger
+
+            get_logger("artifacts").exception("启动时生成物回收失败")
 
     await asyncio.to_thread(_bootstrap)
     _backend_ready = True
@@ -538,7 +548,10 @@ async def test_settings(payload: SettingsPayload) -> TestResponse:
         return TestResponse(**build_test_response(ok, message, service=service))
     except Exception as exc:
         log.exception("settings/test 未捕获异常")
-        cfg = _merge_payload(payload)
+        try:
+            cfg = _merge_payload(payload)
+        except Exception:
+            cfg = load_settings()
         from friday.model_providers import llm_service_label
 
         return TestResponse(
@@ -676,6 +689,20 @@ async def paste_chat_image(payload: PasteImagePayload) -> PasteImageResponse:
     return PasteImageResponse(path=path, filename=filename)
 
 
+@app.get("/api/artifacts/summary")
+async def api_artifacts_summary() -> dict[str, Any]:
+    from friday.artifacts import storage_summary
+
+    return await asyncio.to_thread(storage_summary)
+
+
+@app.post("/api/artifacts/gc")
+async def api_artifacts_gc(dry_run: bool = False) -> dict[str, Any]:
+    from friday.artifacts import run_gc
+
+    return await asyncio.to_thread(run_gc, dry_run=dry_run)
+
+
 @app.get("/api/chat/generated-image")
 async def get_generated_image(path: str, token: str = "", preview: int = 0) -> Response:
     from friday.auth import verify_api_token
@@ -761,7 +788,7 @@ async def api_delete_session(session_id: str) -> dict[str, Any]:
 
 
 @app.post("/api/sessions/{session_id}/activate")
-async def api_activate_session(session_id: str) -> dict[str, str]:
+async def api_activate_session(session_id: str) -> dict[str, Any]:
     if not session_exists(session_id):
         raise HTTPException(status_code=404, detail="会话不存在")
     set_active_session(session_id)
@@ -877,6 +904,11 @@ def _to_response(cfg: UserSettings) -> SettingsResponse:
         api_proxy=getattr(cfg, "api_proxy", "") or "",
         api_trust_env=bool(getattr(cfg, "api_trust_env", True)),
         onboarding_completed=bool(getattr(cfg, "onboarding_completed", False)),
+        artifact_scratch_ttl_hours=int(getattr(cfg, "artifact_scratch_ttl_hours", 24) or 24),
+        artifact_session_ttl_days=int(getattr(cfg, "artifact_session_ttl_days", 30) or 30),
+        artifact_trash_ttl_days=int(getattr(cfg, "artifact_trash_ttl_days", 7) or 7),
+        artifact_session_delete_grace_days=int(getattr(cfg, "artifact_session_delete_grace_days", 7) or 7),
+        artifact_auto_gc_enabled=bool(getattr(cfg, "artifact_auto_gc_enabled", True)),
     )
 
 
@@ -1194,7 +1226,7 @@ async def _run_chat(
         "trigger": "chat",
         "schedule_id": "",
     }
-    await emit("status", {"message": "思考中..."})
+    await emit("agent_step", {"message": "正在理解你的请求…"})
 
     paths = _normalize_image_paths(image_path, image_paths)
     vision_summary = await _prefetch_vision(

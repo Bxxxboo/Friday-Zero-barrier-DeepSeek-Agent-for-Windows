@@ -62,6 +62,11 @@ class SettingsPayload(BaseModel):
     switch_vision_profile: bool | None = None
     switch_image_gen_profile: bool | None = None
     onboarding_completed: bool | None = None
+    artifact_scratch_ttl_hours: int | None = None
+    artifact_session_ttl_days: int | None = None
+    artifact_trash_ttl_days: int | None = None
+    artifact_session_delete_grace_days: int | None = None
+    artifact_auto_gc_enabled: bool | None = None
 
 
 class SettingsResponse(BaseModel):
@@ -126,6 +131,11 @@ class SettingsResponse(BaseModel):
     api_proxy: str = ""
     api_trust_env: bool = True
     onboarding_completed: bool = False
+    artifact_scratch_ttl_hours: int = 24
+    artifact_session_ttl_days: int = 30
+    artifact_trash_ttl_days: int = 7
+    artifact_session_delete_grace_days: int = 7
+    artifact_auto_gc_enabled: bool = True
 
 
 class TestResponse(BaseModel):

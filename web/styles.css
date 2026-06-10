@@ -1392,7 +1392,102 @@ html[data-theme="light"] .chat-header {
   gap: 6px;
 }
 
-.message.thinking .dot {
+.message.activity {
+  align-self: flex-start;
+  max-width: min(92%, 520px);
+  padding: 12px 14px;
+  background: var(--panel-solid);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.activity-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.activity-steps {
+  margin: 0;
+  padding: 0 0 0 18px;
+  list-style: none;
+}
+
+.activity-steps li {
+  position: relative;
+  padding: 3px 0 3px 4px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.activity-steps li::before {
+  content: "";
+  position: absolute;
+  left: -14px;
+  top: 0.72em;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border-subtle);
+  transform: translateY(-50%);
+}
+
+.activity-steps li.current {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.activity-steps li.current::before {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+
+.activity-steps li.done {
+  color: var(--muted);
+}
+
+.activity-steps li.done::before {
+  background: var(--success, #22c55e);
+}
+
+.activity-reasoning {
+  margin-top: 10px;
+  border-top: 1px dashed var(--border-subtle);
+  padding-top: 8px;
+}
+
+.activity-reasoning summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+  user-select: none;
+}
+
+.activity-reasoning-body {
+  margin: 8px 0 0;
+  max-height: 160px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.activity-reasoning.hidden {
+  display: none;
+}
+
+.message.thinking .dot,
+.activity-head .dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -1400,8 +1495,10 @@ html[data-theme="light"] .chat-header {
   animation: pulse 1.2s infinite ease-in-out;
 }
 
-.message.thinking .dot:nth-child(2) { animation-delay: 0.2s; }
-.message.thinking .dot:nth-child(3) { animation-delay: 0.4s; }
+.message.thinking .dot:nth-child(2),
+.activity-head .dot:nth-child(2) { animation-delay: 0.2s; }
+.message.thinking .dot:nth-child(3),
+.activity-head .dot:nth-child(3) { animation-delay: 0.4s; }
 
 @keyframes pulse {
   0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }

@@ -235,6 +235,7 @@
     void F.refreshYoloUnlockState?.();
     fillSecurityForm(data);
     applyAutostartUi(data);
+    fillArtifactForm(data);
     applyUiSettings(data);
     F.updateApiStatus(data.api_ready);
     F.bootSettingsSnapshot = data;
@@ -904,8 +905,116 @@
   F.refreshLogPreview = refreshLogPreview;
   F.openLogFolder = openLogFolder;
 
+  function formatBytes(n) {
+    const num = Number(n) || 0;
+    if (num < 1024) return `${num} B`;
+    if (num < 1024 * 1024) return `${(num / 1024).toFixed(1)} KB`;
+    if (num < 1024 * 1024 * 1024) return `${(num / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(num / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  }
+
+  function fillArtifactForm(data) {
+    const scratch = document.getElementById("artifactScratchTtlHours");
+    const session = document.getElementById("artifactSessionTtlDays");
+    const trash = document.getElementById("artifactTrashTtlDays");
+    const autoGc = document.getElementById("artifactAutoGcEnabled");
+    if (scratch) scratch.value = String(data.artifact_scratch_ttl_hours ?? 24);
+    if (session) session.value = String(data.artifact_session_ttl_days ?? 30);
+    if (trash) trash.value = String(data.artifact_trash_ttl_days ?? 7);
+    if (autoGc) autoGc.checked = data.artifact_auto_gc_enabled !== false;
+    void refreshArtifactSummary();
+  }
+
+  function renderArtifactSummary(data) {
+    const el = document.getElementById("artifactStorageSummary");
+    if (!el || !data) return;
+    el.textContent =
+      `登记中 ${data.indexed_active_count} 个（${formatBytes(data.indexed_active_bytes)}）` +
+      ` · 回收站 ${data.indexed_trashed_count} 个（${formatBytes(data.indexed_trashed_bytes)}）` +
+      ` · artifacts 目录 ${formatBytes(data.artifacts_dir_bytes)}` +
+      ` · trash 目录 ${formatBytes(data.trash_dir_bytes)}`;
+  }
+
+  async function refreshArtifactSummary() {
+    try {
+      const res = await F.apiFetch("/api/artifacts/summary");
+      if (!res.ok) return;
+      const data = await res.json();
+      renderArtifactSummary(data);
+      return data;
+    } catch {
+      const el = document.getElementById("artifactStorageSummary");
+      if (el) el.textContent = "无法加载占用信息。";
+      return null;
+    }
+  }
+
+  async function saveArtifactPolicy() {
+    const resultEl = document.getElementById("artifactStorageResult");
+    if (resultEl) {
+      resultEl.className = "settings-result";
+      resultEl.textContent = "保存中…";
+    }
+    const payload = {
+      artifact_scratch_ttl_hours: Number(document.getElementById("artifactScratchTtlHours")?.value || 24),
+      artifact_session_ttl_days: Number(document.getElementById("artifactSessionTtlDays")?.value || 30),
+      artifact_trash_ttl_days: Number(document.getElementById("artifactTrashTtlDays")?.value || 7),
+      artifact_auto_gc_enabled: document.getElementById("artifactAutoGcEnabled")?.checked !== false,
+    };
+    try {
+      const res = await F.apiFetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error("save failed");
+      if (resultEl) {
+        resultEl.className = "settings-result ok";
+        resultEl.textContent = "回收策略已保存。";
+      }
+      void refreshArtifactSummary();
+    } catch {
+      if (resultEl) {
+        resultEl.className = "settings-result error";
+        resultEl.textContent = "保存失败。";
+      }
+    }
+  }
+
+  async function runArtifactGc() {
+    const resultEl = document.getElementById("artifactStorageResult");
+    if (resultEl) {
+      resultEl.className = "settings-result";
+      resultEl.textContent = "正在回收…";
+    }
+    try {
+      const res = await F.apiFetch("/api/artifacts/gc", { method: "POST" });
+      const data = await res.json();
+      if (resultEl) {
+        resultEl.className = "settings-result ok";
+        resultEl.textContent =
+          `已移入回收站 ${data.trashed || 0} 个，永久删除 ${data.purged || 0} 个，释放约 ${formatBytes(data.bytes_freed || 0)}。`;
+      }
+      void refreshArtifactSummary();
+    } catch {
+      if (resultEl) {
+        resultEl.className = "settings-result error";
+        resultEl.textContent = "回收失败。";
+      }
+    }
+  }
+
   document.getElementById("openLogFolderBtn")?.addEventListener("click", openLogFolder);
   document.getElementById("refreshLogPreviewBtn")?.addEventListener("click", refreshLogPreview);
+  document.getElementById("artifactRefreshSummaryBtn")?.addEventListener("click", () => {
+    void refreshArtifactSummary();
+  });
+  document.getElementById("artifactRunGcBtn")?.addEventListener("click", () => {
+    void runArtifactGc();
+  });
+  document.getElementById("artifactSavePolicyBtn")?.addEventListener("click", () => {
+    void saveArtifactPolicy();
+  });
 
   async function exportPortableBundle() {
     const btn = document.getElementById("portableExportBtn");

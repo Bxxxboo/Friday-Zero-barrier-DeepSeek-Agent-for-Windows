@@ -210,7 +210,7 @@ def autostart_status() -> dict[str, object]:
     available = sys.platform == "win32" and not err
     vbs_path = _startup_vbs_path()
     task_on = _task_exists(autostart_task_name())
-    enabled = vbs_path.is_file() or task_on
+    enabled = available and (vbs_path.is_file() or task_on)
     method = "startup" if vbs_path.is_file() else ("task" if task_on else "")
 
     stale = False

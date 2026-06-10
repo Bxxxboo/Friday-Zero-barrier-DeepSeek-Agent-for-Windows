@@ -222,6 +222,13 @@ def run_python_script(path: str, args: str = "", cwd: str = "", timeout: int = 3
 
     _log.info("执行 Python 脚本 | script=%s | timeout=%d", script, timeout)
     result = _run_process(cmd, cwd=work_dir, timeout=timeout)
+    try:
+        from friday.artifacts import is_artifacts_path, mark_script_consumed
+
+        if is_artifacts_path(script):
+            mark_script_consumed(script)
+    except Exception:
+        pass
     if env_msg and "已就绪" in env_msg and "exit=0" not in result[:20]:
         return result
     return result

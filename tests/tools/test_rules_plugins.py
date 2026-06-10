@@ -60,16 +60,23 @@ def test_create_rule_and_prompt(tmp_appdata):
     create_rule({"title": "测试规则", "content": "始终用列表回答。"})
     rules = list_rules(for_ui=True)
     assert any(r["title"] == "测试规则" for r in rules)
+    assert not any(r.get("source") == "builtin" for r in rules)
     prompt = active_rules_prompt()
     assert "回复习惯" in prompt
     assert "测试规则" in prompt
     assert "始终用列表回答" in prompt
+    assert "与内置冲突时以本条为准" in prompt
 
 
 def test_builtin_rule_cannot_be_deleted(tmp_appdata):
-    active_rules_prompt()
-    builtin = next(r for r in list_rules(for_ui=True) if r.get("source") == "builtin")
+    from friday.rules import BUILTIN_RESPONSE_RULE_ID, ensure_builtin_rules
+
+    ensure_builtin_rules()
+    builtin = get_rule(BUILTIN_RESPONSE_RULE_ID)
+    assert builtin is not None
+    assert builtin.get("source") == "builtin"
     assert delete_rule(builtin["id"]) is False
+    assert not any(r.get("source") == "builtin" for r in list_rules(for_ui=True))
 
 
 def test_delete_plugin_rule(tmp_appdata):
@@ -204,9 +211,17 @@ def test_migrate_legacy_bundled_plugin_install(tmp_appdata):
     assert "图片必走视觉桥接" in active_rules_prompt()
 
 
-def test_plugin_catalog_empty():
-    assert plugin_catalog() == []
-    assert "已内置" in format_plugin_catalog()
+def test_plugin_catalog_recommendations_text():
+    catalog = plugin_catalog()
+    assert len(catalog) >= 2
+    ids = {item["id"] for item in catalog}
+    assert "scipilot-figure-skill" in ids
+    assert "karpathy-guidelines" in ids
+
+    text = format_plugin_catalog()
+    assert "推荐插件" in text
+    assert "scipilot-figure-skill" in text
+    assert "karpathy-guidelines" in text
 
 
 def test_parse_github_skill_source():
@@ -216,11 +231,36 @@ def test_parse_github_skill_source():
     assert parse_github_skill_source("octocat/repo@dev/my-skill") == (
         "octocat", "repo", "dev", "my-skill",
     )
+    assert parse_github_skill_source("Haojae/scipilot-figure-skill/.") == (
+        "Haojae", "scipilot-figure-skill", "main", ".",
+    )
+
+
+def test_plugin_catalog_cache(tmp_appdata, monkeypatch):
+    from friday import plugins as plugins_mod
+
+    sample = [{
+        "id": "cache-test",
+        "name": "Cache Test",
+        "description": "x",
+        "source": "local:cache-test",
+    }]
+    monkeypatch.setattr(plugins_mod, "_PLUGIN_CATALOG", sample)
+    plugins_mod.invalidate_plugin_catalog_cache()
+    first = format_plugin_catalog()
+    second = format_plugin_catalog()
+    assert first == second
+    assert "Cache Test" in first
+    plugins_mod._catalog_text_cache = (0.0, "stale")
+    refreshed = format_plugin_catalog()
+    assert refreshed != "stale"
+    assert "Cache Test" in refreshed
 
 
 def test_resolve_plugin_source_no_builtin_mapping():
     assert resolve_plugin_source("storage-analyzer") == "storage-analyzer"
     assert resolve_plugin_source("friday-ai/storage-analyzer") == "friday-ai/storage-analyzer"
+    assert resolve_plugin_source("scipilot-figure-skill") == "local:scipilot-figure-skill"
 
 
 def test_install_github_skill_storage_analyzer_blocked(tmp_appdata):
@@ -279,3 +319,46 @@ def test_builtin_file_safety_rule_seeded(tmp_appdata):
     assert "文件删改安全" in prompt
     assert "run_python" in prompt
     assert "同意" in prompt
+
+
+def test_builtin_task_scope_rule_seeded(tmp_appdata):
+    from friday.rules import BUILTIN_TASK_SCOPE_RULE_ID, ensure_builtin_rules
+
+    ensure_builtin_rules()
+    rule = get_rule(BUILTIN_TASK_SCOPE_RULE_ID)
+    assert rule is not None
+    assert rule.get("enabled") is True
+
+    prompt = active_rules_prompt()
+    assert "任务范围（勿串台）" in prompt
+    assert "禁止把历史会话" in prompt
+    assert "版本升级" in prompt
+
+
+def test_builtin_solution_first_rule_seeded(tmp_appdata):
+    from friday.rules import BUILTIN_SOLUTION_FIRST_RULE_ID, ensure_builtin_rules
+
+    ensure_builtin_rules()
+    rule = get_rule(BUILTIN_SOLUTION_FIRST_RULE_ID)
+    assert rule is not None
+    assert rule.get("enabled") is True
+
+    prompt = active_rules_prompt()
+    assert "先方案、后改码" in prompt
+    assert "用户明确同意后再改代码" in prompt
+
+
+def test_builtin_rules_content_synced_on_upgrade(tmp_appdata):
+    from friday.rules import BUILTIN_RESPONSE_RULE_ID, _load_all, _save_all, ensure_builtin_rules
+
+    items = _load_all()
+    for rule in items:
+        if rule["id"] == BUILTIN_RESPONSE_RULE_ID:
+            rule["content"] = "旧版占位内容"
+    _save_all(items)
+
+    ensure_builtin_rules()
+    rule = get_rule(BUILTIN_RESPONSE_RULE_ID)
+    assert rule is not None
+    assert "旧版占位" not in rule["content"]
+    assert "本任务直接相关" in rule["content"]

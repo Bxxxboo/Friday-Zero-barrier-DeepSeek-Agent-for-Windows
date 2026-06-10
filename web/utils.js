@@ -40,6 +40,8 @@
   let pendingQueue = [];
   let apiReady = false;
   let thinkingNode = null;
+  let activityNode = null;
+  let activityReasoningText = "";
   let sessions = [];
   let activeSessionId = null;
   let streamingNode = null;
@@ -174,6 +176,10 @@
       const content = document.createElement("div");
       content.className = "md-content";
       content.innerHTML = safe;
+      content.querySelectorAll('a[href^="http"]').forEach((anchor) => {
+        anchor.setAttribute("target", "_blank");
+        anchor.setAttribute("rel", "noopener noreferrer");
+      });
       node.appendChild(content);
       return;
     }
@@ -444,21 +450,73 @@
     chatScroll.addEventListener("scroll", updateScrollStick, { passive: true });
   }
 
-  function showThinking() {
-    removeThinking();
-    thinkingNode = document.createElement("div");
-    thinkingNode.className = "message thinking";
-    thinkingNode.innerHTML =
-      '<span class="dot"></span><span class="dot"></span><span class="dot"></span> 正在思考...';
-    chatLog.appendChild(thinkingNode);
+  function ensureActivityPanel() {
+    if (activityNode) return activityNode;
+    activityNode = document.createElement("div");
+    activityNode.className = "message activity";
+    activityNode.innerHTML =
+      '<div class="activity-head">' +
+      '<span class="dot"></span><span class="dot"></span><span class="dot"></span>' +
+      '<span class="activity-title">正在处理…</span>' +
+      "</div>" +
+      '<ol class="activity-steps"></ol>' +
+      '<details class="activity-reasoning hidden">' +
+      "<summary>思考过程</summary>" +
+      '<pre class="activity-reasoning-body"></pre>' +
+      "</details>";
+    chatLog.appendChild(activityNode);
+    thinkingNode = activityNode;
+    scrollToBottom();
+    return activityNode;
+  }
+
+  function appendActivityStep(text) {
+    if (!text) return;
+    const panel = ensureActivityPanel();
+    const list = panel.querySelector(".activity-steps");
+    const current = list.querySelector("li.current");
+    if (current && current.textContent === text) return;
+    if (current) {
+      current.classList.remove("current");
+      current.classList.add("done");
+    }
+    const li = document.createElement("li");
+    li.className = "current";
+    li.textContent = text;
+    list.appendChild(li);
     scrollToBottom();
   }
 
+  function appendReasoningDelta(delta) {
+    if (!delta) return;
+    const panel = ensureActivityPanel();
+    const details = panel.querySelector(".activity-reasoning");
+    const pre = panel.querySelector(".activity-reasoning-body");
+    details.classList.remove("hidden");
+    activityReasoningText += delta;
+    pre.textContent = activityReasoningText;
+    scrollToBottom();
+  }
+
+  function completeActivitySteps() {
+    if (!activityNode) return;
+    activityNode.querySelectorAll(".activity-steps li.current").forEach((li) => {
+      li.classList.remove("current");
+      li.classList.add("done");
+    });
+  }
+
+  function showThinking() {
+    appendActivityStep("正在理解你的请求…");
+  }
+
   function removeThinking() {
-    if (thinkingNode) {
-      thinkingNode.remove();
-      thinkingNode = null;
+    activityReasoningText = "";
+    if (activityNode) {
+      activityNode.remove();
+      activityNode = null;
     }
+    thinkingNode = null;
   }
 
   function getActiveSession() {
@@ -466,19 +524,21 @@
   }
 
   function toUiMessages(apiMessages) {
-    return apiMessages.map((msg) => {
-      const item = {
-        kind: msg.role === "user" ? "user" : msg.role === "error" ? "error" : "assistant",
-        text: msg.content,
-      };
-      const images = msg.generated_images || msg.generatedImages;
-      if (images?.length) {
-        item.generatedImages = images
-          .map((img) => ({ path: typeof img === "string" ? img : img?.path }))
-          .filter((img) => img.path);
-      }
-      return item;
-    });
+    return apiMessages
+      .map((msg) => {
+        const item = {
+          kind: msg.role === "user" ? "user" : msg.role === "error" ? "error" : "assistant",
+          text: msg.content,
+        };
+        const images = msg.generated_images || msg.generatedImages;
+        if (images?.length) {
+          item.generatedImages = images
+            .map((img) => ({ path: typeof img === "string" ? img : img?.path }))
+            .filter((img) => img.path);
+        }
+        return item;
+      })
+      .filter((msg) => String(msg.text || "").trim());
   }
 
   function setBusy(value) {
@@ -611,6 +671,9 @@
     isNearBottom,
     showThinking,
     removeThinking,
+    appendActivityStep,
+    appendReasoningDelta,
+    completeActivitySteps,
     getActiveSession,
     toUiMessages,
     setBusy,

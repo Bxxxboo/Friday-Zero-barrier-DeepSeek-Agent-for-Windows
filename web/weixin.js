@@ -133,7 +133,7 @@
     const failLine = lines.find((line) => line.startsWith("✗"));
     if (failLine) return failLine.replace(/^✗\s*/, "失败：");
     if (lines.some((line) => /扫码|登录窗口|浏览器/.test(line))) {
-      return "扫码窗口已打开。请等待浏览器自动弹出扫码页（勿扫终端字符二维码），或点「浏览器打开扫码页」，完成后点「刷新状态」。";
+      return "扫码窗口已打开。请优先扫描终端里的二维码；若无法扫描，再点「浏览器打开扫码页」。完成后点「刷新状态」。";
     }
     if (ok) return "配置已完成。请查看下方各步骤状态。";
     const last = lines[lines.length - 1] || "";

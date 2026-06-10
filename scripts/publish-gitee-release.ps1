@@ -16,16 +16,15 @@ if (-not $GiteeToken) {
 
 $env:GITEE_TOKEN = $GiteeToken
 
+. (Join-Path $Root "scripts\friday-dist.ps1")
+
 if (-not $SkipBuild) {
     powershell -ExecutionPolicy Bypass -File scripts\make-release.ps1
 }
 
-$Zip = Join-Path $PWD "release\Friday-Windows.zip"
+$Zip = Get-FridayReleaseZipPath -Root $Root
 if (-not $SkipUpload -and -not (Test-Path $Zip)) {
-    $Zip = (Get-ChildItem (Join-Path $PWD "release") -Filter "*-Windows.zip" | Select-Object -First 1).FullName
-}
-if (-not $SkipUpload -and -not $Zip) {
-    throw "Release zip not found. Run scripts/make-release.ps1 first."
+    throw "Release zip not found: $Zip. Run scripts/make-release.ps1 first."
 }
 
 $Python = Join-Path $Root ".python-env\Scripts\python.exe"

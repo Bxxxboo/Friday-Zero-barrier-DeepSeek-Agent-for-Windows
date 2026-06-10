@@ -259,15 +259,77 @@ class WindowApi:
                 _log.exception("打开日志文件夹失败")
             return False
 
+    def open_external_url(self, url: str) -> bool:
+        """在系统默认浏览器中打开 http(s) 链接，避免 WebView 整页跳走。"""
+        cleaned = (url or "").strip()
+        if not cleaned.startswith(("http://", "https://")):
+            return False
+        try:
+            import webbrowser
+
+            webbrowser.open(cleaned)
+            return True
+        except Exception:
+            if _log:
+                _log.exception("打开外部链接失败 | url=%s", cleaned[:120])
+            return False
+
 
 def _startup_failure_html(title: str, message: str) -> str:
+    from friday.splash import resolved_boot_theme, splash_background
+
+    settings = load_settings()
+    bg = splash_background(settings)
+    light = resolved_boot_theme(settings) == "light"
+    text = "#2c3444" if light else "#d8dde8"
+    muted = "#5c6578" if light else "#8b95a8"
+    accent = "#b8862e" if light else "#d4a056"
+    btn_bg = "#4070b8" if light else "#5b8fd9"
+    btn_text = "#ffffff"
+    border = "rgba(180, 150, 100, 0.22)" if light else "rgba(212, 160, 86, 0.14)"
     log_dir = str(get_appdata_dir()).replace("\\", "/")
+    safe_title = title.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    safe_message = message.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     return (
-        f"<body style='font-family:sans-serif;padding:24px;line-height:1.6'>"
-        f"<h3>{title}</h3><p>{message}</p>"
+        f"<!DOCTYPE html><html lang='zh-CN'><head><meta charset='utf-8'>"
+        f"<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        f"<title>{safe_title}</title>"
+        f"<style>"
+        f"html,body{{margin:0;width:100%;height:100%;background:{bg};"
+        f"font-family:'Segoe UI','Microsoft YaHei UI',sans-serif;color:{text};"
+        f"display:flex;align-items:center;justify-content:center;line-height:1.6;}}"
+        f".card{{max-width:520px;padding:32px 28px;text-align:center;"
+        f"border:1px solid {border};border-radius:16px;background:rgba(128,128,128,.06);}}"
+        f"h3{{margin:0 0 12px;font-size:18px;font-weight:600;color:{accent};}}"
+        f"p{{margin:0 0 10px;font-size:14px;color:{muted};}}"
+        f"code{{font-size:12px;word-break:break-all;}}"
+        f".actions{{display:flex;gap:10px;justify-content:center;margin-top:22px;flex-wrap:wrap;}}"
+        f"button{{cursor:pointer;border:none;border-radius:10px;padding:10px 18px;font-size:14px;"
+        f"font-family:inherit;transition:opacity .15s;}}"
+        f"button:hover{{opacity:.88;}}"
+        f".primary{{background:{btn_bg};color:{btn_text};}}"
+        f".ghost{{background:transparent;color:{muted};border:1px solid {border};}}"
+        f"</style></head><body><div class='card'>"
+        f"<h3>{safe_title}</h3>"
+        f"<p>{safe_message}</p>"
         f"<p>日志目录：<code>{log_dir}</code></p>"
         f"<p>请打开上述文件夹，查看 <strong>friday.log</strong> 获取详细错误。</p>"
-        f"</body>"
+        f"<div class='actions'>"
+        f"<button class='primary' type='button' onclick='openLog()'>打开日志文件夹</button>"
+        f"<button class='ghost' type='button' onclick='closeApp()'>关闭</button>"
+        f"</div></div>"
+        f"<script>"
+        f"function closeApp(){{"
+        f"if(window.pywebview&&window.pywebview.api&&window.pywebview.api.close_window)"
+        f"{{window.pywebview.api.close_window();return;}}"
+        f"window.close();"
+        f"}}"
+        f"function openLog(){{"
+        f"if(window.pywebview&&window.pywebview.api&&window.pywebview.api.open_appdata_folder)"
+        f"{{window.pywebview.api.open_appdata_folder();return;}}"
+        f"alert('日志目录：{log_dir}');"
+        f"}}"
+        f"</script></body></html>"
     )
 
 
@@ -336,6 +398,19 @@ def _load_main_page(window, *, main_url: str) -> None:
         _log.exception("加载主界面 URL 失败")
 
 
+def _is_internal_app_url(url: str) -> bool:
+    if not url:
+        return True
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url.strip())
+    if parsed.scheme in ("about", "data", "file", ""):
+        return True
+    if parsed.scheme not in ("http", "https"):
+        return False
+    return parsed.hostname in ("127.0.0.1", "localhost")
+
+
 def main() -> None:
     global _log
     os.environ.setdefault("FRIDAY_GUI", "1")
@@ -366,7 +441,7 @@ def main() -> None:
     threading.Thread(target=_prepare_backend, daemon=True).start()
 
     window_visible = {"shown": False}
-    boot_phase = {"step": "splash"}
+    boot_phase = {"step": "splash", "main_url": ""}
     window_api = WindowApi()
     app_icon = _resolve_icon_path()
     failure_html: str | None = None
@@ -456,6 +531,7 @@ def main() -> None:
             _log.exception("同步微信桥接配置失败")
         token_q = f"&token={token}" if token else ""
         main_url = f"http://127.0.0.1:{port}/?desktop=1&boot={boot_theme}{token_q}"
+        boot_phase["main_url"] = main_url
         _log.info("后端就绪 port=%d，准备加载主界面", port)
         _splash_status("正在加载界面…")
         boot_phase["step"] = "main"
@@ -475,6 +551,19 @@ def main() -> None:
             threading.Thread(target=_load_main_app, daemon=True).start()
             return
         if step in ("main", "failure"):
+            if step == "main":
+                try:
+                    current = (window.get_current_url() or "").strip()
+                    main_url = str(boot_phase.get("main_url") or "")
+                    if current and main_url and not _is_internal_app_url(current):
+                        import webbrowser
+
+                        _log.info("WebView 外链导航已拦截，改在系统浏览器打开 | url=%s", current[:160])
+                        webbrowser.open(current)
+                        window.load_url(main_url)
+                        return
+                except Exception:
+                    _log.exception("外链导航恢复失败")
             _apply_window_chrome(clip_thumbnail=False)
             if not window_visible["shown"]:
                 _force_show_window()

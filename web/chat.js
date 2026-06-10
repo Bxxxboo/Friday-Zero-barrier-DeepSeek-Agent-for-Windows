@@ -184,8 +184,8 @@
     progressNode.className = "message progress";
     progressNode.innerHTML = `<div class="progress-bar"><div class="progress-fill"></div></div><span class="progress-text">${msg}</span>`;
     F.chatLog.appendChild(progressNode);
+    F.appendActivityStep?.(msg.replace(/…$/, ""));
     F.scrollToBottom();
-    F.removeThinking();
     if (isLongRun) {
       progressStartedAt = Date.now();
       startProgressTimer(msg.replace(/…$/, ""), progressStartedAt);
@@ -204,6 +204,7 @@
   /* ── 流式消息 ── */
 
   function startStreamingMessage() {
+    F.completeActivitySteps?.();
     F.removeThinking();
     F.welcomePanel.classList.add("hidden");
     F.chatScroll.classList.remove("hidden");
@@ -308,7 +309,7 @@
         break;
       case "status":
         if (data.message && data.message.includes("思考")) {
-          F.showThinking();
+          F.appendActivityStep?.("正在思考…");
         } else if (data.message === "就绪") {
           F.removeThinking();
           F.setBusy(false);
@@ -316,6 +317,12 @@
         if (F.wsConnected) {
           F.setConnectionStatus(data.message || "就绪", true);
         }
+        break;
+      case "agent_step":
+        F.appendActivityStep?.(data.message || "正在处理…");
+        break;
+      case "reasoning_delta":
+        F.appendReasoningDelta?.(data.delta || "");
         break;
       case "progress":
         showProgress(data);
@@ -341,7 +348,7 @@
         }
         break;
       case "approval_request":
-        F.removeThinking();
+        F.appendActivityStep?.("等待你确认操作…");
         showApprovalInChat(data);
         break;
       case "approval_summary_update":
