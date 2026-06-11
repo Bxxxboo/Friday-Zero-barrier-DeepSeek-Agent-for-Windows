@@ -22,3 +22,6 @@ GITHUB_HOME = f"https://github.com/{GITHUB_REPO}"
 # Gitee Releases（默认更新源，国内可直连）。环境变量 FRIDAY_GITEE_REPO 可覆盖。
 GITEE_REPO = "Bxxxboo/friday"
 GITEE_HOME = f"https://gitee.com/{GITEE_REPO}"
+
+# 官网（Vercel）。部署后填 production URL；空则应用内仍链 Gitee Releases。
+WEBSITE_HOME = ""

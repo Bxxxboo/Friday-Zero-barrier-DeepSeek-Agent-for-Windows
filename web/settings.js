@@ -699,7 +699,7 @@
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
-      }, 120000);
+      }, 180000);
       const data = await res.json();
       if (!data.ok) {
         F.applyApiTestResult?.(resultEl, data);
@@ -734,7 +734,7 @@
       if (resultEl) {
         resultEl.className = "settings-result error";
         resultEl.textContent = timedOut
-          ? "生图测试超时（120 秒）。端点可能响应过慢或不可达，请检查 Base URL 与模型名。"
+          ? "生图测试超时（3 分钟）。端点可能响应过慢或不可达，请检查 Base URL 与模型名。"
           : "生图测试失败，请确认星期五后端已启动并重试。";
       }
       updateImageGenStatus(false, payload.image_gen_enabled, timedOut ? "测试超时" : "测试失败");
@@ -1151,9 +1151,14 @@
       const res = await F.apiFetch("/api/version");
       const data = await res.json();
       if (label) label.textContent = data.version || "—";
-      if (sourceLink && data.gitee_home) {
-        sourceLink.href = `${data.gitee_home}/releases`;
-        sourceLink.textContent = "Gitee Releases";
+      if (sourceLink) {
+        if (data.website_home) {
+          sourceLink.href = data.website_home;
+          sourceLink.textContent = "官网下载";
+        } else if (data.gitee_home) {
+          sourceLink.href = `${data.gitee_home}/releases`;
+          sourceLink.textContent = "Gitee Releases";
+        }
       }
       renderRuntimeAbout(data);
       if (statusEl) statusEl.dataset.loaded = "1";

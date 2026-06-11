@@ -1818,7 +1818,7 @@ async def get_status_bar(session_id: str = "", cached_only: bool = False) -> dic
 async def api_version() -> dict[str, object]:
     from friday.edition import display_version
     from friday.runtime_info import runtime_info_payload
-    from friday.version import GITEE_HOME, GITEE_REPO, GITHUB_HOME, GITHUB_REPO
+    from friday.version import GITEE_HOME, GITEE_REPO, GITHUB_HOME, GITHUB_REPO, WEBSITE_HOME
 
     return {
         "version": display_version(__version__),
@@ -1826,6 +1826,7 @@ async def api_version() -> dict[str, object]:
         "github_home": GITHUB_HOME,
         "gitee_repo": GITEE_REPO,
         "github_repo": GITHUB_REPO,
+        "website_home": WEBSITE_HOME or None,
         **await asyncio.to_thread(runtime_info_payload),
     }
 
