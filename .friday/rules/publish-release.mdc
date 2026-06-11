@@ -18,22 +18,89 @@ alwaysApply: false
 
 ## 发版顺序（强制）
 
-1. **版本与 changelog** — `friday/version.py`、`scripts/version_info.py`、`CHANGELOG.md`、`assets/changelog.json` 已为目标版本  
+1. **写更新公告 + 版本号** — 见下节「更新公告」；`assets/changelog.json` 与 `CHANGELOG.md` 已含目标版本条目；`friday/version.py`（`__version__` + `__dev_version__` = `{版本}-dev`）、`scripts/version_info.py` 已 bump  
 2. **先 commit + 双端 push** — `publish-full-release.ps1` 第 3 步调用 `sync-remotes.ps1`（`git add -A` → commit → `origin` + `gitee`）  
 3. **再打包发布** — `make-release` → Gitee Release（必做）→ GitHub Release  
 4. **部署官网** — Vercel production + alias `fridayaiagent.vercel.app`
 
-Agent 在用户授权发版时：**先确认工作区已含版本/changelog 改动，再执行一键脚本**；不要跳过 commit 直接打 Release。
+Agent 在用户授权发版时：**先写/核对更新公告，再 bump，再确认工作区已含公告+版本改动，最后执行一键脚本**；不要跳过 commit 直接打 Release。
+
+## 更新公告（强制）
+
+**数据源**：`assets/changelog.json`（应用内弹窗、`/api/changelog`、Gitee/GitHub Release 说明、官网「最新更新」均由此派生）。  
+**镜像**：`CHANGELOG.md` 顶层须与 `entries[0]` 同版本、同要点（人类可读长文，可略详于 JSON）。
+
+`bump-version.ps1` **不会**自动写公告；发版前 **Agent 必须手写/补全** 新版本条目。
+
+### 何时写
+
+- 用户授权发版后、执行 `publish-full-release` **之前**
+- 依据：自上一版本以来的 `git log` / 工作区 diff / 用户说明，只写**本版实际送达**的改动
+
+### `assets/changelog.json` 格式
+
+在 `entries` **数组最前**插入一条（版本降序，最新在 `[0]`）：
+
+```json
+{
+  "version": "1.3.3",
+  "date": "2026-06-11",
+  "title": "一句话摘要（用户向）",
+  "sections": [
+    { "label": "新功能", "items": ["…"] },
+    { "label": "改进", "items": ["…"] },
+    { "label": "修复", "items": ["…"] }
+  ]
+}
+```
+
+- **label** 常用：`新功能` / `改进` / `修复` / `安全`；无该项可省略整个 section
+- **items**：短句、用户能看懂；避免内部文件名堆砌
+- **version** 须与即将发布的 `__version__` **完全一致**
+
+### `CHANGELOG.md` 格式
+
+在文件顶部 `# 更新日志` 下追加一节，与 JSON 同版本，例如：
+
+```markdown
+## 1.3.3（2026-06-11）
+
+**标题与 changelog.json title 一致**
+
+### 新功能
+- …
+```
+
+### 同步与渲染链路
+
+| 步骤 | 作用 |
+|------|------|
+| 手写 `assets/changelog.json` + `CHANGELOG.md` | 发版前置 |
+| `scripts\bump-version.ps1` | 仅改版本号，**不改** changelog |
+| `scripts\sync-website-download.ps1` | 拷贝 changelog → `website/changelog.json` |
+| `scripts\render_release_notes.py` / `release-notes.ps1` | Release 说明正文（读 `assets/changelog.json`） |
+
+### 核对命令（发版前写在回复里）
+
+```powershell
+python -c "import json; e=json.load(open('assets/changelog.json',encoding='utf-8'))['entries'][0]; print(e['version'], e['title'])"
+Select-String -Path friday\version.py -Pattern '__version__'
+Select-String -Path CHANGELOG.md -Pattern '^## ' | Select-Object -First 1
+```
+
+预期：`entries[0].version` = `__version__` = `CHANGELOG.md` 首条 `##` 版本号。
 
 ## 发版前检查（写在回复里再执行）
 
 | 项 | 要求 |
 |----|------|
-| `assets/changelog.json` | 顶层 `entries[0].version` 须为目标版本；无则先补条目再发 |
+| **更新公告** | `assets/changelog.json` 已插入目标版本 `entries[0]`（含 title + sections）；`CHANGELOG.md` 已同步；见上节「更新公告」 |
+| `assets/changelog.json` | 顶层 `entries[0].version` 须为目标版本；**无条目不得发版** |
 | `GITEE_TOKEN` | **用户已在系统环境变量定义时无需再设**；脚本从 User/Machine 读取（会话 `$env:` 可能为空） |
 | `GITHUB_TOKEN` | 同上；或本机已登录 `gh` |
 | Inno Setup 6 | 否则 `Friday-Setup-*.exe` 打不出来 |
 | 临时目录 | 勿提交 `_qa_tmp_appdata/` 等（应在 `.gitignore`） |
+| 根目录产物 | 勿提交 `Friday-Setup-*.exe`、`VERSION.txt`（`git add -A` 会误入库）；发版前 `git status` 确认 |
 
 ## 一键命令（推荐）
 
@@ -51,20 +118,21 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\publish-full-release
 
 ## 脚本内步骤顺序（Agent 须跑通并汇报）
 
-1. **Bump** — `scripts\bump-version.ps1 -Set {版本}` 或 `-Part patch|minor|major`  
-   同步 `friday/version.py` + `scripts/version_info.py`
-2. **官网元数据** — `scripts\sync-website-download.ps1`  
+1. **更新公告** — 补 `assets/changelog.json` + `CHANGELOG.md`（`publish-full-release` **不会**代写；若 Agent 发版，须在 bump 前完成）
+2. **Bump** — `scripts\bump-version.ps1 -Set {版本}` 或 `-Part patch|minor|major`  
+   同步 `friday/version.py`（`__version__` + `__dev_version__`）+ `scripts/version_info.py`
+3. **官网元数据** — `scripts\sync-website-download.ps1`  
    生成 `website/download.json`、`website/changelog.json`
-3. **Git 双端** — `scripts\sync-remotes.ps1`（**不传** `-Bump`）  
+4. **Git 双端** — `scripts\sync-remotes.ps1`（**不传** `-Bump`）  
    commit + `git push origin main` + `git push gitee main`
-4. **Gitee Release**（国内更新源，必做）— `scripts\publish-gitee-release.ps1`  
+5. **Gitee Release**（国内更新源，必做）— `scripts\publish-gitee-release.ps1`  
    构建并上传三附件：
    - `Friday-Windows-{v}.zip` — **仅** `Friday-Setup-{v}.exe` + `VERSION.txt`（安装包 ZIP，无教程/脚本）
    - `Friday-Update-{v}.zip` — 便携 `Friday/`（应用内更新）
    - `Friday-Setup-{v}.exe`
-5. **GitHub Release**（必做）— `scripts\publish-github-release.ps1` 或 `publish-release.ps1` 第 3 步  
+6. **GitHub Release**（推荐；无 `gh` / `GITHUB_TOKEN` 时 `publish-full-release.ps1` 会跳过，须在汇报说明）— `scripts\publish-github-release.ps1`（`publish-full-release.ps1` 第 5/5 步）  
    仓库名：`Friday-WeChat-Windows-AI-Butler`
-6. **官网部署** — `Set-Location website; npx vercel deploy --prod --yes`  
+7. **官网部署** — `Set-Location website; npx vercel deploy --prod --yes`  
    生产域名：`https://fridayaiagent.vercel.app`（`friday/version.py` → `WEBSITE_HOME`）  
    **部署后必须绑定别名**（否则 `fridayaiagent.vercel.app` 可能仍指向旧 deployment）：
    ```powershell
@@ -90,7 +158,7 @@ if (-not $env:GITHUB_TOKEN) {
 Invoke-WebRequest -Uri "https://fridayaiagent.vercel.app/download.json" -UseBasicParsing | Select-Object -Expand Content
 
 # 本地版本与产物
-Select-String -Path friday\version.py -Pattern '__version__'
+Select-String -Path friday\version.py -Pattern '__version__|__dev_version__'
 Get-ChildItem release\Friday-*-$((Select-String friday\version.py -Pattern '__version__ = "(.+)"').Matches[0].Groups[1].Value).*
 ```
 
@@ -121,12 +189,15 @@ python scripts/prune_gitee_releases.py --keep 3
 - 用户未明确发版时 bump / push / Release / Vercel
 - 只推 GitHub 不推 Gitee
 - 只改 `download.json` 不部署 Vercel（线上会仍显示旧版本）
+- bump / 发 Release **未**先写 `assets/changelog.json` + `CHANGELOG.md` 目标版本条目
 - Windows ZIP 里塞 `安装教程.txt`、`解除锁定.ps1` 等冗长文件
 - 擅自 `git commit`（**本规则触发的发版除外**——用户已明确授权整条流水线）
 
 ## 完成回复模板
 
 - 目标版本 / 上一版本
-- 已上传附件列表（Gitee + GitHub URL）
+- 已核对 `__version__` 与 `__dev_version__`（`X.Y.Z` / `X.Y.Z-dev`）
+- 更新公告：`assets/changelog.json` `entries[0]` 版本 + title；`CHANGELOG.md` 首条 `##` 已同步
+- 已上传附件列表（Gitee + GitHub URL；GitHub 若跳过须说明原因）
 - 官网 `download.json` 验证结果
 - 未改动范围 / 若某步跳过须说明原因

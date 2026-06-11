@@ -9,6 +9,7 @@ import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -47,9 +48,10 @@ def request_app_quit(*, delay: float = 0.8) -> None:
         if _quit_handler:
             try:
                 _quit_handler()
-                return
             except Exception:
                 _log.exception("退出应用失败")
+        # 必须硬退出：仅 destroy 窗口时 HTTP/后台线程仍存活，Friday.exe 被占用会导致
+        # apply-update.ps1 中 robocopy 替换失败（用户仍停留在旧版本）。
         os._exit(0)
 
     threading.Timer(max(0.1, delay), _run).start()
@@ -207,12 +209,34 @@ def _fail_apply(*, detail: str, hint: str, percent: int = 5) -> None:
         _apply_state["running"] = False
 
 
+_UPDATE_ALLOWED_EXACT_HOSTS = frozenset({"gitee.com", "github.com"})
+
+
+def _update_host_allowed(host: str) -> bool:
+    normalized = (host or "").lower().rstrip(".")
+    if normalized in _UPDATE_ALLOWED_EXACT_HOSTS:
+        return True
+    return normalized.endswith(".githubusercontent.com")
+
+
 def _validate_download_url(url: str) -> bool:
-    lower = (url or "").strip().lower()
-    if not lower.startswith("https://"):
+    parsed = urllib.parse.urlparse((url or "").strip())
+    if parsed.scheme != "https" or not parsed.hostname:
         return False
-    allowed = ("gitee.com", "github.com", "githubusercontent.com")
-    return any(host in lower for host in allowed)
+    return _update_host_allowed(parsed.hostname)
+
+
+def resolve_update_digest(download_url: str, expected_sha256: str = "") -> str:
+    """解析更新包 SHA256；无法获得期望哈希时拒绝更新（防无校验安装）。"""
+    from friday.release_hashes import expected_sha256_for_download
+
+    digest = (expected_sha256 or "").strip() or expected_sha256_for_download(download_url)
+    if not digest:
+        raise RuntimeError(
+            "无法校验更新包完整性（缺少 SHA256）。"
+            "请重新「检查更新」，或从 Gitee Releases 手动下载 Friday-Update.zip。"
+        )
+    return digest
 
 
 def _download_release(url: str, dest: Path) -> None:
@@ -290,15 +314,14 @@ def _extract_release(zip_path: Path, dest_dir: Path) -> Path:
     except zipfile.BadZipFile as exc:
         detail, hint = _format_update_error(exc)
         raise RuntimeError(f"{detail}\n{hint}") from exc
+    from friday.zip_safety import extract_zip_archive
+
     with zf:
         members = zf.namelist()
         if not members:
             raise RuntimeError("更新包为空，请从官方 Release 重新下载。")
-        for index, member in enumerate(members, start=1):
-            zf.extract(member, dest_dir)
-            if index % 40 == 0 or index == len(members):
-                pct = 65 + int(index * 20 / max(len(members), 1))
-                _report("extracting", pct, "正在解压更新包…", f"{index}/{len(members)}")
+        extract_zip_archive(zf, dest_dir)
+        _report("extracting", 85, "正在解压更新包…", f"{len(members)} 个文件")
     app_dir = _find_friday_app_dir(dest_dir)
     if app_dir is None:
         raise RuntimeError(
@@ -321,6 +344,10 @@ $ErrorActionPreference = "SilentlyContinue"
 $deadline = (Get-Date).AddMinutes(3)
 while ((Get-Process -Id $ParentPid -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) {
     Start-Sleep -Milliseconds 400
+}
+if (Get-Process -Id $ParentPid -ErrorAction SilentlyContinue) {
+    Stop-Process -Id $ParentPid -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
 }
 Start-Sleep -Seconds 1
 
@@ -411,12 +438,11 @@ def _apply_worker(*, download_url: str, version: str, expected_sha256: str = "")
         _report("downloading", 5, "准备下载…", f"版本 {version}")
         _download_release(download_url, zip_path)
 
-        from friday.release_hashes import expected_sha256_for_download, verify_file_sha256
+        from friday.release_hashes import verify_file_sha256
 
-        digest = (expected_sha256 or "").strip() or expected_sha256_for_download(download_url)
-        if digest:
-            _report("downloading", 62, "正在校验更新包…", "SHA256")
-            verify_file_sha256(zip_path, digest)
+        digest = resolve_update_digest(download_url, expected_sha256)
+        _report("downloading", 62, "正在校验更新包…", "SHA256")
+        verify_file_sha256(zip_path, digest)
 
         _report("extracting", 65, "正在解压更新包…")
         new_app_dir = _extract_release(zip_path, stage_dir)
@@ -477,6 +503,12 @@ def start_apply_update(*, download_url: str, version: str, expected_sha256: str 
             "started": False,
             "message": "缺少更新下载地址",
             "hint": "请先点「检查更新」，确认有新版本后再试。",
+        }
+    if not _validate_download_url(url):
+        return {
+            "started": False,
+            "message": "更新下载地址无效",
+            "hint": "请从设置页重新「检查更新」，勿使用第三方链接。",
         }
 
     with _apply_lock:

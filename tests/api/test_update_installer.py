@@ -1,15 +1,20 @@
 from __future__ import annotations
 
+import time
 import zipfile
 from pathlib import Path
 
 import pytest
 
 from friday.update_installer import (
+    _extract_release,
     _find_friday_app_dir,
     _format_update_error,
     _validate_download_url,
     can_auto_update,
+    register_quit_handler,
+    request_app_quit,
+    resolve_update_digest,
     start_apply_update,
 )
 import urllib.error
@@ -18,8 +23,32 @@ import urllib.error
 def test_validate_download_url():
     assert _validate_download_url("https://gitee.com/Bxxxboo/friday/releases/download/v1/Friday-Windows-1.2.4.zip")
     assert _validate_download_url("https://github.com/user/repo/releases/download/v1/a.zip")
+    assert _validate_download_url("https://raw.githubusercontent.com/user/repo/v1/a.zip")
     assert not _validate_download_url("http://evil.example/update.zip")
+    assert not _validate_download_url("https://evil.example/gitee.com/foo.zip")
+    assert not _validate_download_url("https://gitee.com.evil.net/foo.zip")
     assert not _validate_download_url("")
+
+
+def test_resolve_update_digest_requires_hash():
+    url = "https://gitee.com/Bxxxboo/friday/releases/download/v1.3.1/Friday-Update-1.3.1.zip"
+    digest = "a" * 64
+    assert resolve_update_digest(url, digest) == digest
+    with pytest.raises(RuntimeError, match="SHA256"):
+        resolve_update_digest(url, "")
+
+
+def test_extract_release_rejects_zip_slip(tmp_path: Path):
+    zip_path = tmp_path / "evil.zip"
+    app = tmp_path / "stage_inner" / "Friday"
+    app.mkdir(parents=True)
+    (app / "Friday.exe").write_text("", encoding="utf-8")
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("Friday/Friday.exe", "ok")
+        zf.writestr("../outside.txt", "pwn")
+    dest = tmp_path / "extract"
+    with pytest.raises(ValueError, match="unsafe zip"):
+        _extract_release(zip_path, dest)
 
 
 def test_find_friday_app_dir(tmp_path: Path):
@@ -95,3 +124,17 @@ def test_format_update_error_bad_zip():
     detail, hint = _format_update_error(zipfile.BadZipFile("bad"))
     assert "zip" in detail.lower() or "损坏" in detail
     assert hint
+
+
+def test_request_app_quit_exits_even_when_handler_succeeds(monkeypatch):
+    """关闭窗口后仍须 os._exit，否则 Friday.exe 占用导致 robocopy 无法替换。"""
+    exits: list[int] = []
+
+    def _fake_exit(code: int) -> None:
+        exits.append(code)
+
+    monkeypatch.setattr("friday.update_installer.os._exit", _fake_exit)
+    register_quit_handler(lambda: None)
+    request_app_quit(delay=0.01)
+    time.sleep(0.2)
+    assert exits == [0]

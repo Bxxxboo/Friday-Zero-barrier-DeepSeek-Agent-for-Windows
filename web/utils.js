@@ -122,12 +122,16 @@
     return res;
   }
 
-  function buildGeneratedImageUrl(path, { preview = true } = {}) {
-    const token = resolveApiToken();
+  function generatedImageFetchUrl(path, { preview = true } = {}) {
     const qs = new URLSearchParams({ path: path || "" });
-    if (token) qs.set("token", token);
     if (preview) qs.set("preview", "1");
     return `/api/chat/generated-image?${qs.toString()}`;
+  }
+
+  async function fetchGeneratedImageBlob(path, { preview = true } = {}) {
+    const res = await apiFetch(generatedImageFetchUrl(path, { preview }));
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.blob();
   }
 
   function appendGeneratedImages(node, images) {
@@ -139,20 +143,30 @@
       if (!path) return;
       const img = document.createElement("img");
       img.className = "message-image";
-      img.src = buildGeneratedImageUrl(path);
       img.alt = "生成的图片";
       img.loading = "lazy";
       img.decoding = "async";
       img.title = "点击查看大图";
+      void fetchGeneratedImageBlob(path, { preview: true })
+        .then((blob) => {
+          img.src = URL.createObjectURL(blob);
+        })
+        .catch(() => {
+          img.replaceWith(Object.assign(document.createElement("p"), {
+            className: "message-image-error",
+            textContent: `图片预览加载失败（文件仍在：${path}）`,
+          }));
+        });
       img.addEventListener("click", () => {
-        const full = buildGeneratedImageUrl(path, { preview: false });
-        window.open(full, "_blank", "noopener");
-      });
-      img.addEventListener("error", () => {
-        img.replaceWith(Object.assign(document.createElement("p"), {
-          className: "message-image-error",
-          textContent: `图片预览加载失败（文件仍在：${path}）`,
-        }));
+        void fetchGeneratedImageBlob(path, { preview: false })
+          .then((blob) => {
+            const url = URL.createObjectURL(blob);
+            window.open(url, "_blank", "noopener");
+            setTimeout(() => URL.revokeObjectURL(url), 60_000);
+          })
+          .catch(() => {
+            /* ignore */
+          });
       });
       wrap.appendChild(img);
     });
@@ -651,7 +665,8 @@
     apiFetch,
     apiFetchWithTimeout,
     apiHeaders,
-    buildGeneratedImageUrl,
+    generatedImageFetchUrl,
+    fetchGeneratedImageBlob,
     appendGeneratedImages,
     renderMessageBody,
     attachAssistantMessageActions,

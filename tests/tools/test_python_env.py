@@ -76,6 +76,18 @@ def test_check_dangerous_python():
     assert _check_dangerous_code("print('hello')") is None
 
 
+def test_check_dangerous_python_blocks_backtick_os_system():
+    assert _check_dangerous_code("os.`system('whoami')") is not None
+
+
+def test_check_dangerous_python_blocks_subprocess_shell_true():
+    assert _check_dangerous_code("subprocess.run('dir', shell=True)") is not None
+
+
+def test_check_dangerous_python_blocks_case_insensitive_os_system():
+    assert _check_dangerous_code("OS.SYSTEM('x')") is not None
+
+
 def test_run_python_inline(workspace):
     ws = str(workspace).replace("\\", "/")
     py = sys.executable

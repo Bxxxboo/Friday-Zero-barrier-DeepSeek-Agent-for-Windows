@@ -8,7 +8,11 @@ import friday.server as server_mod
 from friday.auth import ensure_api_token
 
 
-def test_settings_test_returns_json_on_merge_failure():
+def test_settings_test_returns_json_on_merge_failure(tmp_appdata, monkeypatch):
+    monkeypatch.delenv("FRIDAY_API_TOKEN", raising=False)
+    import friday.auth as auth
+
+    auth._TOKEN = ""
     server_mod._backend_ready = True
     client = TestClient(server_mod.app)
     token = ensure_api_token()

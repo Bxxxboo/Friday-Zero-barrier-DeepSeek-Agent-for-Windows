@@ -7,9 +7,10 @@ alwaysApply: true
 
 每次向远端发布更新时，**必须**：
 
-1. **bump 版本号**（`friday/version.py` + `scripts/version_info.py`）
-2. **同时 push** `origin`（GitHub）与 `gitee`（Gitee）
-3. **同时发 Release**（`Friday-Windows.zip`）：Gitee 必发（国内更新源），GitHub 可选（需 VPN/gh）
+1. **写更新公告**（`assets/changelog.json` 插入目标版本 `entries[0]` + 同步 `CHANGELOG.md`；`bump-version.ps1` 不代写；格式与核对见 `publish-release.mdc`「更新公告」）
+2. **bump 版本号**（`friday/version.py` 的 `__version__` + `__dev_version__`（`{版本}-dev`，测试版 `run.py --dev` 显示用）+ `scripts/version_info.py`）
+3. **同时 push** `origin`（GitHub）与 `gitee`（Gitee）
+4. **同时发 Release**（`Friday-Windows.zip`）：Gitee **必做**（国内更新源）；GitHub **推荐**（无 `gh` / `GITHUB_TOKEN` 可跳过，须在汇报中说明）
 
 ## semver
 
@@ -21,7 +22,9 @@ alwaysApply: true
 
 ## 发版顺序（强制）
 
-版本号与 changelog 已在工作区改好后：
+**前置**：**更新公告已写入**（`assets/changelog.json` 顶层条目 + `CHANGELOG.md`）→ 版本号已 bump（`friday/version.py`、`scripts/version_info.py`）。完整 SOP 见 `publish-release.mdc`「更新公告」。
+
+然后：
 
 1. **先 commit + 双端 push**（`sync-remotes.ps1` 或 `publish-full-release` 第 3 步会自动 `git add -A` + commit）
 2. **再打包发布**（`make-release` → Gitee Release → GitHub Release）
@@ -67,4 +70,6 @@ scripts\sync-remotes.cmd -Bump patch -GitHubRepoName Friday-WeChat-Windows-AI-Bu
 
 - 只 push GitHub 不 push Gitee
 - 只发 Gitee Release 不 bump 版本
-- 功能更新 push 时不改 `friday/version.py`
+- 功能更新 push 时不改 `friday/version.py` / `__dev_version__`
+- 只改 `__version__` 不 sync `__dev_version__`（须同为 `X.Y.Z` 与 `X.Y.Z-dev`）
+- 发版未写 `assets/changelog.json` / `CHANGELOG.md` 目标版本更新公告

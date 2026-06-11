@@ -29,7 +29,7 @@
 
 | 脚本 | 用途 |
 |------|------|
-| `bump-version.ps1` | 递增 `friday/version.py` + `version_info.py` |
+| `bump-version.ps1` | 递增 `friday/version.py`（`__version__` + `__dev_version__`）+ `version_info.py` |
 | `sync-remotes.ps1` | push GitHub + Gitee |
 | `publish-release.ps1` | bump + 双端 push + 双端 Release |
 | `publish-*-release.ps1` / `publish_*_release.py` | 单平台 Release |

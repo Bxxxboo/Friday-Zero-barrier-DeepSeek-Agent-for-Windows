@@ -264,7 +264,13 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 
 ---
 
-## 10. 微信 / OpenClaw
+## 10. Agent 执行安全
+
+Yolo 模式、PowerShell/Python 黑名单、已知绕过限制见 **[docs/AGENT-SAFETY.md](AGENT-SAFETY.md)**。改 `friday/safety.py` 或 `friday/tools/shell.py` 时须跑 `tests/tools/test_shell.py` 与 `tests/agent/test_interaction_modes.py`。
+
+---
+
+## 11. 微信 / OpenClaw
 
 - 配置：`friday/weixin/`，桥接端口写入 `weixin-bridge.json`
 - 依赖本机 OpenClaw runtime（`~/.openclaw`），**配置包无法带走登录态**
@@ -272,7 +278,7 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 
 ---
 
-## 11. 可移植性（维护重点）
+## 12. 可移植性（维护重点）
 
 长期计划：`docs/archive/PORTABILITY-PLAN.md`（归档）
 
@@ -286,7 +292,7 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 
 ---
 
-## 12. 发布流程
+## 13. 发布流程
 
 1. 改代码 + pytest 通过
 2. bump `friday/version.py` + `scripts/version_info.py`
@@ -297,7 +303,7 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 
 ---
 
-## 13. Reasonix 开发配置
+## 14. Reasonix 开发配置
 
 ### 13.1 安装 AI 合集
 
@@ -326,7 +332,7 @@ powershell -ExecutionPolicy Bypass -File scripts\install-reasonix-bundle.ps1
 
 ---
 
-## 14. 故障排查
+## 15. 故障排查
 
 | 现象 | 排查 |
 |------|------|
@@ -340,9 +346,10 @@ powershell -ExecutionPolicy Bypass -File scripts\install-reasonix-bundle.ps1
 
 ---
 
-## 15. 相关文档
+## 16. 相关文档
 
 - `README.md` — 用户快速开始
+- `docs/AGENT-SAFETY.md` — Yolo 与 PowerShell/Python 黑名单
 - `PRODUCT.md` / `DESIGN.md` — 产品与 UI
 - `docs/archive/PORTABILITY-PLAN.md` — 可移植性路线图（归档）
 - `CHANGELOG.md` — 版本变更
@@ -350,7 +357,7 @@ powershell -ExecutionPolicy Bypass -File scripts\install-reasonix-bundle.ps1
 
 ---
 
-## 16. 维护者备忘
+## 17. 维护者备忘
 
 - **不要**把 API Key、`.fernet_key` 提交进 Git
 - **不要**拷贝 `.venv/` / `.python-env/` 到新机器（在工作区重建）

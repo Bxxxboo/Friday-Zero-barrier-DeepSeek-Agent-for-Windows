@@ -20,7 +20,7 @@ _MAX_OUTPUT = 8000
 
 _DANGEROUS_PATTERNS: list[tuple[str, str]] = [
     (r"\bos\.system\s*\(", "os.system"),
-    (r"\bsubprocess\.(?:call|run|Popen)\s*\([^)]*shell\s*=\s*True", "subprocess shell=True"),
+    (r"\bsubprocess\.(?:call|run|Popen)\s*\([^)]*shell\s*=\s*true", "subprocess shell=True"),
     (r"\bshutil\.rmtree\s*\(\s*['\"]?(?:c:|/etc|/var|/usr|\\\\)", "删除系统目录"),
     (r"\b(?:format|diskpart)\b", "磁盘格式化"),
     (r"\bctypes\.windll\.(?:ntdll|kernel32)\b", "底层 Windows API 调用"),
@@ -28,7 +28,8 @@ _DANGEROUS_PATTERNS: list[tuple[str, str]] = [
 
 
 def _normalize_code(code: str) -> str:
-    return re.sub(r"\s+", " ", code.strip().lower())
+    # 与 shell._normalize_command 一致：去掉反引号续行混淆后再匹配
+    return re.sub(r"\s+", " ", code.replace("`", "").strip().lower())
 
 
 def _check_dangerous_code(code: str) -> str | None:

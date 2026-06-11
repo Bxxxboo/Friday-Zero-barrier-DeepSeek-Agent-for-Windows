@@ -188,6 +188,21 @@ def test_try_migrate_legacy_appdata_copies_fernet_pair(tmp_appdata, monkeypatch)
     assert (tmp_appdata / ".fernet_key").is_file()
 
 
+def test_import_portable_bundle_rejects_zip_slip(tmp_appdata):
+    import zipfile
+
+    from friday.portable_bundle import import_portable_bundle
+
+    evil = tmp_appdata / "evil.zip"
+    with zipfile.ZipFile(evil, "w") as zf:
+        zf.writestr("bundle.json", '{"bundle_version": 1}')
+        zf.writestr("../pwn.txt", "bad")
+    result = import_portable_bundle(evil)
+    assert result["errors"]
+    assert "Zip Slip" in result["errors"][0]
+    assert not (tmp_appdata.parent / "pwn.txt").exists()
+
+
 def test_export_import_portable_bundle_roundtrip(tmp_appdata):
     from friday.portable_bundle import export_portable_bundle, import_portable_bundle
 

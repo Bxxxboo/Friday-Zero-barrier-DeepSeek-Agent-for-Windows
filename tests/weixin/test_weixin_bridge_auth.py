@@ -16,7 +16,8 @@ def test_write_bridge_config_matches_runtime_token(tmp_appdata, monkeypatch):
     cfg = read_bridge_config()
     assert cfg is not None
     assert cfg["port"] == 8765
-    assert cfg["token"] == "a" * 64
+    assert "token" not in cfg
+    assert cfg["token_file"] == "api_token.txt"
     assert cfg["base_url"] == "http://127.0.0.1:8765"
 
 
@@ -31,4 +32,5 @@ def test_sync_bridge_config_from_runtime(tmp_appdata, monkeypatch):
     assert path is not None
     data = json.loads(path.read_text(encoding="utf-8"))
     assert data["port"] == 8777
-    assert data["token"] == "b" * 64
+    assert "token" not in data
+    assert data["token_file"] == "api_token.txt"

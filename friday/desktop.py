@@ -560,17 +560,15 @@ def main() -> None:
                 _log.exception("加载失败页异常")
             return
 
-        token = _startup_state.get("token") or ""
         try:
             from friday.weixin.config import write_bridge_config
 
-            write_bridge_config(int(port), token)
+            write_bridge_config(int(port))
         except OSError:
             _log.exception("同步微信桥接配置失败")
-        token_q = f"&token={token}" if token else ""
         from friday.version import __version__
 
-        main_url = f"http://127.0.0.1:{port}/?desktop=1&boot={boot_theme}&ui={__version__}{token_q}"
+        main_url = f"http://127.0.0.1:{port}/?desktop=1&boot={boot_theme}&ui={__version__}"
         boot_phase["main_url"] = main_url
         _log.info("后端就绪 port=%d，准备加载主界面", port)
         _splash_status("正在加载界面…")

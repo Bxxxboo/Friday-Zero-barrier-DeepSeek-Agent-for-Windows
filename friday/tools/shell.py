@@ -6,6 +6,8 @@
 3. 正则匹配危险模式（格式化磁盘、删除系统文件、关机、修改安全策略等）
 4. 禁止 Invoke-WebRequest 等下载命令（应使用 download_software / download_file）
 5. 所有命令写入日志以便审计
+
+设计说明与 Yolo 边界见 docs/AGENT-SAFETY.md。黑名单为纵深防御，不能替代沙箱。
 """
 
 from __future__ import annotations
@@ -42,7 +44,9 @@ _DANGEROUS_PATTERNS: list[tuple[str, str]] = [
     # 注册表关键路径写入
     (r"\b(set-itemproperty|new-item)\b.*\b(HKLM:\\|HKEY_LOCAL_MACHINE)\b.*-(force|value)", "修改 HKLM 注册表"),
     # base64 编码命令 (高度可疑)
-    (r"\b-(e|enc|encodedcommand|encoded)\b", "使用 Base64 编码命令"),
+    (r"-(?:e|enc|encodedcommand|encoded)\b", "使用 Base64 编码命令"),
+    # 动态执行（常用于绕过静态黑名单）
+    (r"\b(invoke-expression|iex)\b", "动态执行 PowerShell 代码"),
 ]
 
 _DOWNLOAD_PATTERNS = (

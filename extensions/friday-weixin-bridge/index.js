@@ -9,6 +9,19 @@ const WEIXIN_CHANNEL = "openclaw-weixin";
 /** 同一条微信消息可能被多个 hook 并发触发，合并为一次 inbound 请求。 */
 const inflightForwards = new Map();
 
+function readBridgeToken(configPath, parsed) {
+  const inline = String(parsed?.token ?? "").trim();
+  if (inline) return inline;
+  const tokenFile = String(parsed?.token_file ?? "api_token.txt").trim() || "api_token.txt";
+  const tokenPath = path.join(path.dirname(configPath), tokenFile);
+  try {
+    if (!fs.existsSync(tokenPath)) return "";
+    return fs.readFileSync(tokenPath, "utf-8").trim();
+  } catch {
+    return "";
+  }
+}
+
 function resolveBridgeConfig() {
   const configPath = path.join(
     process.env.APPDATA ?? path.join(process.env.USERPROFILE ?? "", "AppData", "Roaming"),
@@ -21,7 +34,7 @@ function resolveBridgeConfig() {
     const parsed = JSON.parse(raw);
     if (!parsed || parsed.enabled === false) return null;
     const baseUrl = String(parsed.base_url ?? "").replace(/\/$/, "");
-    const token = String(parsed.token ?? "").trim();
+    const token = readBridgeToken(configPath, parsed);
     if (!baseUrl || !token) return null;
     return {
       baseUrl,
@@ -129,20 +142,6 @@ async function refreshBridgeToken(bridge) {
     const data = await resp.json();
     const token = String(data?.token ?? "").trim();
     if (!token) return null;
-    try {
-      const raw = fs.readFileSync(bridge.configPath, "utf-8");
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === "object") {
-        parsed.token = token;
-        fs.writeFileSync(
-          bridge.configPath,
-          `${JSON.stringify(parsed, null, 2)}\n`,
-          "utf-8",
-        );
-      }
-    } catch {
-      // 写回失败不阻断
-    }
     return token;
   } catch {
     return null;

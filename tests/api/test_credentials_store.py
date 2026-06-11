@@ -51,6 +51,35 @@ def test_save_replaces_existing_key_when_credentials_present(tmp_appdata):
     assert loaded.api_key == "sk-new-mimo-key-12345678901234567890"
 
 
+def test_merge_profile_maps_preserves_stored_model_and_url():
+    from friday.credentials_store import _fill_empty_profile_keys
+
+    incoming = {
+        "ark": {"api_key": "", "base_url": "", "model": ""},
+        "openai_compat": {"api_key": "sk-keep", "base_url": "", "model": ""},
+    }
+    stored = {
+        "ark": {
+            "api_key": "ark-secret-key-123456",
+            "base_url": "https://ark.cn-beijing.volces.com/api/v3",
+            "model": "ep-20260611011923-jdgm5",
+        },
+        "openai_compat": {
+            "api_key": "sk-zhima-key-12345678",
+            "base_url": "https://next.zhima.world",
+            "model": "flux-schnell",
+            "fallback_urls": "https://sg.zhima.world",
+        },
+    }
+    merged = _fill_empty_profile_keys(incoming, stored)
+    assert merged["ark"]["model"] == "ep-20260611011923-jdgm5"
+    assert merged["ark"]["base_url"] == "https://ark.cn-beijing.volces.com/api/v3"
+    assert merged["ark"]["api_key"] == "ark-secret-key-123456"
+    assert merged["openai_compat"]["model"] == "flux-schnell"
+    assert merged["openai_compat"]["fallback_urls"] == "https://sg.zhima.world"
+    assert merged["openai_compat"]["api_key"] == "sk-keep"
+
+
 def test_credentials_preferred_when_settings_decrypt_fails(tmp_appdata):
     save_settings(UserSettings(api_key="sk-authoritative-key"))
     raw = load_json(tmp_appdata / "settings.json")

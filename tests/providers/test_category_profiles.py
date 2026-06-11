@@ -155,6 +155,59 @@ def test_repair_vision_ark_keeps_saved_relay_url(tmp_appdata):
     assert repaired.vision_model == "ep-20260609014727-895pn"
 
 
+def test_load_settings_restores_vision_model_from_credentials_profile(tmp_appdata):
+    """settings.json 中 profile 模型被清空时，启动应从凭据库回填。"""
+    import json
+
+    from friday.io_utils import load_json
+
+    settings = UserSettings(
+        vision_enabled=True,
+        vision_provider="ark",
+        vision_api_key="ark-secret-key-123456",
+        vision_base_url="https://ark.cn-beijing.volces.com/api/v3",
+        vision_model="ep-20260611011923-jdgm5",
+        vision_profiles={
+            "ark": {
+                "api_key": "ark-secret-key-123456",
+                "base_url": "https://ark.cn-beijing.volces.com/api/v3",
+                "model": "ep-20260611011923-jdgm5",
+            }
+        },
+        image_gen_enabled=True,
+        image_gen_provider="openai_compat",
+        image_gen_api_key="sk-zhima-key-12345678",
+        image_gen_base_url="https://next.zhima.world",
+        image_gen_model="flux-schnell",
+        image_gen_profiles={
+            "openai_compat": {
+                "api_key": "sk-zhima-key-12345678",
+                "base_url": "https://next.zhima.world",
+                "model": "flux-schnell",
+            }
+        },
+    )
+    save_settings(settings)
+    raw = load_json(tmp_appdata / "settings.json")
+    raw["vision_model"] = ""
+    raw["vision_enabled"] = False
+    profiles = raw.get("vision_profiles") or {}
+    if "ark" in profiles:
+        profiles["ark"]["model"] = ""
+    raw["vision_profiles"] = profiles
+    raw["image_gen_model"] = ""
+    ig_profiles = raw.get("image_gen_profiles") or {}
+    if "openai_compat" in ig_profiles:
+        ig_profiles["openai_compat"]["model"] = ""
+    raw["image_gen_profiles"] = ig_profiles
+    (tmp_appdata / "settings.json").write_text(json.dumps(raw), encoding="utf-8")
+
+    loaded = load_settings()
+    assert loaded.vision_model == "ep-20260611011923-jdgm5"
+    assert loaded.image_gen_model == "flux-schnell"
+    assert loaded.vision_profiles["ark"]["model"] == "ep-20260611011923-jdgm5"
+
+
 def test_load_settings_preserves_vision_relay_after_restart(tmp_appdata):
     settings = UserSettings(
         vision_enabled=True,

@@ -24,8 +24,7 @@
       }
     }
 
-    const token = F.resolveApiToken();
-    const wsUrl = `${protocol}://${location.host}/ws/chat${token ? `?token=${encodeURIComponent(token)}` : ""}`;
+    const wsUrl = `${protocol}://${location.host}/ws/chat`;
     F.ws = new WebSocket(wsUrl);
 
     let connectTimer = null;
@@ -53,18 +52,26 @@
 
     F.ws.onopen = () => {
       clearConnectTimer();
-      F.wsRetryCount = 0;
-      F.wsConnected = true;
-      F.setConnectionStatus("就绪", true);
-      if (!F.isStatusBarBooting?.()) {
-        F.refreshStatusBar?.();
+      const token = F.resolveApiToken();
+      try {
+        F.ws.send(JSON.stringify({ type: "auth", token: token || "" }));
+      } catch {
+        /* ignore */
       }
-      flushQueue();
     };
 
     F.ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      if (data.type === "connected") return;
+      if (data.type === "connected") {
+        F.wsRetryCount = 0;
+        F.wsConnected = true;
+        F.setConnectionStatus("就绪", true);
+        if (!F.isStatusBarBooting?.()) {
+          F.refreshStatusBar?.();
+        }
+        flushQueue();
+        return;
+      }
       handleEvent(data);
     };
 

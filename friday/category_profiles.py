@@ -365,6 +365,46 @@ def repair_isolated_category_settings(settings: UserSettings) -> UserSettings:
     return updated
 
 
+def align_category_active_from_profile(settings: UserSettings, category: Category) -> UserSettings:
+    """顶层活跃字段为空时，从当前服务商 profile 回填 Key / URL / 模型。"""
+    provider = active_provider_id(settings, category)
+    if is_custom_provider_id(provider):
+        return settings
+    profiles = normalize_category_profiles(settings, category)
+    saved = profiles.get(provider) or {}
+    if not saved:
+        return settings
+
+    cfg = _cfg(category)
+    patch: dict[str, Any] = {}
+    for field, prof_key in (
+        (cfg["api_key"], "api_key"),
+        (cfg["base_url"], "base_url"),
+        (cfg["model"], "model"),
+    ):
+        current = str(getattr(settings, field) or "").strip()
+        stored = str(saved.get(prof_key) or "").strip()
+        if not current and stored:
+            patch[field] = stored
+    if category == "image_gen":
+        if not str(settings.image_gen_fallback_urls or "").strip():
+            fb = str(saved.get("fallback_urls") or "").strip()
+            if fb:
+                patch["image_gen_fallback_urls"] = fb
+        if not str(settings.image_gen_default_size or "").strip():
+            ds = str(saved.get("default_size") or "").strip()
+            if ds:
+                patch["image_gen_default_size"] = ds
+    if not patch:
+        return settings
+    return settings.merge(patch)
+
+
+def align_isolated_category_settings(settings: UserSettings) -> UserSettings:
+    updated = align_category_active_from_profile(settings, "vision")
+    return align_category_active_from_profile(updated, "image_gen")
+
+
 def merge_category_settings(current: UserSettings, payload: dict, category: Category) -> UserSettings | None:
     cfg = _cfg(category)
     switch_flag = "switch_vision_profile" if category == "vision" else "switch_image_gen_profile"

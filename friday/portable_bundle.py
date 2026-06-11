@@ -145,6 +145,8 @@ def import_portable_bundle(
         if plugins_backup.is_dir():
             shutil.copytree(plugins_backup, backup_dir / "plugins", dirs_exist_ok=True)
 
+        from friday.zip_safety import resolve_zip_member_path
+
         for member in zf.namelist():
             if member.endswith("/"):
                 continue
@@ -154,7 +156,11 @@ def import_portable_bundle(
                 report["skipped"].append(member)
                 continue
 
-            target = appdata / member.replace("/", "\\") if "\\" in str(appdata) else appdata / member
+            try:
+                target = resolve_zip_member_path(appdata, member)
+            except ValueError:
+                report["errors"].append(f"便携包含非法路径（Zip Slip）: {member}")
+                return report
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(zf.read(member))
             report["imported"].append(member)

@@ -1375,6 +1375,33 @@
     return parts.filter(Boolean).join("\n") || "更新失败，请稍后重试或使用「手动下载」。";
   }
 
+  /** 当前阶段进度（与 detail 文案一致）；percent 为全链路权重，下载时会对不上 MB。 */
+  function resolveUpdateDisplayPercent(data) {
+    const phase = data?.phase;
+    const detail = String(data?.detail || "");
+    if (phase === "downloading") {
+      const mb = detail.match(/([\d.]+)\s*\/\s*([\d.]+)\s*MB/i);
+      if (mb) {
+        const read = parseFloat(mb[1]);
+        const total = parseFloat(mb[2]);
+        if (total > 0 && Number.isFinite(read)) {
+          return Math.max(0, Math.min(100, Math.round((read / total) * 100)));
+        }
+      }
+    }
+    if (phase === "extracting") {
+      const parts = detail.match(/(\d+)\s*\/\s*(\d+)/);
+      if (parts) {
+        const cur = parseInt(parts[1], 10);
+        const total = parseInt(parts[2], 10);
+        if (total > 0) {
+          return Math.max(0, Math.min(100, Math.round((cur / total) * 100)));
+        }
+      }
+    }
+    return Math.max(0, Math.min(100, Number(data?.percent) || 0));
+  }
+
   function renderUpdateProgress(data) {
     const wrap = document.getElementById("updateProgress");
     const fill = document.getElementById("updateProgressFill");
@@ -1387,7 +1414,7 @@
       wrap.classList.add("hidden");
       return;
     }
-    const pct = Math.max(0, Math.min(100, Number(data?.percent) || 0));
+    const pct = resolveUpdateDisplayPercent(data);
     wrap.classList.remove("hidden");
     fill.style.width = `${pct}%`;
     fill.style.setProperty("--progress", `${pct}%`);

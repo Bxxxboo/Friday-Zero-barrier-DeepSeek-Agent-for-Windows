@@ -358,12 +358,6 @@ async def diagnostics_export() -> FileResponse:
 async def index() -> HTMLResponse:
     html_path = WEB_DIR / "index.html"
     html = html_path.read_text(encoding="utf-8")
-    token = get_api_token()
-    inject = f'<script>window.__FRIDAY_TOKEN__="{token}";</script>'
-    if "</head>" in html:
-        html = html.replace("</head>", f"{inject}\n</head>", 1)
-    else:
-        html = inject + html
     return HTMLResponse(
         html,
         headers={
@@ -509,9 +503,15 @@ async def open_path_in_explorer(payload: dict[str, Any]) -> dict[str, bool]:
     import sys
     from pathlib import Path
 
+    from friday.safety import path_openable_in_explorer
+
     raw = str(payload.get("path", "")).strip()
     if not raw:
         raise HTTPException(status_code=400, detail="缺少 path")
+    cfg = load_settings()
+    workspace = resolved_workspace(cfg)
+    if not path_openable_in_explorer(raw, workspace, cfg):
+        raise HTTPException(status_code=403, detail="路径不在允许范围内")
     target = Path(raw).expanduser().resolve()
     if sys.platform != "win32":
         return {"ok": False}
@@ -730,12 +730,9 @@ async def api_artifacts_gc(dry_run: bool = False) -> dict[str, Any]:
 
 
 @app.get("/api/chat/generated-image")
-async def get_generated_image(path: str, token: str = "", preview: int = 0) -> Response:
-    from friday.auth import verify_api_token
+async def get_generated_image(path: str, preview: int = 0) -> Response:
     from friday.image_gen import guess_image_media_type, render_preview_bytes, resolve_generated_image_path
 
-    if not verify_api_token(token):
-        raise HTTPException(status_code=401, detail="未授权")
     raw = (path or "").strip()
     if not raw:
         raise HTTPException(status_code=400, detail="缺少 path")
@@ -1860,14 +1857,25 @@ async def api_version() -> dict[str, object]:
     }
 
 
+async def _verify_ws_token(websocket: WebSocket) -> bool:
+    token = websocket.query_params.get("token") or websocket.headers.get("x-friday-token")
+    if verify_api_token(token):
+        return True
+    try:
+        data = await asyncio.wait_for(websocket.receive_json(), timeout=10.0)
+    except (asyncio.TimeoutError, ValueError):
+        return False
+    if str(data.get("type", "")).strip() != "auth":
+        return False
+    return verify_api_token(str(data.get("token", "")).strip() or None)
+
+
 @app.websocket("/ws/chat")
 async def chat_ws(websocket: WebSocket) -> None:
-    token = websocket.query_params.get("token") or websocket.headers.get("x-friday-token")
-    if not verify_api_token(token):
+    await websocket.accept()
+    if not await _verify_ws_token(websocket):
         await websocket.close(code=4401, reason="Unauthorized")
         return
-
-    await websocket.accept()
     loop = asyncio.get_running_loop()
     from friday.ws_broadcast import register_ws_client, unregister_ws_client
 

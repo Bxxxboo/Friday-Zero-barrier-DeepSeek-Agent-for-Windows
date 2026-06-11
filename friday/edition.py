@@ -20,7 +20,12 @@ def window_title() -> str:
 
 def display_version(version: str) -> str:
     if is_dev_edition():
-        return f"{version}-dev"
+        from friday.version import __dev_version__, __version__
+
+        v = (version or __version__).strip()
+        if v == __version__:
+            return __dev_version__
+        return f"{v}-dev"
     return version
 
 

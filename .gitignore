@@ -26,8 +26,12 @@ htmlcov/
 coverage.xml
 *.egg-info/
 
+Friday-Setup-*.exe
+VERSION.txt
+
 release/*.zip
 release/Friday-Setup-*.exe
+release/SHA256SUMS.txt
 release/stage/
 release/stage-*/
 release/test.zip

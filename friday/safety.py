@@ -199,6 +199,15 @@ def path_in_known_user_folders(path: str) -> bool:
     return False
 
 
+def path_openable_in_explorer(path: str, workspace: str, settings: UserSettings) -> bool:
+    """POST /api/open-path 允许在资源管理器中打开的路径。"""
+    if path_in_workspace(path, workspace):
+        return True
+    if getattr(settings, "allow_read_user_folders", True) and path_in_known_user_folders(path):
+        return True
+    return False
+
+
 def path_allowed_for_tool(path: str, tool_name: str, workspace: str, settings: UserSettings) -> bool:
     if not settings.restrict_to_workspace:
         return True

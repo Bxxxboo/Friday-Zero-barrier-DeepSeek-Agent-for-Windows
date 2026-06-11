@@ -149,8 +149,22 @@ def _decrypt_payload(raw: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+_PROFILE_PRESERVE_WHEN_EMPTY = ("api_key", "base_url", "model", "fallback_urls", "default_size")
+
+
+def _merge_profile_entry(new_entry: dict[str, Any], old_entry: dict[str, Any]) -> dict[str, Any]:
+    """incoming 中空字段保留 stored 原值（与 api_key 相同策略）。"""
+    merged = dict(new_entry)
+    for field in _PROFILE_PRESERVE_WHEN_EMPTY:
+        if not str(merged.get(field) or "").strip():
+            old_val = old_entry.get(field, "")
+            if isinstance(old_val, str) and old_val.strip():
+                merged[field] = old_val
+    return merged
+
+
 def _merge_profile_maps(incoming: Any, stored: Any) -> dict[str, Any]:
-    """合并 profile：incoming 中空 api_key 保留 stored 原值；stored 独有 id 保留。"""
+    """合并 profile：incoming 中空字段保留 stored 原值；stored 独有 id 保留。"""
     merged: dict[str, Any] = {}
     if isinstance(incoming, dict):
         for pid, entry in incoming.items():
@@ -167,11 +181,7 @@ def _merge_profile_maps(incoming: Any, stored: Any) -> dict[str, Any]:
         if key not in merged:
             merged[key] = dict(old_entry)
             continue
-        new_entry = merged[key]
-        if not str(new_entry.get("api_key") or "").strip():
-            old_key = old_entry.get("api_key", "")
-            if isinstance(old_key, str) and old_key.strip():
-                merged[key] = {**new_entry, "api_key": old_key}
+        merged[key] = _merge_profile_entry(merged[key], old_entry)
     return merged
 
 

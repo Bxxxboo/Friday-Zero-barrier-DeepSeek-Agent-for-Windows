@@ -2,6 +2,36 @@
 
 版本说明与 `assets/changelog.json` 同步；应用内「更新公告」亦读取该文件。
 
+## 1.3.3（2026-06-11）
+
+**安全加固与设置修复**
+
+### 安全
+
+- **一键更新**：仅允许从 Gitee/GitHub/官网等信任域名下载；解压时校验路径，防止 Zip Slip
+- **打开文件夹**：`/api/open-path` 白名单（工作区、`%AppData%\\Friday` 等），禁止任意路径
+- **Token 暴露收缩**：首页不再内联 Token；桌面 WebView 启动 URL 去掉 `?token=`；WebSocket 首包鉴权
+- **生图预览**：改用带鉴权的 blob URL，避免 Token 出现在地址栏
+- **微信桥接**：扩展配置不再持久化明文 API Token
+- **Agent 执行安全**：新增 `docs/AGENT-SAFETY.md`（Yolo 解锁、黑名单范围与已知限制）；PowerShell/Python 危险命令拦截与 bypass 回归测试
+
+### 修复
+
+- **视觉/生图设置**：切换服务商后新 Key 不再被凭据库中的旧值覆盖
+- **设置测试与保存**：与 `load_settings` / `merge` 运行路径一致，避免「测试通过但重启丢失」
+- **测试隔离**：`test_artifacts` 等用例默认使用临时 AppData，避免在侧边栏出现 pytest 残留的「画图」会话
+
+### 改进
+
+- 设置页 **一键更新** 进度条、轮询超时与错误文案
+- 应用内更新 **SHA256** 校验与安装失败回滚链路加固
+
+### 测试
+
+- 新增/扩充：zip_safety、open_path_security、ws_auth、shell bypass、safety、category_profiles、credentials_store 等
+
+---
+
 ## 1.3.2（2026-06-11）
 
 **可靠性、设置体验与无障碍；测试版可与正式版并行**

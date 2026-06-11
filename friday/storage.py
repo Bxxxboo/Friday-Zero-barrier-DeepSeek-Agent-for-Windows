@@ -330,13 +330,18 @@ def load_settings() -> UserSettings:
         settings = settings.merge(fixes)
         save_settings(settings)
         _log.info("已修复空 base_url/model | base_url=%s model=%s", settings.base_url, settings.model)
-    from friday.category_profiles import repair_isolated_category_settings
+    from friday.category_profiles import align_isolated_category_settings, repair_isolated_category_settings
 
     repaired = repair_isolated_category_settings(settings)
     if repaired != settings:
         save_settings(repaired)
         _log.info("已修复视觉/生图与服务商不匹配的配置")
         settings = repaired
+    aligned_cat = align_isolated_category_settings(settings)
+    if aligned_cat != settings:
+        save_settings(aligned_cat)
+        _log.info("已从 profile 回填视觉/生图活跃配置")
+        settings = aligned_cat
 
     from friday.llm_profiles import active_provider_id, normalize_profiles, repair_llm_key_alignment, seed_profiles_from_active
 

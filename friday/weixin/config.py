@@ -4,24 +4,28 @@ import json
 import os
 from pathlib import Path
 
+from friday.auth import _TOKEN_FILENAME
 from friday.logging_config import get_logger
 from friday.paths import get_appdata_dir
 
 _log = get_logger("weixin.config")
 
 BRIDGE_FILENAME = "weixin-bridge.json"
+BRIDGE_TOKEN_FILE_FIELD = "token_file"
 
 
 def bridge_config_path() -> Path:
     return get_appdata_dir() / BRIDGE_FILENAME
 
 
-def write_bridge_config(port: int, token: str, *, enabled: bool = True) -> Path:
+def write_bridge_config(port: int, token: str = "", *, enabled: bool = True) -> Path:
+    """写入桥接配置；token 从 api_token.txt 读取，不再落盘到 JSON。"""
+    _ = token  # 兼容旧调用方，忽略明文 token
     path = bridge_config_path()
     payload = {
         "enabled": enabled,
         "port": port,
-        "token": token,
+        BRIDGE_TOKEN_FILE_FIELD: _TOKEN_FILENAME,
         "base_url": f"http://127.0.0.1:{port}",
         "timeout_ms": 600_000,
     }
@@ -40,10 +44,9 @@ def sync_bridge_config_from_runtime() -> Path | None:
     port_raw = os.environ.get("FRIDAY_PORT", "").strip()
     if not port_raw.isdigit():
         return None
-    token = get_api_token().strip()
-    if not token:
+    if not get_api_token().strip():
         return None
-    return write_bridge_config(int(port_raw), token)
+    return write_bridge_config(int(port_raw))
 
 
 def read_bridge_config() -> dict | None:

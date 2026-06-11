@@ -36,6 +36,7 @@ if ($Set) {
 }
 
 $newVersion = "$major.$minor.$patch"
+$newDevVersion = "$newVersion-dev"
 $newTuple = "($major, $minor, $patch, 0)"
 $fileVersion = "$newVersion.0"
 
@@ -44,6 +45,19 @@ $content = [regex]::Replace(
     '__version__ = "\d+\.\d+\.\d+"',
     "__version__ = `"$newVersion`""
 )
+if ($content -match '__dev_version__ = "[^"]+"') {
+    $content = [regex]::Replace(
+        $content,
+        '__dev_version__ = "[^"]+"',
+        "__dev_version__ = `"$newDevVersion`""
+    )
+} else {
+    $content = [regex]::Replace(
+        $content,
+        '(__version__ = "[^"]+")',
+        "`$1`n__dev_version__ = `"$newDevVersion`""
+    )
+}
 $content = [regex]::Replace(
     $content,
     '__version_tuple__ = \(\d+, \d+, \d+, \d+\)',
@@ -60,6 +74,6 @@ if (Test-Path $VersionInfo) {
     Set-Content -Path $VersionInfo -Value $info -Encoding UTF8 -NoNewline
 }
 
-Write-Host "Version bumped to $newVersion" -ForegroundColor Green
-Write-Host "  friday/version.py"
+Write-Host "Version bumped to $newVersion (dev: $newDevVersion)" -ForegroundColor Green
+Write-Host "  friday/version.py (__version__ + __dev_version__)"
 if (Test-Path $VersionInfo) { Write-Host "  scripts/version_info.py" }

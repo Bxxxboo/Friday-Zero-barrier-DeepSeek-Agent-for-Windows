@@ -20,7 +20,7 @@ from friday.storage import UserSettings, load_settings
 
 
 @pytest.fixture
-def workspace(tmp_path, monkeypatch):
+def workspace(tmp_path, tmp_appdata, monkeypatch):
     ws = tmp_path / "workspace"
     ws.mkdir()
     cfg = load_settings().merge({"workspace": str(ws).replace("\\", "/")})
