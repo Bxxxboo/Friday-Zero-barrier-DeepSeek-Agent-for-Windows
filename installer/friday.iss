@@ -56,7 +56,7 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{code:GetFridayExePath}"; Tasks: 
 
 [Run]
 Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""Get-ChildItem -LiteralPath '{app}' -Recurse -ErrorAction SilentlyContinue | Unblock-File -ErrorAction SilentlyContinue"""; Flags: runhidden; StatusMsg: "正在解除文件锁定…"
-Filename: "{code:GetFridayExePath}"; Parameters: "--install-launch"; Description: "启动 {#MyAppName}"; Flags: nowait postinstall skipifsilent; Check: FridayExeExists
+Filename: "{code:GetFridayExePath}"; Parameters: "--install-launch"; WorkingDir: "{code:GetFridayWorkingDir}"; Description: "启动 {#MyAppName}"; Flags: nowait postinstall skipifsilent; Check: FridayExeExists
 
 [UninstallDelete]
 ; 仅删除程序目录内容，不触碰 %APPDATA%\Friday 用户数据（无额外 UninstallDelete 规则）

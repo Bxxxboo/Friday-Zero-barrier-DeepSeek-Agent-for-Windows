@@ -16,6 +16,8 @@ build/
 dist/
 *.spec.bak
 
+_qa_tmp_appdata/
+
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
@@ -27,6 +29,8 @@ coverage.xml
 release/*.zip
 release/Friday-Setup-*.exe
 release/stage/
+release/stage-*/
+release/test.zip
 installer/stage/
 installer/output/
 release/.release-notes.md

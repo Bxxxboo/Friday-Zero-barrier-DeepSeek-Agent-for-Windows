@@ -275,7 +275,7 @@ def _provider_url_allowed(category: Category, provider_id: str, base_url: str) -
         if provider_id == "mimo":
             return "xiaomimimo" in host or "mimo" in host
         if provider_id == "ark":
-            return "volces" in host or "ark" in host
+            return True
         if provider_id == "openai":
             return "openai.com" in host
         if provider_id == "siliconflow":
@@ -286,7 +286,7 @@ def _provider_url_allowed(category: Category, provider_id: str, base_url: str) -
         if provider_id == "mimo":
             return "xiaomimimo" in host or "mimo" in host
         if provider_id == "ark":
-            return "volces" in host or "ark" in host
+            return True
     return True
 
 
@@ -310,6 +310,9 @@ def repair_category_settings(settings: UserSettings, category: Category) -> User
     saved_key = str(saved.get("api_key") or "").strip()
 
     url_mismatch = not _provider_url_allowed(category, provider, base_url)
+    # 用户已在 profile 中保存同一中转 URL 时，视为有意配置，勿在每次启动时改回官方默认地址。
+    if url_mismatch and saved_url and saved_url == base_url:
+        url_mismatch = False
     model_mismatch = category == "image_gen" and model.startswith("mimo-") and provider != "mimo"
     key_mismatch = (
         category in ("vision", "image_gen")

@@ -9,8 +9,6 @@ from ctypes import wintypes
 
 from friday.edition import window_title
 
-WINDOW_TITLE = window_title()
-
 # Win32
 GWL_STYLE = -16
 WS_CAPTION = 0x00C00000
@@ -116,7 +114,7 @@ def find_window_for_pid(pid: int) -> int | None:
             buf = ctypes.create_unicode_buffer(length)
             user32.GetWindowTextW(hwnd, buf, length)
             title = buf.value
-        if title == WINDOW_TITLE:
+        if title == window_title():
             titled.append(hwnd)
             return True
         rect = wintypes.RECT()

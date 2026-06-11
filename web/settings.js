@@ -563,6 +563,7 @@
     document.getElementById("visionApiKey").value = "";
     applyVisionKeyHint(data);
     updateVisionStatus(data.vision_ready, data.vision_enabled, data.vision_status_hint);
+    await F.initProviders?.(data);
     if (resultEl) {
       resultEl.className = "settings-result ok";
       resultEl.textContent = "视觉设置已保存。";
@@ -618,6 +619,7 @@
     document.getElementById("visionApiKey").value = "";
     applyVisionKeyHint(saved);
     updateVisionStatus(saved.vision_ready, saved.vision_enabled, saved.vision_status_hint, true);
+    await F.initProviders?.(saved);
     if (resultEl) {
       resultEl.className = "settings-result ok";
       resultEl.textContent = `${data.message}（已自动保存，对话中可识图）`;
@@ -660,6 +662,7 @@
     if (data.image_gen_ready && data.image_gen_enabled) {
       markImageGenStatusBarOnline("生图 API 已就绪");
     }
+    await F.initProviders?.(data);
     if (resultEl) {
       resultEl.className = "settings-result ok";
       resultEl.textContent = "生图设置已保存。";
@@ -718,6 +721,7 @@
         ? `当前已保存: ${saved.image_gen_api_key_masked}`
         : "尚未保存生图 API Key";
       updateImageGenStatus(saved.image_gen_ready, saved.image_gen_enabled, "", true);
+      await F.initProviders?.(saved);
       if (saved.image_gen_ready && saved.image_gen_enabled) {
         markImageGenStatusBarOnline(data.message || "生图 API 已就绪");
       }
@@ -745,6 +749,94 @@
 
   /* ── 设置面板切换 ── */
 
+  let settingsReturnFocus = null;
+
+  const SETTINGS_FOCUSABLE =
+    'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+  function getSettingsNavTabs() {
+    return Array.from(document.querySelectorAll(".settings-nav-item:not(:disabled)"));
+  }
+
+  function getVisibleSettingsFocusables() {
+    const modal = F.settingsModal;
+    if (!modal) return [];
+    return Array.from(modal.querySelectorAll(SETTINGS_FOCUSABLE)).filter(
+      (el) => el.offsetParent !== null
+    );
+  }
+
+  function syncSettingsTabA11y(panel) {
+    getSettingsNavTabs().forEach((btn) => {
+      const selected = btn.dataset.panel === panel;
+      btn.setAttribute("aria-selected", selected ? "true" : "false");
+      btn.tabIndex = selected ? 0 : -1;
+    });
+    document.querySelectorAll(".settings-section").forEach((section) => {
+      const active = section.id === `panel-${panel}`;
+      section.setAttribute("aria-hidden", active ? "false" : "true");
+    });
+  }
+
+  function initSettingsA11y() {
+    const modal = F.settingsModal;
+    if (!modal || modal.dataset.a11yBound === "1") return;
+    modal.dataset.a11yBound = "1";
+
+    getSettingsNavTabs().forEach((btn) => {
+      const panel = btn.dataset.panel;
+      btn.setAttribute("role", "tab");
+      btn.setAttribute("id", `settings-tab-${panel}`);
+      btn.setAttribute("aria-controls", `panel-${panel}`);
+      btn.addEventListener("keydown", (event) => {
+        const tabs = getSettingsNavTabs();
+        const idx = tabs.indexOf(btn);
+        if (idx < 0) return;
+        if (event.key === "ArrowDown" || event.key === "ArrowRight") {
+          event.preventDefault();
+          const next = tabs[(idx + 1) % tabs.length];
+          F.switchSettingsPanel(next.dataset.panel);
+          next.focus();
+        } else if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
+          event.preventDefault();
+          const prev = tabs[(idx - 1 + tabs.length) % tabs.length];
+          F.switchSettingsPanel(prev.dataset.panel);
+          prev.focus();
+        } else if (event.key === "Home") {
+          event.preventDefault();
+          F.switchSettingsPanel(tabs[0].dataset.panel);
+          tabs[0].focus();
+        } else if (event.key === "End") {
+          event.preventDefault();
+          const last = tabs[tabs.length - 1];
+          F.switchSettingsPanel(last.dataset.panel);
+          last.focus();
+        }
+      });
+    });
+
+    document.querySelectorAll(".settings-section").forEach((section) => {
+      section.setAttribute("role", "tabpanel");
+      const panelId = section.id.replace(/^panel-/, "");
+      section.setAttribute("aria-labelledby", `settings-tab-${panelId}`);
+    });
+
+    modal.addEventListener("keydown", (event) => {
+      if (event.key !== "Tab" || modal.classList.contains("hidden")) return;
+      const nodes = getVisibleSettingsFocusables();
+      if (nodes.length < 2) return;
+      const first = nodes[0];
+      const last = nodes[nodes.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    });
+  }
+
   function initSettingsInputFocus() {
     const modal = F.settingsModal;
     if (!modal || modal.dataset.focusBound === "1") return;
@@ -769,20 +861,34 @@
   function normalizeSettingsPanel(panel) {
     const aliases = {
       api: "llm",
-      logs: "app",
-      "security-updates": "app",
+      app: "about",
+      logs: "about",
+      "security-updates": "about",
+      migration: "data",
     };
     return aliases[panel] || panel || "llm";
   }
 
   function openSettings(panel = "llm") {
+    settingsReturnFocus = document.activeElement;
     initSettingsInputFocus();
+    initSettingsA11y();
     switchSettingsPanel(normalizeSettingsPanel(panel));
     F.settingsModal.classList.remove("hidden");
+    F.settingsModal.setAttribute("aria-hidden", "false");
+    requestAnimationFrame(() => {
+      document.querySelector(".settings-nav-item.active")?.focus();
+    });
   }
 
   function closeSettings() {
     F.settingsModal.classList.add("hidden");
+    F.settingsModal.setAttribute("aria-hidden", "true");
+    const restore = settingsReturnFocus;
+    settingsReturnFocus = null;
+    if (restore && typeof restore.focus === "function") {
+      restore.focus();
+    }
   }
 
   function switchSettingsPanel(panel) {
@@ -793,9 +899,12 @@
     document.querySelectorAll(".settings-section").forEach((section) => {
       section.classList.toggle("active", section.id === `panel-${panel}`);
     });
-    if (panel === "app") {
+    if (panel === "about") {
       void refreshLogPreview();
       void loadAppVersion();
+    }
+    if (panel === "data") {
+      void refreshArtifactSummary();
     }
     if (panel === "agent") {
       void F.refreshPythonEnvStatus?.();
@@ -803,6 +912,7 @@
     if (panel === "weixin") {
       void F.refreshWeixinSetup?.();
     }
+    syncSettingsTabA11y(panel);
   }
 
   /* ── 数据移植 / 日志 ── */
@@ -926,9 +1036,27 @@
     void refreshArtifactSummary();
   }
 
+  function artifactIsEmpty(data) {
+    if (!data) return false;
+    const active = Number(data.indexed_active_count) || 0;
+    const trashed = Number(data.indexed_trashed_count) || 0;
+    const dirBytes = Number(data.artifacts_dir_bytes) || 0;
+    return active === 0 && trashed === 0 && dirBytes === 0;
+  }
+
   function renderArtifactSummary(data) {
     const el = document.getElementById("artifactStorageSummary");
+    const emptyEl = document.getElementById("artifactStorageEmpty");
     if (!el || !data) return;
+
+    if (artifactIsEmpty(data)) {
+      el.classList.add("hidden");
+      emptyEl?.classList.remove("hidden");
+      return;
+    }
+
+    el.classList.remove("hidden");
+    emptyEl?.classList.add("hidden");
     el.textContent =
       `登记中 ${data.indexed_active_count} 个（${formatBytes(data.indexed_active_bytes)}）` +
       ` · 回收站 ${data.indexed_trashed_count} 个（${formatBytes(data.indexed_trashed_bytes)}）` +
@@ -937,15 +1065,25 @@
   }
 
   async function refreshArtifactSummary() {
+    const el = document.getElementById("artifactStorageSummary");
+    const emptyEl = document.getElementById("artifactStorageEmpty");
+    if (el) {
+      el.classList.remove("hidden");
+      el.textContent = t("settings.data.artifactsLoading") || "正在加载占用信息…";
+    }
+    emptyEl?.classList.add("hidden");
     try {
       const res = await F.apiFetch("/api/artifacts/summary");
-      if (!res.ok) return;
+      if (!res.ok) throw new Error("summary failed");
       const data = await res.json();
       renderArtifactSummary(data);
       return data;
     } catch {
-      const el = document.getElementById("artifactStorageSummary");
-      if (el) el.textContent = "无法加载占用信息。";
+      if (el) {
+        el.classList.remove("hidden");
+        el.textContent = t("settings.data.artifactsLoadError") || "无法加载占用信息。";
+      }
+      emptyEl?.classList.add("hidden");
       return null;
     }
   }
@@ -1007,6 +1145,7 @@
 
   document.getElementById("openLogFolderBtn")?.addEventListener("click", openLogFolder);
   document.getElementById("refreshLogPreviewBtn")?.addEventListener("click", refreshLogPreview);
+  document.getElementById("diagnosticsExportBtn")?.addEventListener("click", () => void exportDiagnosticBundle());
   document.getElementById("artifactRefreshSummaryBtn")?.addEventListener("click", () => {
     void refreshArtifactSummary();
   });
@@ -1016,6 +1155,38 @@
   document.getElementById("artifactSavePolicyBtn")?.addEventListener("click", () => {
     void saveArtifactPolicy();
   });
+
+  async function exportDiagnosticBundle() {
+    const btn = document.getElementById("diagnosticsExportBtn");
+    const resultEl = document.getElementById("logsResult");
+    if (btn) btn.disabled = true;
+    if (resultEl) resultEl.textContent = "正在打包诊断信息…";
+    try {
+      const res = await F.apiFetch("/api/diagnostics/export", { method: "POST" });
+      if (!res.ok) throw new Error(String(res.status));
+      const blob = await res.blob();
+      const disposition = res.headers.get("Content-Disposition") || "";
+      const match = disposition.match(/filename="?([^";]+)"?/i);
+      const filename = match?.[1] || "Friday-diagnostic.zip";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      if (resultEl) {
+        resultEl.className = "settings-result ok";
+        resultEl.textContent = "诊断包已下载";
+      }
+    } catch {
+      if (resultEl) {
+        resultEl.className = "settings-result error";
+        resultEl.textContent = "导出诊断包失败";
+      }
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
 
   async function exportPortableBundle() {
     const btn = document.getElementById("portableExportBtn");
@@ -1103,6 +1274,13 @@
     const file = event.target.files?.[0];
     event.target.value = "";
     void importPortableBundle(file);
+  });
+
+  document.querySelectorAll(".settings-goto-panel").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const panel = btn.dataset.gotoPanel;
+      if (panel) switchSettingsPanel(panel);
+    });
   });
 
   document.getElementById("refreshPythonEnvBtn")?.addEventListener("click", () => void F.refreshPythonEnvStatus?.());
@@ -1321,6 +1499,7 @@
         body: JSON.stringify({
           download_url: info.download_url,
           version: info.latest,
+          expected_sha256: info.download_sha256 || "",
         }),
       }, 30000);
       const data = await res.json().catch(() => ({}));

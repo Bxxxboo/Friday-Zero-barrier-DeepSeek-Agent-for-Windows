@@ -414,6 +414,9 @@ def _is_internal_app_url(url: str) -> bool:
 def main() -> None:
     global _log
     os.environ.setdefault("FRIDAY_GUI", "1")
+    from friday.crash_handler import install_crash_handler
+
+    install_crash_handler()
     setup_logging()
     from friday.logging_config import get_logger
 
@@ -471,6 +474,11 @@ def main() -> None:
         if sys.platform != "win32":
             return
         try:
+            window_api.activate_window()
+            return
+        except (AttributeError, OSError, TypeError):
+            pass
+        try:
             from friday.win32_chrome import find_app_window, focus_window
 
             hwnd = find_app_window()
@@ -482,7 +490,7 @@ def main() -> None:
     def _schedule_foreground_focus() -> None:
         if not _wants_install_launch_focus():
             return
-        for delay in (0.0, 0.4, 0.9, 1.8, 3.5):
+        for delay in (0.0, 0.35, 0.8, 1.5, 2.5, 4.0, 6.0, 9.0, 14.0, 20.0):
             threading.Timer(delay, _bring_window_to_front).start()
 
     def _schedule_chrome_apply() -> None:
@@ -498,9 +506,9 @@ def main() -> None:
         window_visible["shown"] = True
         if getattr(sys, "frozen", False):
             try:
-                from friday.update_rollback import clear_pending_update
+                from friday.update_rollback import confirm_startup_success
 
-                clear_pending_update()
+                confirm_startup_success()
             except Exception:
                 pass
         try:
@@ -560,7 +568,9 @@ def main() -> None:
         except OSError:
             _log.exception("同步微信桥接配置失败")
         token_q = f"&token={token}" if token else ""
-        main_url = f"http://127.0.0.1:{port}/?desktop=1&boot={boot_theme}{token_q}"
+        from friday.version import __version__
+
+        main_url = f"http://127.0.0.1:{port}/?desktop=1&boot={boot_theme}&ui={__version__}{token_q}"
         boot_phase["main_url"] = main_url
         _log.info("后端就绪 port=%d，准备加载主界面", port)
         _splash_status("正在加载界面…")
@@ -630,7 +640,7 @@ def main() -> None:
         "easy_drag": False,
         "hidden": False,
         "shadow": False,
-        "focus": False,
+        "focus": _wants_install_launch_focus(),
         "text_select": True,
         "zoomable": False,
         "js_api": window_api,
@@ -649,9 +659,13 @@ def main() -> None:
 
     def _on_gui_start() -> None:
         _schedule_foreground_focus()
+        if _wants_install_launch_focus():
+            _bring_window_to_front()
         if not window_visible["shown"]:
             threading.Timer(0.35, _force_show_window).start()
         threading.Timer(4.0, _force_show_window).start()
+        if _wants_install_launch_focus():
+            threading.Timer(8.0, _bring_window_to_front).start()
 
     webview_dir = get_appdata_dir() / "webview2"
     webview_dir.mkdir(parents=True, exist_ok=True)

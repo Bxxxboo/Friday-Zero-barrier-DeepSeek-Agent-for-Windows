@@ -35,7 +35,13 @@ python -m http.server 8787
 
 ## 发版后更新官网
 
-与 `publish-release` 同版本发 Gitee Release 后：
+**推荐**：用户明确说发版并给出版本号时，一条命令完成 bump + 双端 Release + 官网部署（见 `.cursor/rules/publish-release.mdc`）：
+
+```powershell
+scripts\publish-full-release.cmd -Version 1.3.2
+```
+
+手动分步（与 `publish-release` 同版本发 Gitee Release 后）：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/sync-website-download.ps1
@@ -43,9 +49,11 @@ git add website/download.json website/changelog.json
 git commit -m "chore: sync website download links for vX.Y.Z"
 git push origin main
 git push gitee main
+cd website
+npx vercel deploy --prod --yes
 ```
 
-Vercel 连 GitHub 时会自动重新部署；若只推 Gitee，需在 Vercel 手动 Redeploy 或配置双端同步。
+仅推 Gitee、未跑 `publish-full-release` 时，Vercel 不会自动更新，须手动 `vercel deploy`。
 
 ## 下载 URL 约定
 

@@ -88,6 +88,57 @@ def test_status_bar_skips_image_gen_live_probe_when_cached_ok(tmp_appdata, monke
     assert "生图测试通过" in str(data["image_gen_reach_detail"])
 
 
+def test_status_bar_gateway_disabled(tmp_appdata):
+    ws = tmp_appdata / "ws-gw-off"
+    ws.mkdir()
+    settings = UserSettings(
+        api_key="sk-fake-key-for-testing1234567890",
+        model="deepseek-chat",
+        workspace=str(ws),
+        weixin_bridge_enabled=False,
+    )
+    save_settings(settings)
+    from friday.api_connect import record_service_status
+
+    record_service_status("llm", settings, True, "API 可用")
+
+    data = asyncio.run(get_status_bar())
+    assert data["gateway_enabled"] is False
+    assert data["gateway_online"] is False
+    assert "关闭" in str(data["gateway_reach_detail"])
+
+
+def test_status_bar_gateway_offline_when_bridge_on(tmp_appdata, monkeypatch):
+    ws = tmp_appdata / "ws-gw-offline"
+    ws.mkdir()
+    settings = UserSettings(
+        api_key="sk-fake-key-for-testing1234567890",
+        model="deepseek-chat",
+        workspace=str(ws),
+        weixin_bridge_enabled=True,
+    )
+    save_settings(settings)
+    from friday.api_connect import record_service_status
+
+    record_service_status("llm", settings, True, "API 可用")
+    monkeypatch.setattr(
+        "friday.health_check._gateway_service",
+        lambda: {
+            "status": "degraded",
+            "detail": "Gateway 未响应",
+            "running": False,
+            "port": 18789,
+            "cli_available": True,
+        },
+    )
+
+    data = asyncio.run(get_status_bar())
+    assert data["gateway_enabled"] is True
+    assert data["gateway_configured"] is True
+    assert data["gateway_online"] is False
+    assert "Gateway" in str(data["gateway_reach_detail"])
+
+
 def test_status_bar_session_tokens(tmp_appdata):
     ws = tmp_appdata / "ws2"
     ws.mkdir()

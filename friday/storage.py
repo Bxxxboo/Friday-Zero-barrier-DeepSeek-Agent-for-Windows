@@ -314,7 +314,7 @@ def load_settings() -> UserSettings:
         if key in data:
             data[key] = _decrypt_custom_endpoints(data.get(key) or [])
     if secrets:
-        data = apply_secrets_to_settings_data(data, secrets)
+        data = apply_secrets_to_settings_data(data, secrets, profiles_fill_empty_only=True)
     settings = UserSettings.from_dict(data)
     if schema < CURRENT_SETTINGS_SCHEMA_VERSION:
         settings = _migrate_settings_schema(settings, schema)
@@ -539,8 +539,18 @@ def merge_settings(current: UserSettings, payload: dict) -> UserSettings:
         merged = merged.merge({"api_key": current.api_key})
     if "vision_api_key" in payload and not str(payload.get("vision_api_key", "")).strip():
         merged = merged.merge({"vision_api_key": current.vision_api_key})
+    if "vision_base_url" in payload and not str(payload.get("vision_base_url", "")).strip():
+        merged = merged.merge({"vision_base_url": current.vision_base_url})
+    if "vision_model" in payload and not str(payload.get("vision_model", "")).strip():
+        merged = merged.merge({"vision_model": current.vision_model})
     if "image_gen_api_key" in payload and not str(payload.get("image_gen_api_key", "")).strip():
         merged = merged.merge({"image_gen_api_key": current.image_gen_api_key})
+    if "image_gen_base_url" in payload and not str(payload.get("image_gen_base_url", "")).strip():
+        merged = merged.merge({"image_gen_base_url": current.image_gen_base_url})
+    if "image_gen_model" in payload and not str(payload.get("image_gen_model", "")).strip():
+        merged = merged.merge({"image_gen_model": current.image_gen_model})
+    if "image_gen_fallback_urls" in payload and not str(payload.get("image_gen_fallback_urls", "")).strip():
+        merged = merged.merge({"image_gen_fallback_urls": current.image_gen_fallback_urls})
     if "base_url" in payload and not str(payload.get("base_url", "")).strip():
         merged = merged.merge({"base_url": UserSettings.base_url})
     if "model" in payload and not str(payload.get("model", "")).strip():

@@ -30,6 +30,7 @@ def _request(
     data: dict | None = None,
     content_type: str = "application/json; charset=utf-8",
     raw: bytes | None = None,
+    timeout: float = 120.0,
 ) -> dict:
     headers = {
         "Authorization": f"Bearer {token}",
@@ -44,7 +45,7 @@ def _request(
         headers["Content-Type"] = content_type
     req = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             text = resp.read().decode("utf-8")
             return json.loads(text) if text else {}
     except urllib.error.HTTPError as exc:
@@ -80,8 +81,26 @@ def main() -> int:
 
     token = os.environ.get("GITHUB_TOKEN", "").strip()
     if not token:
-        print("GITHUB_TOKEN required", file=sys.stderr)
+        try:
+            import winreg  # type: ignore[import-untyped]
+
+            for hive, subkey in (
+                (winreg.HKEY_CURRENT_USER, r"Environment"),
+                (winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment"),
+            ):
+                try:
+                    with winreg.OpenKey(hive, subkey) as key:
+                        token = str(winreg.QueryValueEx(key, "GITHUB_TOKEN")[0]).strip()
+                        if token:
+                            break
+                except OSError:
+                    continue
+        except ImportError:
+            pass
+    if not token:
+        print("GITHUB_TOKEN required (session env or Windows User env var)", file=sys.stderr)
         return 1
+    os.environ["GITHUB_TOKEN"] = token
 
     tag = f"v{args.version}"
     repo = args.repo
@@ -131,14 +150,30 @@ def main() -> int:
                 aid = asset["id"]
                 print(f"Removing existing asset {path.name} (id {aid}) ...")
                 _request("DELETE", f"{API}/repos/{repo}/releases/assets/{aid}", token)
-        print(f"Uploading {path.name} ({path.stat().st_size // (1024 * 1024)} MB) ...")
-        _request(
-            "POST",
-            f"{UPLOAD}/repos/{repo}/releases/{release_id}/assets?name={urllib.parse.quote(path.name)}",
-            token,
-            raw=path.read_bytes(),
-            content_type=content_type,
-        )
+        size_mb = path.stat().st_size // (1024 * 1024)
+        upload_timeout = max(600.0, size_mb * 12.0)
+        print(f"Uploading {path.name} ({size_mb} MB, timeout {int(upload_timeout)}s) ...")
+        payload = path.read_bytes()
+        last_err: Exception | None = None
+        for attempt in range(1, 4):
+            try:
+                _request(
+                    "POST",
+                    f"{UPLOAD}/repos/{repo}/releases/{release_id}/assets?name={urllib.parse.quote(path.name)}",
+                    token,
+                    raw=payload,
+                    content_type=content_type,
+                    timeout=upload_timeout,
+                )
+                last_err = None
+                break
+            except (urllib.error.URLError, TimeoutError) as exc:
+                last_err = exc
+                if attempt >= 3:
+                    raise
+                print(f"  retry {attempt}/3 after network timeout: {exc}", file=sys.stderr)
+        if last_err:
+            raise last_err
 
     if args.skip_upload:
         print("Skip upload.")
@@ -150,6 +185,11 @@ def main() -> int:
         upload_asset(zip_path, content_type="application/zip")
         upload_asset(ROOT / "release" / release_update_zip_name(args.version), content_type="application/zip")
         upload_asset(ROOT / "release" / release_setup_name(args.version), content_type="application/octet-stream")
+        sums_path = ROOT / "release" / "SHA256SUMS.txt"
+        if sums_path.is_file():
+            upload_asset(sums_path, content_type="text/plain")
+        else:
+            print(f"SHA256SUMS.txt not found (run make-release.ps1 first): {sums_path}", file=sys.stderr)
 
     print(f"Done: https://github.com/{repo}/releases/tag/{tag}")
     return 0

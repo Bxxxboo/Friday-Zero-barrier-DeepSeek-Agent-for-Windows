@@ -32,6 +32,11 @@
 | `--border` | `rgba(212,160,86,0.14)` |  accent 调边框 |
 | `--border-subtle` | `rgba(255,255,255,0.07)` | 分隔线 |
 | `--code-bg` | `#0c1018` | 代码块 |
+| `--text-secondary` | `#c5cdd8` | 次级标题（空状态标题等） |
+| `--text-muted` | `#8b95a8` | 辅助说明（`--muted` 别名） |
+| `--surface-2` | `var(--panel-2)` | 嵌套面板 / 空状态底 |
+| `--status-checking` | `var(--warn)` | 状态栏检测中 |
+| `--space-1`…`--space-8` | 4–32px | 间距刻度（4px 基准） |
 
 ### Light (`html[data-theme="light"]`)
 
@@ -41,6 +46,8 @@
 | `--text` | `#1a1f2e` | 正文 |
 | `--accent` | `#b8862e` | 品牌金（略深） |
 | `--primary` | `#3d6db5` | 主色 |
+| `--text-secondary` | `#4a5366` | 次级标题 |
+| `--text-muted` | `#5c6578` | 辅助说明 |
 
 ### Category accents（工具/标签）
 

@@ -1,6 +1,11 @@
 import os
 import sys
 
+# 须在任意 friday 导入前设置，否则 instance_lock 会固化正式版端口/标题
+if "--dev" in sys.argv:
+    os.environ["FRIDAY_DEV"] = "1"
+    sys.argv = [a for a in sys.argv if a != "--dev"]
+
 # 打包版：pywebview(WinForms) 依赖 pythonnet，优先走 .NET Framework
 if sys.platform == "win32" and getattr(sys, "frozen", False):
     os.environ.setdefault("PYTHONNET_RUNTIME", "netfx")
@@ -60,6 +65,9 @@ except Exception:
 from friday.single_instance import ensure_single_instance
 
 if __name__ == "__main__":
+    from friday.crash_handler import install_crash_handler
+
+    install_crash_handler()
     if "--install-launch" in sys.argv:
         os.environ["FRIDAY_INSTALL_LAUNCH"] = "1"
     if len(sys.argv) > 1 and sys.argv[1] == "--weixin-login":

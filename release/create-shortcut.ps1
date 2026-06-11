@@ -1,3 +1,4 @@
+# Dev shortcut: Friday (test build) -> source run.py --dev. Does not touch installed Friday.lnk.
 $ErrorActionPreference = "Stop"
 
 $Root = Split-Path $PSScriptRoot -Parent
@@ -10,7 +11,8 @@ if (-not (Test-Path $RunPy)) {
     exit 1
 }
 if (-not (Test-Path $Pythonw)) {
-    Write-Host "Run setup.ps1 in $Root first" -ForegroundColor Red
+    Write-Host "Run setup.ps1 first to create .python-env in:" -ForegroundColor Red
+    Write-Host $Root -ForegroundColor Yellow
     exit 1
 }
 
@@ -36,50 +38,43 @@ Copy-Item -Path $IconSrc -Destination $Icon -Force
 (Get-Item $Icon).LastWriteTime = Get-Date
 
 $Desktop = [Environment]::GetFolderPath("Desktop")
-$ShortcutPath = Join-Path $Desktop ([char]0x661F + [char]0x671F + [char]0x4E94 + ".lnk")
-$LegacyTestPath = Join-Path $Desktop ([char]0x661F + [char]0x671F + [char]0x4E94 + [char]0x6D4B + [char]0x8BD5 + [char]0x7248 + ".lnk")
+$DevShortcutName = -join ([char]0x661F, [char]0x671F, [char]0x4E94, [char]0xFF08, [char]0x6D4B, [char]0x8BD5, [char]0x7248, [char]0xFF09) + ".lnk"
+$DevShortcutPath = Join-Path $Desktop $DevShortcutName
+$LegacyNames = @(
+    (-join ([char]0x661F, [char]0x671F, [char]0x4E94, [char]0x6D4B, [char]0x8BD5, [char]0x7248) + ".lnk"),
+    (-join ([char]0x661F, [char]0x671F, [char]0x4E94) + ".lnk")
+)
 
 $WshShell = New-Object -ComObject WScript.Shell
-$testLabel = [char]0x6D4B + [char]0x8BD5 + [char]0x7248
-$fridayLabel = [char]0x661F + [char]0x671F + [char]0x4E94
 
-foreach ($old in @($ShortcutPath, $LegacyTestPath)) {
-    if (Test-Path $old) {
-        Remove-Item $old -Force
+foreach ($legacyName in $LegacyNames) {
+    $legacyPath = Join-Path $Desktop $legacyName
+    if (-not (Test-Path $legacyPath)) { continue }
+    $sc = $WshShell.CreateShortcut($legacyPath)
+    $targetsSource = ($sc.Arguments -match 'run\.py')
+    if ($targetsSource) {
+        Remove-Item $legacyPath -Force
+        Write-Host "Removed legacy source shortcut: $legacyName" -ForegroundColor Yellow
     }
 }
 
-Get-ChildItem $Desktop -Filter "*.lnk" -ErrorAction SilentlyContinue | ForEach-Object {
-    $sc = $WshShell.CreateShortcut($_.FullName)
-    $args = $sc.Arguments
-    $targetsFriday =
-        ($args -match [regex]::Escape($RunPy)) -or
-        ($args -match 'Friday[\\/]run\.py') -or
-        ($sc.Description -match 'Friday') -or
-        ($_.BaseName -match $testLabel) -or
-        ($_.BaseName -eq ($fridayLabel + $testLabel))
-    if ($targetsFriday -and $_.FullName -ne $ShortcutPath) {
-        Remove-Item $_.FullName -Force
-        Write-Host "Removed legacy shortcut: $($_.Name)" -ForegroundColor Yellow
-    }
-}
-
-$Shortcut = $WshShell.CreateShortcut($ShortcutPath)
+$Shortcut = $WshShell.CreateShortcut($DevShortcutPath)
 $Shortcut.TargetPath = $Pythonw
-$Shortcut.Arguments = "`"$RunPy`""
+$Shortcut.Arguments = "`"$RunPy`" --dev"
 $Shortcut.WorkingDirectory = $Root
 $Shortcut.WindowStyle = 7
 $Shortcut.IconLocation = "$Icon,0"
-$desc = [char]0x661F + [char]0x671F + [char]0x4E94
-$Shortcut.Description = "$desc ($Root)"
+$appName = -join ([char]0x661F, [char]0x671F, [char]0x4E94, [char]0xFF08, [char]0x6D4B, [char]0x8BD5, [char]0x7248, [char]0xFF09)
+$Shortcut.Description = "$appName dev build - $Root"
 $Shortcut.Save()
 
-# 刷新 Shell 图标缓存（否则桌面仍显示旧黑色图标）
 $ie4u = Join-Path $env:SystemRoot "System32\ie4uinit.exe"
 if (Test-Path $ie4u) {
     Start-Process -FilePath $ie4u -ArgumentList "-show" -WindowStyle Hidden
 }
 
-Write-Host "Icon: $Icon" -ForegroundColor Green
-Write-Host "Shortcut: $ShortcutPath" -ForegroundColor Green
+Write-Host ""
+Write-Host "Created: $DevShortcutPath" -ForegroundColor Green
+Write-Host "Title: Friday (dev) | instance port 58766" -ForegroundColor Cyan
+Write-Host "Installed Friday shortcut is unchanged." -ForegroundColor DarkGray
 Write-Host "Root: $Root"

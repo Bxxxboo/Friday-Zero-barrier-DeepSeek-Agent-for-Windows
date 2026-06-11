@@ -184,6 +184,12 @@ def main() -> int:
             upload_asset(repo, release_id, token, setup_path)
         else:
             print(f"Setup not found (optional): {setup_path}")
+        sums_path = ROOT / "release" / "SHA256SUMS.txt"
+        if sums_path.is_file():
+            print(f"Uploading {sums_path.name} ...")
+            upload_asset(repo, release_id, token, sums_path)
+        else:
+            print(f"SHA256SUMS.txt not found (run make-release.ps1 first): {sums_path}")
     else:
         print("Skip upload.")
 

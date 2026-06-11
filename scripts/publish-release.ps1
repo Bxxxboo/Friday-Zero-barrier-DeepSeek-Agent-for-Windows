@@ -41,11 +41,24 @@ if (-not $SkipGiteeRelease) {
     Write-Host "Skip Gitee release." -ForegroundColor Yellow
 }
 
+function Resolve-GitHubToken {
+    $fromSession = ($env:GITHUB_TOKEN | ForEach-Object { "$_".Trim() })
+    if ($fromSession) { return $fromSession }
+    foreach ($scope in @("User", "Machine")) {
+        $fromProfile = ([Environment]::GetEnvironmentVariable("GITHUB_TOKEN", $scope) | ForEach-Object { "$_".Trim() })
+        if ($fromProfile) { return $fromProfile }
+    }
+    return ""
+}
+
 if (-not $SkipGithubRelease) {
+    $githubToken = Resolve-GitHubToken
+    if ($githubToken) { $env:GITHUB_TOKEN = $githubToken }
+
     Write-Host ""
     Write-Host "=== 3/3 GitHub Release (备用) ===" -ForegroundColor Cyan
     if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-        if ($env:GITHUB_TOKEN) {
+        if ($githubToken) {
             Write-Host "gh not found; using GitHub API with GITHUB_TOKEN ..." -ForegroundColor Yellow
             $apiArgs = @{ RepoOwner = $RepoOwner }
             if ($GitHubRepoName) { $apiArgs.RepoName = $GitHubRepoName }

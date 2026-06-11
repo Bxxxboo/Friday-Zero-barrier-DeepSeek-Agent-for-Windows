@@ -456,6 +456,13 @@ main {
   }
 }
 
+@media (min-width: 768px) {
+  .feature-list--three {
+    grid-template-columns: repeat(3, 1fr);
+    max-width: none;
+  }
+}
+
 /* Download */
 
 .download-section {

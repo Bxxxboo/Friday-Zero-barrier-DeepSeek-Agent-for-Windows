@@ -115,7 +115,7 @@
       transform: none;
     }
   </style>
-  <link rel="stylesheet" href="/static/styles.css?v=87" />
+  <link rel="stylesheet" href="/static/styles.css?v=91" />
 </head>
 <body>
   <div class="app-boot-overlay" id="appBootOverlay" aria-live="polite">
@@ -337,6 +337,9 @@
         <span class="status-divider" aria-hidden="true"></span>
         <span class="status-dot" id="statusImageGenDot" data-state="checking" aria-hidden="true"></span>
         <span class="status-text" id="statusImageGenText" data-i18n="status.imageGen.checking">生图 检测中</span>
+        <span class="status-divider" aria-hidden="true"></span>
+        <span class="status-dot" id="statusGatewayDot" data-state="disabled" aria-hidden="true"></span>
+        <span class="status-text" id="statusGatewayText" data-i18n="status.gateway.disabled">微信 关</span>
       </div>
       <div class="status-group" data-i18n-title="status.tokenUsage" title="当前会话 Token 用量">
         <svg class="status-icon" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm0 1.2a5.8 5.8 0 1 1 0 11.6A5.8 5.8 0 0 1 8 2.2Zm-.3 2.5h.6v3.4l2.8 1.6-.3.5-3.1-1.8V4.7Z"/></svg>
@@ -481,10 +484,10 @@
     </div>
   </div>
 
-  <div class="modal hidden" id="settingsModal">
+  <div class="modal hidden" id="settingsModal" role="dialog" aria-modal="true" aria-labelledby="settings-title" aria-hidden="true">
     <div class="settings-window">
       <header class="settings-header">
-        <h3 data-i18n="settings.title">设置</h3>
+        <h3 id="settings-title" data-i18n="settings.title">设置</h3>
         <button class="icon-btn" id="closeSettingsBtn" data-i18n-title="win.close" title="关闭" aria-label="关闭">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <path d="M18 6L6 18M6 6l12 12"></path>
@@ -492,31 +495,38 @@
         </button>
       </header>
       <div class="settings-body">
-        <nav class="settings-nav" aria-label="设置分类">
-          <div class="settings-nav-group" role="group" aria-labelledby="settings-nav-ai">
-            <div class="settings-nav-label" id="settings-nav-ai" data-i18n="settings.nav.group.ai">AI 能力</div>
+        <nav class="settings-nav" role="tablist" aria-label="设置分类">
+          <div class="settings-nav-group" role="group" aria-labelledby="settings-nav-onboarding">
+            <div class="settings-nav-label" id="settings-nav-onboarding" data-i18n="settings.nav.group.onboarding">入门</div>
+            <button type="button" class="settings-nav-item" data-panel="workspace" data-i18n="settings.nav.workspace">文件夹</button>
+            <button type="button" class="settings-nav-item" data-panel="security" data-i18n="settings.nav.security">权限与安全</button>
+          </div>
+          <div class="settings-nav-group" role="group" aria-labelledby="settings-nav-connect">
+            <div class="settings-nav-label" id="settings-nav-connect" data-i18n="settings.nav.group.connect">连接</div>
             <button type="button" class="settings-nav-item active" data-panel="llm" data-i18n="settings.nav.llm">大模型</button>
             <button type="button" class="settings-nav-item" data-panel="multimodal" data-i18n="settings.nav.multimodal">视觉与生图</button>
           </div>
-          <div class="settings-nav-group" role="group" aria-labelledby="settings-nav-workspace">
-            <div class="settings-nav-label" id="settings-nav-workspace" data-i18n="settings.nav.group.workspace">工作区</div>
-            <button type="button" class="settings-nav-item" data-panel="workspace" data-i18n="settings.nav.workspace">文件夹</button>
-            <button type="button" class="settings-nav-item" data-panel="agent" data-i18n="settings.nav.agent">Agent 环境</button>
-          </div>
-          <div class="settings-nav-group" role="group" aria-labelledby="settings-nav-personal">
-            <div class="settings-nav-label" id="settings-nav-personal" data-i18n="settings.nav.group.personal">个性化</div>
-            <button type="button" class="settings-nav-item" data-panel="appearance" data-i18n="settings.nav.appearance">外观</button>
-            <button type="button" class="settings-nav-item" data-panel="extensions" data-i18n="settings.nav.extensions">扩展</button>
-          </div>
-          <div class="settings-nav-group" role="group" aria-labelledby="settings-nav-system">
-            <div class="settings-nav-label" id="settings-nav-system" data-i18n="settings.nav.group.system">系统</div>
-            <button type="button" class="settings-nav-item" data-panel="security" data-i18n="settings.nav.security">权限与安全</button>
-            <button type="button" class="settings-nav-item" data-panel="app" data-i18n="settings.nav.app">应用与数据</button>
-          </div>
-          <div class="settings-nav-group" role="group" aria-labelledby="settings-nav-other">
-            <div class="settings-nav-label" id="settings-nav-other" data-i18n="settings.nav.group.other">其他</div>
-            <button type="button" class="settings-nav-item" data-panel="weixin" data-i18n="settings.nav.weixin">微信桥接</button>
+          <div class="settings-nav-group" role="group" aria-labelledby="settings-nav-automation">
+            <div class="settings-nav-label" id="settings-nav-automation" data-i18n="settings.nav.group.automation">自动化</div>
             <button type="button" class="settings-nav-item" data-panel="schedules" data-i18n="settings.nav.schedules">定时任务</button>
+          </div>
+          <div class="settings-nav-group" role="group" aria-labelledby="settings-nav-extensions">
+            <div class="settings-nav-label" id="settings-nav-extensions" data-i18n="settings.nav.group.extensions">扩展</div>
+            <button type="button" class="settings-nav-item" data-panel="extensions" data-i18n="settings.nav.extensions">插件与规则</button>
+          </div>
+          <div class="settings-nav-group" role="group" aria-labelledby="settings-nav-weixin">
+            <div class="settings-nav-label" id="settings-nav-weixin" data-i18n="settings.nav.group.weixin">微信</div>
+            <button type="button" class="settings-nav-item" data-panel="weixin" data-i18n="settings.nav.weixin">微信桥接</button>
+          </div>
+          <div class="settings-nav-group" role="group" aria-labelledby="settings-nav-data">
+            <div class="settings-nav-label" id="settings-nav-data" data-i18n="settings.nav.group.data">数据</div>
+            <button type="button" class="settings-nav-item" data-panel="agent" data-i18n="settings.nav.agent">Agent 环境</button>
+            <button type="button" class="settings-nav-item" data-panel="data" data-i18n="settings.nav.data">生成物与存储</button>
+          </div>
+          <div class="settings-nav-group" role="group" aria-labelledby="settings-nav-about">
+            <div class="settings-nav-label" id="settings-nav-about" data-i18n="settings.nav.group.about">关于</div>
+            <button type="button" class="settings-nav-item" data-panel="appearance" data-i18n="settings.nav.appearance">外观</button>
+            <button type="button" class="settings-nav-item" data-panel="about" data-i18n="settings.nav.about">版本与诊断</button>
           </div>
         </nav>
         <div class="settings-content">
@@ -698,6 +708,11 @@
           <section class="settings-section" id="panel-workspace">
             <h4 data-i18n="settings.workspace.title">默认操作文件夹</h4>
             <p class="settings-desc" data-i18n="settings.workspace.desc">星期五帮你整理文件、保存文档时优先使用的目录。你也可以直接说「下载文件夹」「桌面」等。</p>
+            <p class="settings-hint settings-onboarding-hint">
+              首次使用？请先在
+              <button type="button" class="link-btn settings-goto-panel" data-goto-panel="llm">连接 → 大模型</button>
+              配置 API Key。
+            </p>
             <form class="settings-form" id="workspaceForm">
               <label>
                 <span>文件夹路径</span>
@@ -774,7 +789,7 @@
           </section>
           <section class="settings-section" id="panel-security">
             <h4 data-i18n="security.title">权限与安全</h4>
-            <p class="settings-desc" data-i18n="security.desc">限制 AI 访问与修改文件的范围、可调用的工具，以及登录时是否自动启动。</p>
+            <p class="settings-desc" data-i18n="security.desc">限制 AI 访问与修改文件的范围，以及可调用的工具。</p>
             <form class="settings-form" id="securityForm">
               <div class="settings-group">
                 <h5>路径与审批</h5>
@@ -845,19 +860,66 @@
               </div>
               <div class="settings-result" id="securityResult"></div>
             </form>
-            <div class="settings-group autostart-group">
-              <h5 data-i18n="autostart.title">启动</h5>
-              <label class="settings-check">
-                <input type="checkbox" id="launchAtLogon" />
-                <span data-i18n="autostart.label">登录 Windows 时自动启动星期五</span>
-              </label>
-              <p class="settings-hint" id="launchAtLogonHint"></p>
-              <div class="settings-result" id="autostartResult"></div>
-            </div>
           </section>
-          <section class="settings-section" id="panel-app">
-            <h4 data-i18n="settings.app.title">应用与数据</h4>
-            <p class="settings-desc" data-i18n="settings.app.desc">版本更新、配置迁移与运行日志。</p>
+          <section class="settings-section" id="panel-data">
+            <h4 data-i18n="settings.data.title">生成物与存储</h4>
+            <p class="settings-desc" data-i18n="settings.data.desc">管理任务生成物、回收策略与配置迁移。</p>
+            <div class="settings-group portable-group">
+              <h5 data-i18n="logs.migration">数据迁移</h5>
+              <p class="settings-hint" data-i18n="logs.migrationHint">导出/导入配置包（含设置、技能、规则、插件；可选会话）。换机时请一并拷贝默认操作文件夹。</p>
+              <label class="settings-check">
+                <input type="checkbox" id="portableIncludeSessions" />
+                <span data-i18n="logs.includeSessions">导出时包含对话历史</span>
+              </label>
+              <div class="settings-actions">
+                <button type="button" class="ghost-btn" id="portableExportBtn" data-i18n="logs.export">导出配置包</button>
+                <button type="button" class="ghost-btn" id="portableImportBtn" data-i18n="logs.import">导入配置包</button>
+                <input type="file" id="portableImportInput" accept=".zip,application/zip" hidden />
+              </div>
+              <pre class="log-preview" id="portableReport" data-i18n="logs.reportPlaceholder">（导入/导出结果将显示在此）</pre>
+            </div>
+            <div class="settings-group artifact-storage-group">
+              <h5>生成物与回收</h5>
+              <p class="settings-hint">
+                临时脚本与中间文件登记在 <code>{工作区}/.friday/artifacts/</code>，过期后移入
+                <code>.friday/trash/</code> 再自动清除。生图等交付物默认长期保留。
+              </p>
+              <p class="settings-hint" id="artifactStorageSummary">（加载占用信息…）</p>
+              <div class="artifact-storage-empty hidden" id="artifactStorageEmpty" role="status">
+                <p class="artifact-storage-empty-title" data-i18n="settings.data.artifactsEmptyTitle">还没有生成物</p>
+                <p class="artifact-storage-empty-hint" data-i18n="settings.data.artifactsEmptyHint">Agent 运行脚本、处理文件时，临时产物会登记在工作区的 .friday/artifacts/ 目录。用完会自动回收。</p>
+                <button type="button" class="ghost-btn artifact-storage-empty-btn settings-goto-panel" data-goto-panel="workspace" data-i18n="settings.data.artifactsEmptyAction">查看工作区文件夹</button>
+              </div>
+              <div class="settings-form artifact-settings-form">
+                <label>
+                  <span>临时文件 TTL（小时）</span>
+                  <input type="number" id="artifactScratchTtlHours" min="1" max="720" value="24" />
+                </label>
+                <label>
+                  <span>会话关联文件 TTL（天）</span>
+                  <input type="number" id="artifactSessionTtlDays" min="1" max="365" value="30" />
+                </label>
+                <label>
+                  <span>回收站保留（天）</span>
+                  <input type="number" id="artifactTrashTtlDays" min="1" max="90" value="7" />
+                </label>
+                <label class="settings-check">
+                  <input type="checkbox" id="artifactAutoGcEnabled" checked />
+                  <span>任务结束后自动回收过期文件</span>
+                </label>
+              </div>
+              <div class="settings-actions">
+                <button type="button" class="ghost-btn" id="artifactRefreshSummaryBtn">刷新占用</button>
+                <button type="button" class="ghost-btn" id="artifactRunGcBtn">立即回收</button>
+                <button type="button" class="primary-btn" id="artifactSavePolicyBtn">保存回收策略</button>
+              </div>
+              <div class="settings-result" id="artifactStorageResult"></div>
+            </div>
+            <div class="settings-result" id="logsResult"></div>
+          </section>
+          <section class="settings-section" id="panel-about">
+            <h4 data-i18n="settings.about.title">版本与诊断</h4>
+            <p class="settings-desc" data-i18n="settings.about.desc">检查更新、查看运行模式与导出诊断信息。</p>
             <div class="settings-group update-group">
               <h5 data-i18n="updates.version">版本与更新</h5>
               <p class="settings-hint">
@@ -895,59 +957,15 @@
                 <button type="button" class="ghost-btn" id="viewChangelogBtn" data-i18n="settings.app.viewChangelog">查看更新历史</button>
               </div>
             </div>
-            <div class="settings-group portable-group">
-              <h5 data-i18n="logs.migration">数据迁移</h5>
-              <p class="settings-hint" data-i18n="logs.migrationHint">导出/导入配置包（含设置、技能、规则、插件；可选会话）。换机时请一并拷贝默认操作文件夹。</p>
-              <label class="settings-check">
-                <input type="checkbox" id="portableIncludeSessions" />
-                <span data-i18n="logs.includeSessions">导出时包含对话历史</span>
-              </label>
-              <div class="settings-actions">
-                <button type="button" class="ghost-btn" id="portableExportBtn" data-i18n="logs.export">导出配置包</button>
-                <button type="button" class="ghost-btn" id="portableImportBtn" data-i18n="logs.import">导入配置包</button>
-                <input type="file" id="portableImportInput" accept=".zip,application/zip" hidden />
-              </div>
-              <pre class="log-preview" id="portableReport" data-i18n="logs.reportPlaceholder">（导入/导出结果将显示在此）</pre>
-            </div>
-            <div class="settings-group artifact-storage-group">
-              <h5>生成物与回收</h5>
-              <p class="settings-hint">
-                临时脚本与中间文件登记在 <code>{工作区}/.friday/artifacts/</code>，过期后移入
-                <code>.friday/trash/</code> 再自动清除。生图等交付物默认长期保留。
-              </p>
-              <p class="settings-hint" id="artifactStorageSummary">（加载占用信息…）</p>
-              <div class="settings-form artifact-settings-form">
-                <label>
-                  <span>临时文件 TTL（小时）</span>
-                  <input type="number" id="artifactScratchTtlHours" min="1" max="720" value="24" />
-                </label>
-                <label>
-                  <span>会话关联文件 TTL（天）</span>
-                  <input type="number" id="artifactSessionTtlDays" min="1" max="365" value="30" />
-                </label>
-                <label>
-                  <span>回收站保留（天）</span>
-                  <input type="number" id="artifactTrashTtlDays" min="1" max="90" value="7" />
-                </label>
-                <label class="settings-check">
-                  <input type="checkbox" id="artifactAutoGcEnabled" checked />
-                  <span>任务结束后自动回收过期文件</span>
-                </label>
-              </div>
-              <div class="settings-actions">
-                <button type="button" class="ghost-btn" id="artifactRefreshSummaryBtn">刷新占用</button>
-                <button type="button" class="ghost-btn" id="artifactRunGcBtn">立即回收</button>
-                <button type="button" class="primary-btn" id="artifactSavePolicyBtn">保存回收策略</button>
-              </div>
-              <div class="settings-result" id="artifactStorageResult"></div>
-            </div>
             <div class="settings-group diagnostics-group">
               <h5 data-i18n="logs.diagnostics">日志与诊断</h5>
               <p class="settings-hint">应用数据与日志保存在 <code id="appdataPathHint">%APPDATA%\Friday</code></p>
               <div class="settings-actions">
                 <button type="button" class="ghost-btn" id="openLogFolderBtn" data-i18n="logs.openFolder">打开日志文件夹</button>
                 <button type="button" class="ghost-btn" id="refreshLogPreviewBtn" data-i18n="logs.refresh">刷新日志摘要</button>
+                <button type="button" class="ghost-btn" id="diagnosticsExportBtn">导出诊断包</button>
               </div>
+              <p class="settings-hint">诊断包含版本、运行模式、日志尾部与 Gateway 状态（已脱敏，不含 API Key）。</p>
               <pre class="log-preview" id="logPreview" data-i18n="logs.empty">（暂无日志）</pre>
             </div>
             <div class="settings-result" id="logsResult"></div>
@@ -1050,6 +1068,10 @@
               <span class="weixin-setup-badge" id="weixinSetupBadge">检测中…</span>
               <p class="weixin-setup-banner-text" id="weixinSetupBannerText">正在读取配置…</p>
             </div>
+            <div class="weixin-gateway-strip hidden" id="weixinGatewayStrip" role="status" aria-live="polite">
+              <span class="weixin-gateway-strip-dot" id="weixinGatewayDot" data-state="checking" aria-hidden="true"></span>
+              <span class="weixin-gateway-strip-text" id="weixinGatewayText"></span>
+            </div>
             <label class="settings-check weixin-bridge-toggle">
               <input type="checkbox" id="weixinBridgeEnabled" checked />
               <span>启用微信桥接（关闭后微信消息不再转发到星期五）</span>
@@ -1079,6 +1101,15 @@
           <section class="settings-section" id="panel-schedules">
             <h4>定时任务</h4>
             <p class="settings-desc">让星期五在指定时间自动执行指令，例如「每周五整理下载文件夹」。需保持应用运行。</p>
+            <div class="settings-group autostart-group">
+              <h5 data-i18n="autostart.title">启动</h5>
+              <label class="settings-check">
+                <input type="checkbox" id="launchAtLogon" />
+                <span data-i18n="autostart.label">登录 Windows 时自动启动星期五</span>
+              </label>
+              <p class="settings-hint" id="launchAtLogonHint"></p>
+              <div class="settings-result" id="autostartResult"></div>
+            </div>
 
             <label class="settings-check schedule-auto-approve">
               <input type="checkbox" id="autoApproveScheduledWrites" />
@@ -1205,12 +1236,12 @@
 
   <script defer src="/static/vendor/marked.min.js"></script>
   <script defer src="/static/vendor/purify.min.js"></script>
-  <script defer src="/static/i18n.js?v=7"></script>
+  <script defer src="/static/i18n.js?v=8"></script>
   <script defer src="/static/utils.js?v=67"></script>
   <script defer src="/static/errorHints.js?v=2"></script>
   <script defer src="/static/providers.js?v=14"></script>
-  <script defer src="/static/sessions.js?v=56"></script>
-  <script defer src="/static/settings.js?v=74"></script>
+  <script defer src="/static/sessions.js?v=57"></script>
+  <script defer src="/static/settings.js?v=75"></script>
   <script defer src="/static/settings-python-env.js?v=1"></script>
   <script defer src="/static/weixin.js?v=6"></script>
   <script defer src="/static/onboarding.js?v=53"></script>

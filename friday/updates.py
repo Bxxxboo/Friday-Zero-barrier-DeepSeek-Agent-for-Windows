@@ -26,6 +26,7 @@ class UpdateInfo:
     source_repo: str = ""
     source_url: str = ""
     source_kind: str = ""  # gitee | github
+    download_sha256: str = ""
 
 
 def github_repo() -> str:
@@ -43,6 +44,22 @@ def _parse_version(text: str) -> tuple[int, ...]:
 
 def _is_newer(current: str, latest: str) -> bool:
     return _parse_version(latest) > _parse_version(current)
+
+
+def _pick_download_sha256(data: dict, download_url: str) -> str:
+    from friday.release_hashes import SUMS_FILENAME, expected_sha256_for_download, parse_sums_text
+
+    url = (download_url or "").strip()
+    if not url:
+        return ""
+    for asset in data.get("assets") or []:
+        name = str(asset.get("name", ""))
+        if name != SUMS_FILENAME:
+            continue
+        body = asset.get("body") or asset.get("content") or ""
+        if isinstance(body, str) and body.strip():
+            return expected_sha256_for_download(url, sums_map=parse_sums_text(body))
+    return expected_sha256_for_download(url)
 
 
 def _pick_download_url(data: dict) -> str:
@@ -107,6 +124,7 @@ def _info_from_release(
         latest=latest,
         update_available=_is_newer(current, latest),
         download_url=download,
+        download_sha256=_pick_download_sha256(data, download),
         release_notes=notes,
         checked=True,
         source_repo=repo,

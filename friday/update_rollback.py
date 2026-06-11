@@ -18,6 +18,8 @@ _log = get_logger("update_rollback")
 BACKUP_DIR_NAME = "Friday.bak"
 MAX_STARTUP_FAILURES = 3
 
+_startup_confirmed = False
+
 
 def install_backup_dir(install_dir: Path) -> Path:
     return install_dir.parent / BACKUP_DIR_NAME
@@ -65,6 +67,8 @@ def restore_install_dir(install_dir: Path, *, source: Path | None = None) -> tup
 
 
 def mark_pending_update(*, version: str, install_dir: Path) -> None:
+    global _startup_confirmed
+    _startup_confirmed = False
     payload = {
         "version": version,
         "install_dir": str(install_dir).replace("\\", "/"),
@@ -80,6 +84,13 @@ def clear_pending_update() -> None:
     _failures_path().unlink(missing_ok=True)
 
 
+def confirm_startup_success() -> None:
+    """主界面成功显示后调用，清除待验收更新与崩溃计数。"""
+    global _startup_confirmed
+    _startup_confirmed = True
+    clear_pending_update()
+
+
 def has_pending_update() -> bool:
     return _pending_path().is_file()
 
@@ -92,18 +103,35 @@ def _read_json(path: Path) -> dict[str, Any]:
         return {}
 
 
-def _record_startup_failure() -> int:
+def _startup_failure_count() -> int:
+    return int(_read_json(_failures_path()).get("count") or 0)
+
+
+def _record_startup_failure(*, reason: str = "crash", context: str = "") -> int:
     path = _failures_path()
     data = _read_json(path) if path.is_file() else {}
     count = int(data.get("count") or 0) + 1
     data["count"] = count
+    data["reason"] = reason
     data["last_at"] = time.time()
+    if context:
+        data["last_context"] = context[:240]
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    _log.warning("记录启动失败 | count=%d reason=%s", count, reason)
     return count
 
 
+def record_startup_crash(*, context: str = "") -> int:
+    """更新待验收期间发生未捕获异常时调用（M4.5）。返回当前连续崩溃次数。"""
+    if not is_frozen() or sys.platform != "win32":
+        return 0
+    if _startup_confirmed or not _pending_path().is_file():
+        return 0
+    return _record_startup_failure(reason="crash", context=context)
+
+
 def guard_startup_after_update() -> bool:
-    """打包版启动时：若更新后连续启动失败则自动回滚。返回 False 表示应退出进程。"""
+    """打包版启动时：若更新后连续启动崩溃达阈值则自动回滚。返回 False 表示应退出进程。"""
     if not is_frozen() or sys.platform != "win32":
         return True
     if not _pending_path().is_file():
@@ -116,14 +144,14 @@ def guard_startup_after_update() -> bool:
         clear_pending_update()
         return True
 
-    failures = _record_startup_failure()
+    failures = _startup_failure_count()
     if failures < MAX_STARTUP_FAILURES:
         return True
 
     ok, msg = restore_install_dir(install)
     clear_pending_update()
     if ok:
-        _notify_rollback(msg)
+        _notify_rollback("检测到更新后连续多次启动崩溃，已自动恢复至上一版本。")
         _restart_exe(install)
         return False
     _notify_rollback(f"自动回滚失败：{msg}")

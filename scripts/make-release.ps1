@@ -32,8 +32,6 @@ if (-not $TargetVersion) {
 }
 
 $ReleaseRoot = Join-Path $PWD "release"
-$GuideName = -join ([char]0x5B89, [char]0x88C5, [char]0x6559, [char]0x7A0B) + ".txt"
-$UnblockName = -join ([char]0x89E3, [char]0x9664, [char]0x9501, [char]0x5B9A) + ".ps1"
 $SetupName = "Friday-Setup-$TargetVersion.exe"
 $ZipName = "Friday-Windows-$TargetVersion.zip"
 $UpdateZipName = "Friday-Update-$TargetVersion.zip"
@@ -100,12 +98,7 @@ New-ReleaseZip -Stage $WindowsStageRoot -ZipPath (Join-Path $ReleaseRoot $ZipNam
     "Installer: $SetupName"
 ) | Set-Content -Path (Join-Path $WindowsStageRoot "VERSION.txt") -Encoding UTF8
 
-Copy-Item (Join-Path $ReleaseRoot $GuideName) $WindowsStageRoot -Force
 Copy-Item $SetupPath (Join-Path $WindowsStageRoot $SetupName) -Force
-$UnblockScript = Join-Path $ReleaseRoot $UnblockName
-if (Test-Path $UnblockScript) {
-    Copy-Item $UnblockScript $WindowsStageRoot -Force
-}
 # 注意：Gitee Release 单附件约 100MB 上限，Windows ZIP 仅含 Setup（~64MB）。
 # 应用内一键更新请拉取 Friday-Update.zip（1.3+ 优先）；1.2.x 请手动解压后运行 Setup。
 Write-Host ""
@@ -133,6 +126,24 @@ Get-ChildItem -LiteralPath $UpdatePortableDir -Recurse -ErrorAction SilentlyCont
 Write-Host ""
 Write-Host "Packing $UpdateZipName (in-app updater)..." -ForegroundColor Cyan
 Write-ReleaseZip -Stage $UpdateStageRoot -ZipPath (Join-Path $ReleaseRoot $UpdateZipName)
+
+# --- SHA256 清单（M3.3）---
+$SumsPath = Join-Path $ReleaseRoot "SHA256SUMS.txt"
+$sumLines = @(
+    "# Friday v$TargetVersion — SHA256"
+    "# Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+)
+foreach ($artifact in @(
+    @{ Path = $SetupPath; Name = $SetupName }
+    @{ Path = (Join-Path $ReleaseRoot $ZipName); Name = $ZipName }
+    @{ Path = (Join-Path $ReleaseRoot $UpdateZipName); Name = $UpdateZipName }
+)) {
+    if (-not (Test-Path -LiteralPath $artifact.Path)) { continue }
+    $hash = (Get-FileHash -LiteralPath $artifact.Path -Algorithm SHA256).Hash.ToLowerInvariant()
+    $sumLines += "$hash  $($artifact.Name)"
+}
+$sumLines | Set-Content -Path $SumsPath -Encoding UTF8
+Write-Host "SHA256SUMS.txt written ($SumsPath)" -ForegroundColor Green
 
 Write-Host ""
 Write-Host "Release artifacts ready in $ReleaseRoot" -ForegroundColor Green

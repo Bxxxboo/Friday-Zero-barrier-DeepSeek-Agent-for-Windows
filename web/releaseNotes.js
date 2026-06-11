@@ -132,7 +132,7 @@
   historyLink?.addEventListener("click", (event) => {
     event.preventDefault();
     hideModal();
-    F.openSettings?.("app");
+    F.openSettings?.("about");
     void showChangelogHistory();
   });
 

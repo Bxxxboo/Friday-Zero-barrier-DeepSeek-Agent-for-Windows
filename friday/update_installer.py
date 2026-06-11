@@ -389,7 +389,7 @@ def _launch_updater(*, target_dir: Path, source_dir: Path, exe_path: Path, clean
     )
 
 
-def _apply_worker(*, download_url: str, version: str) -> None:
+def _apply_worker(*, download_url: str, version: str, expected_sha256: str = "") -> None:
     ok = False
     message = ""
     hint = ""
@@ -410,6 +410,13 @@ def _apply_worker(*, download_url: str, version: str) -> None:
 
         _report("downloading", 5, "准备下载…", f"版本 {version}")
         _download_release(download_url, zip_path)
+
+        from friday.release_hashes import expected_sha256_for_download, verify_file_sha256
+
+        digest = (expected_sha256 or "").strip() or expected_sha256_for_download(download_url)
+        if digest:
+            _report("downloading", 62, "正在校验更新包…", "SHA256")
+            verify_file_sha256(zip_path, digest)
 
         _report("extracting", 65, "正在解压更新包…")
         new_app_dir = _extract_release(zip_path, stage_dir)
@@ -457,7 +464,7 @@ def _apply_worker(*, download_url: str, version: str) -> None:
                 _apply_state["hint"] = hint
 
 
-def start_apply_update(*, download_url: str, version: str) -> dict[str, object]:
+def start_apply_update(*, download_url: str, version: str, expected_sha256: str = "") -> dict[str, object]:
     """后台下载并触发替换脚本；成功后会自动退出当前进程。"""
     can, reason = can_auto_update()
     if not can:
@@ -493,7 +500,11 @@ def start_apply_update(*, download_url: str, version: str) -> dict[str, object]:
 
     thread = threading.Thread(
         target=_apply_worker,
-        kwargs={"download_url": url, "version": ver},
+        kwargs={
+            "download_url": url,
+            "version": ver,
+            "expected_sha256": (expected_sha256 or "").strip(),
+        },
         daemon=True,
         name="friday-update-apply",
     )

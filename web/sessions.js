@@ -215,6 +215,25 @@
       if (a.isWeixin !== b.isWeixin) return a.isWeixin ? -1 : 1;
       return b.updatedAt - a.updatedAt;
     });
+    if (!sorted.length) {
+      const empty = document.createElement("div");
+      empty.className = "session-list-empty";
+      empty.setAttribute("role", "status");
+      const title = document.createElement("p");
+      title.className = "session-list-empty-title";
+      title.textContent = F.t?.("chat.sessions.emptyTitle") || "还没有对话";
+      const hint = document.createElement("p");
+      hint.className = "session-list-empty-hint";
+      hint.textContent = F.t?.("chat.sessions.emptyHint") || "新建一个对话，开始和星期五聊天。";
+      const action = document.createElement("button");
+      action.type = "button";
+      action.className = "ghost-btn session-list-empty-btn";
+      action.textContent = F.t?.("chat.new") || "新对话";
+      action.addEventListener("click", () => void createSession(true));
+      empty.append(title, hint, action);
+      F.sessionList.appendChild(empty);
+      return;
+    }
     sorted.forEach((session) => {
       const btn = document.createElement("button");
       btn.className = "session-item" + (session.id === F.activeSessionId ? " active" : "");

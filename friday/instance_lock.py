@@ -7,19 +7,19 @@ import subprocess
 import sys
 import time
 
-from friday.edition import instance_port
-
-INSTANCE_HOST = "127.0.0.1"
-INSTANCE_PORT = instance_port()
-
-
 from friday.edition import instance_port, window_title
 
 INSTANCE_HOST = "127.0.0.1"
-INSTANCE_PORT = instance_port()
-WINDOW_TITLE = window_title()
 
 _CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+
+
+def _instance_port() -> int:
+    return instance_port()
+
+
+def _window_title() -> str:
+    return window_title()
 
 
 def _hidden_subprocess_kwargs() -> dict:
@@ -41,6 +41,7 @@ def find_main_window() -> int | None:
 
     user32 = ctypes.windll.user32
     titled: list[int] = []
+    expected_title = _window_title()
 
     @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
     def _callback(hwnd: int, _lparam: int) -> bool:
@@ -51,7 +52,7 @@ def find_main_window() -> int | None:
             return True
         buf = ctypes.create_unicode_buffer(length)
         user32.GetWindowTextW(hwnd, buf, length)
-        if buf.value == WINDOW_TITLE:
+        if buf.value == expected_title:
             titled.append(hwnd)
         return True
 
@@ -59,7 +60,7 @@ def find_main_window() -> int | None:
     if titled:
         return titled[0]
 
-    pid = _pid_listening_on(INSTANCE_PORT)
+    pid = _pid_listening_on(_instance_port())
     if pid is None:
         return None
 
@@ -120,7 +121,7 @@ def clear_stale_instance_lock() -> bool:
     """锁被占用但无可见窗口时，结束僵死进程以释放端口。"""
     if find_main_window() is not None:
         return False
-    pid = _pid_listening_on(INSTANCE_PORT)
+    pid = _pid_listening_on(_instance_port())
     if pid is None or pid <= 0:
         return False
     if sys.platform != "win32":
@@ -144,6 +145,7 @@ def clear_stale_instance_lock() -> bool:
 
 def try_acquire_instance_lock() -> socket.socket | None:
     """占用单实例端口；返回 socket 或 None（已有实例）。"""
+    port = _instance_port()
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     if sys.platform == "win32":
         try:
@@ -151,7 +153,7 @@ def try_acquire_instance_lock() -> socket.socket | None:
         except OSError:
             pass
     try:
-        sock.bind((INSTANCE_HOST, INSTANCE_PORT))
+        sock.bind((INSTANCE_HOST, port))
         sock.listen(1)
     except OSError:
         sock.close()

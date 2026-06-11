@@ -31,6 +31,109 @@
     return "○";
   }
 
+  function renderStepsLoading() {
+    const list = $("weixinSetupSteps");
+    if (!list) return;
+    list.replaceChildren();
+    const li = document.createElement("li");
+    li.className = "weixin-setup-step weixin-setup-step--loading";
+    li.setAttribute("role", "status");
+    li.innerHTML =
+      '<div class="weixin-setup-step-head">' +
+      '<span class="weixin-setup-step-icon weixin-setup-step-icon--pulse" aria-hidden="true">…</span>' +
+      '<div class="weixin-setup-step-title-wrap">' +
+      "<strong>正在读取配置</strong>" +
+      '<span class="weixin-setup-step-desc">检测 OpenClaw、Gateway 与各步骤状态</span>' +
+      "</div></div>";
+    list.appendChild(li);
+  }
+
+  function renderStepsError({ title, hint, showRetry = true }) {
+    const list = $("weixinSetupSteps");
+    if (!list) return;
+    list.replaceChildren();
+    const empty = document.createElement("li");
+    empty.className = "weixin-setup-steps-empty";
+    empty.setAttribute("role", "alert");
+    const titleEl = document.createElement("p");
+    titleEl.className = "weixin-setup-steps-empty-title";
+    titleEl.textContent = title || "无法读取状态";
+    const hintEl = document.createElement("p");
+    hintEl.className = "weixin-setup-steps-empty-hint";
+    hintEl.textContent = hint || "请稍后重试。";
+    empty.append(titleEl, hintEl);
+    if (showRetry) {
+      const retry = document.createElement("button");
+      retry.type = "button";
+      retry.className = "ghost-btn weixin-setup-steps-empty-btn";
+      retry.textContent = "重试";
+      retry.addEventListener("click", () => void refreshWeixinSetup());
+      empty.appendChild(retry);
+    }
+    list.appendChild(empty);
+  }
+
+  function updateGatewayStrip(gateway, bridgeEnabled) {
+    const strip = $("weixinGatewayStrip");
+    const dot = $("weixinGatewayDot");
+    const text = $("weixinGatewayText");
+    if (!strip || !dot || !text) return;
+
+    if (bridgeEnabled === false) {
+      strip.classList.remove("hidden");
+      dot.dataset.state = "disabled";
+      text.textContent = "微信桥接已关闭，手机消息不会转发到本机。";
+      return;
+    }
+
+    const gw = gateway && typeof gateway === "object" ? gateway : {};
+    const running = !!gw.running;
+    const port = gw.port != null ? String(gw.port) : "";
+    const cliOk = gw.cli_available !== false;
+
+    strip.classList.remove("hidden");
+    if (!cliOk) {
+      dot.dataset.state = "offline";
+      text.textContent = "OpenClaw 未就绪，请点「一键配置」完成安装。";
+      return;
+    }
+    if (running) {
+      dot.dataset.state = "online";
+      text.textContent = port ? `OpenClaw Gateway 运行中（端口 ${port}）` : "OpenClaw Gateway 运行中";
+      return;
+    }
+    dot.dataset.state = "offline";
+    text.textContent = port
+      ? `Gateway 未响应（端口 ${port}）。请点「一键配置」或步骤中的「启动 Gateway」。`
+      : "Gateway 未响应。请点「一键配置」或步骤中的「启动 Gateway」。";
+  }
+
+  async function classifySetupFetchError() {
+    try {
+      const res = await F.apiFetchWithTimeout("/api/health", {}, 5000);
+      const health = await res.json();
+      if (health.status === "starting") {
+        return {
+          title: "后端仍在启动",
+          hint: "Python 环境或 Gateway 初始化中，请等待约 30 秒后再点「刷新状态」。",
+        };
+      }
+      const py = health.services?.python_env;
+      if (py?.setup_running) {
+        return {
+          title: "正在初始化 Python 环境",
+          hint: py.detail || "请等待环境准备完成后再刷新微信配置。",
+        };
+      }
+    } catch {
+      /* backend unreachable */
+    }
+    return {
+      title: "无法连接后端",
+      hint: "请确认星期五窗口已打开；若刚启动请稍候再点「刷新状态」。",
+    };
+  }
+
   function renderSteps(steps) {
     const list = $("weixinSetupSteps");
     if (!list) return;
@@ -295,25 +398,42 @@
       badge.className = "weixin-setup-badge";
       badge.textContent = "检测中…";
     }
+    const bannerText = $("weixinSetupBannerText");
+    if (bannerText) bannerText.textContent = "正在读取 OpenClaw 与 Gateway 状态…";
+    renderStepsLoading();
     try {
       const res = await F.apiFetchWithTimeout("/api/weixin/setup/status", {}, 20000);
+      if (!res.ok) {
+        let detail = `HTTP ${res.status}`;
+        try {
+          const errBody = await res.json();
+          detail = errBody.detail || errBody.message || detail;
+        } catch {
+          /* ignore */
+        }
+        throw new Error(typeof detail === "string" ? detail : "读取状态失败");
+      }
       const data = await res.json();
       renderSteps(data.steps);
       updateBanner(data);
+      updateGatewayStrip(data.openclaw_gateway, data.bridge_enabled);
       const toggle = $("weixinBridgeEnabled");
       if (toggle) toggle.checked = data.bridge_enabled !== false;
       void refreshCachedLoginUrlState();
       return data;
-    } catch {
+    } catch (err) {
+      const classified = await classifySetupFetchError();
+      const message = err?.message && !/fetch|network|abort/i.test(String(err.message))
+        ? String(err.message)
+        : classified.hint;
       if (badge) {
         badge.className = "weixin-setup-badge error";
         badge.textContent = "失败";
       }
-      const text = $("weixinSetupBannerText");
-      if (text) {
-        text.textContent = "无法连接后端。若正在「初始化 Python 环境」，请等待完成后再点刷新。";
-      }
-      setResult(false, "无法读取微信配置状态，请确认星期五后端已启动。");
+      if (bannerText) bannerText.textContent = classified.title;
+      renderStepsError({ title: classified.title, hint: message });
+      updateGatewayStrip(null, true);
+      setResult(false, `${classified.title}。${message}`);
       return null;
     }
   }
@@ -362,6 +482,7 @@
       }
       renderSteps(data.steps);
       updateBanner(data);
+      updateGatewayStrip(data.openclaw_gateway, data.bridge_enabled);
       setResult(
         data.ok || data.ready,
         (data.message || "").trim() || (data.ok ? "完成" : "未完成"),
@@ -457,7 +578,9 @@
   $("weixinSetupLoginBtn")?.addEventListener("click", () => void runSetup("login"));
   $("weixinSetupBrowserBtn")?.addEventListener("click", () => void openLoginUrlInBrowser());
   $("weixinBridgeEnabled")?.addEventListener("change", (e) => {
-    void toggleBridge(!!e.target.checked);
+    const enabled = !!e.target.checked;
+    updateGatewayStrip(null, enabled);
+    void toggleBridge(enabled);
   });
   $("openclawGatewayAutostart")?.addEventListener("change", (e) => {
     void setOpenclawAutostart(!!e.target.checked);

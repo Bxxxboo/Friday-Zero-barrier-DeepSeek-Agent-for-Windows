@@ -134,6 +134,89 @@ def test_category_profiles_summary_masks_keys(tmp_appdata):
     assert "..." in str(summary["ark"]["api_key_masked"])
 
 
+def test_repair_vision_ark_keeps_saved_relay_url(tmp_appdata):
+    from friday.category_profiles import repair_category_settings
+
+    settings = UserSettings(
+        vision_provider="ark",
+        vision_api_key="ark-secret-key-123456",
+        vision_base_url="https://next.zhima.world/v1",
+        vision_model="ep-20260609014727-895pn",
+        vision_profiles={
+            "ark": {
+                "api_key": "ark-secret-key-123456",
+                "base_url": "https://next.zhima.world/v1",
+                "model": "ep-20260609014727-895pn",
+            }
+        },
+    )
+    repaired = repair_category_settings(settings, "vision")
+    assert repaired.vision_base_url == "https://next.zhima.world/v1"
+    assert repaired.vision_model == "ep-20260609014727-895pn"
+
+
+def test_load_settings_preserves_vision_relay_after_restart(tmp_appdata):
+    settings = UserSettings(
+        vision_enabled=True,
+        vision_provider="ark",
+        vision_api_key="ark-secret-key-123456",
+        vision_base_url="https://next.zhima.world/v1",
+        vision_model="ep-20260609014727-895pn",
+        image_gen_enabled=True,
+        image_gen_provider="openai_compat",
+        image_gen_api_key="sk-zhima-key-12345678",
+        image_gen_base_url="https://next.zhima.world",
+        image_gen_model="flux-schnell",
+        image_gen_profiles={
+            "openai_compat": {
+                "api_key": "sk-zhima-key-12345678",
+                "base_url": "https://next.zhima.world",
+                "model": "flux-schnell",
+            }
+        },
+    )
+    save_settings(settings)
+    loaded = load_settings()
+    assert loaded.vision_base_url == "https://next.zhima.world/v1"
+    assert loaded.vision_model == "ep-20260609014727-895pn"
+    assert loaded.image_gen_base_url == "https://next.zhima.world"
+    assert loaded.image_gen_model == "flux-schnell"
+
+
+def test_merge_settings_preserves_empty_vision_and_image_gen_fields(tmp_appdata):
+    settings = UserSettings(
+        vision_enabled=True,
+        vision_provider="ark",
+        vision_api_key="ark-secret-key-123456",
+        vision_base_url="https://next.zhima.world/v1",
+        vision_model="ep-keep-me",
+        image_gen_enabled=True,
+        image_gen_provider="openai_compat",
+        image_gen_api_key="sk-zhima-key-12345678",
+        image_gen_base_url="https://next.zhima.world",
+        image_gen_model="flux-keep-me",
+        image_gen_fallback_urls="https://sg.zhima.world",
+    )
+    save_settings(settings)
+    merged = merge_settings(
+        load_settings(),
+        {
+            "vision_api_key": "",
+            "vision_base_url": "",
+            "vision_model": "",
+            "image_gen_api_key": "",
+            "image_gen_base_url": "",
+            "image_gen_model": "",
+            "image_gen_fallback_urls": "",
+        },
+    )
+    assert merged.vision_base_url == "https://next.zhima.world/v1"
+    assert merged.vision_model == "ep-keep-me"
+    assert merged.image_gen_base_url == "https://next.zhima.world"
+    assert merged.image_gen_model == "flux-keep-me"
+    assert merged.image_gen_fallback_urls == "https://sg.zhima.world"
+
+
 def test_repair_image_gen_openai_compat_with_mimo_url(tmp_appdata):
     from friday.category_profiles import repair_category_settings
 

@@ -2,6 +2,35 @@
 
 版本说明与 `assets/changelog.json` 同步；应用内「更新公告」亦读取该文件。
 
+## 1.3.2（2026-06-11）
+
+**可靠性、设置体验与无障碍；测试版可与正式版并行**
+
+### 新功能
+
+- **崩溃本地记录**：未处理异常写入 `%APPDATA%/Friday/crashes/`，保留最近 30 份
+- **导出诊断包**：设置 → 版本与诊断 → 一键 ZIP（版本、运行模式、日志尾部、系统信息、Gateway 状态，已脱敏）
+- **健康检查扩展**：`/api/health` 含 WebView、Gateway、Python 环境子状态
+- **日志轮转**：`friday.log` 默认 5MB × 14 份备份，启动清理超期日志
+- **连续启动崩溃回滚**：更新后 3 次启动崩溃自动从 `Friday.bak/` 恢复
+- **Release SHA256 清单**：发布附 `SHA256SUMS.txt`；应用内一键更新下载后校验哈希
+- **设置导航 7 组**：入门 / 连接 / 自动化 / 扩展 / 微信 / 数据 / 关于
+- **测试版（--dev）**：与正式版可同时运行（独立端口与窗口标题「星期五（测试版）」）
+
+### 改进
+
+- 对话列表、微信桥接、生成物存储等 **空状态 / 加载 / 错误** 文案与重试
+- 状态栏与微信面板 **Gateway 连接状态**
+- **DESIGN.md token 审计**一轮：补 `--touch-target`、`--text-secondary` 等，去除 indigo slop
+- **无障碍基线**：设置页键盘 Tab/方向键、焦点环、44px 触屏目标、`prefers-reduced-motion`
+- Gitee/GitHub Release 发布脚本与配额清理优化
+
+### 测试
+
+- 新增/扩充：crash_handler、diagnostics_bundle、health、release_hashes、update_rollback、status_bar、edition、instance_lock 等（505+ 用例）
+
+---
+
 ## 1.3.1（2026-06-11）
 
 **修复发布包与一键更新**

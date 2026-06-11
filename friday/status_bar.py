@@ -99,11 +99,35 @@ async def build_status_bar_snapshot(
         short = detail if online else detail.split("\n")[0]
         return online, short, False
 
+    async def _resolve_gateway() -> tuple[bool, bool, bool, str, bool]:
+        bridge_on = bool(getattr(cfg, "weixin_bridge_enabled", True))
+        if not bridge_on:
+            return False, False, False, "微信桥接已关闭", False
+
+        from friday.health_check import _gateway_service
+
+        svc = await asyncio.to_thread(_gateway_service)
+        cli_ok = bool(svc.get("cli_available"))
+        running = bool(svc.get("running"))
+        detail = str(svc.get("detail") or "")
+        if not cli_ok:
+            return True, False, False, "OpenClaw 未安装，请到 设置 → 微信桥接 一键配置", False
+        if not running:
+            port = svc.get("port")
+            suffix = f"（端口 {port}）" if port else ""
+            return True, True, False, f"Gateway 未响应{suffix}，请到 设置 → 微信桥接 启动", False
+        return True, True, True, detail or "Gateway 运行中", False
+
     (llm_online, llm_reach_detail, llm_checking), (vision_online, vision_reach_detail, vision_checking), (
         image_gen_online,
         image_gen_reach_detail,
         image_gen_checking,
-    ) = await asyncio.gather(_resolve_llm(), _resolve_vision(), _resolve_image_gen())
+    ), (gateway_enabled, gateway_configured, gateway_online, gateway_reach_detail, gateway_checking) = await asyncio.gather(
+        _resolve_llm(),
+        _resolve_vision(),
+        _resolve_image_gen(),
+        _resolve_gateway(),
+    )
 
     return {
         "api_online": llm_online,
@@ -120,6 +144,11 @@ async def build_status_bar_snapshot(
         "image_gen_reach_detail": image_gen_reach_detail,
         "image_gen_checking": image_gen_checking,
         "image_gen_enabled": image_gen_on,
+        "gateway_enabled": gateway_enabled,
+        "gateway_configured": gateway_configured,
+        "gateway_online": gateway_online,
+        "gateway_reach_detail": gateway_reach_detail,
+        "gateway_checking": gateway_checking,
         "model": cfg.model or "—",
         "workspace": ws_label.replace("\\", "/"),
         "workspace_path": workspace.replace("\\", "/"),

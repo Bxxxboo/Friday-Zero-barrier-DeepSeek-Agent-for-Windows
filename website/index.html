@@ -4,9 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>星期五 - Windows AI 电脑管家</title>
-  <meta name="description" content="星期五：Windows 桌面 AI 管家。自然语言说需求，本机 Agent 规划并执行。支持微信远程下发任务，数据留在本机。" />
+  <meta name="description" content="星期五是 Windows 桌面 AI 助手：自然语言描述任务，Agent 在本机规划并执行文件整理、系统检查与文档生成。支持微信远程下发，数据保存在本机。" />
   <meta property="og:title" content="星期五 - Windows AI 电脑管家" />
-  <meta property="og:description" content="听懂人话、本机动手、微信可遥控的 Windows AI 电脑管家。" />
+  <meta property="og:description" content="Windows 本机 AI 助手：任务规划与工具执行，会话与设置保存在本地。" />
   <meta property="og:type" content="website" />
   <meta property="og:image" content="assets/hero-app.png" />
   <link rel="icon" href="favicon.ico" type="image/x-icon" />
@@ -23,11 +23,12 @@
     </a>
     <nav class="site-nav" aria-label="主导航">
       <a href="#overview">概览</a>
-      <a href="#wechat">微信部署</a>
-      <a href="#features">扩展</a>
+      <a href="#examples">使用示例</a>
+      <a href="#wechat">微信集成</a>
+      <a href="#features">扩展能力</a>
       <a href="#download">下载</a>
-      <a href="#changelog">更新</a>
-      <a href="#requirements">要求</a>
+      <a href="#changelog">更新日志</a>
+      <a href="#requirements">系统要求</a>
     </nav>
   </header>
 
@@ -36,14 +37,14 @@
       <div class="hero-inner">
         <h1>
           <span class="hero-line-brand">星期五</span>
-          <span class="hero-line-sub">你的 Windows AI 电脑管家</span>
+          <span class="hero-line-sub">Windows 本机 AI 任务助手</span>
         </h1>
         <p class="lead">
-          用自然语言交代任务，星期五会在本机规划步骤、调用工具完成。对话、设置、电脑体检，都在你的 Windows 上。
+          星期五面向 Windows 桌面环境，支持以自然语言描述任务。Agent 将在本机规划执行步骤，调用文件、系统与文档等工具完成操作。对话记录与配置默认保存在本机，无需绑定云账号。
         </p>
         <div class="hero-actions">
-          <a class="primary-btn js-download-btn" href="#">下载压缩包</a>
-          <a class="ghost-btn" href="#overview">了解能力</a>
+          <a class="primary-btn js-download-btn" href="#">下载安装包</a>
+          <a class="ghost-btn" href="#examples">查看使用示例</a>
         </div>
       </div>
 
@@ -51,7 +52,7 @@
         <img
           class="hero-screenshot"
           src="assets/hero-app.png"
-          alt="星期五 Agent 模式：在本机执行电脑全面状态检查并生成报告"
+          alt="星期五 Agent 模式：在本机执行系统状态检查并生成报告"
           width="1024"
           height="803"
           loading="eager"
@@ -61,53 +62,82 @@
     </section>
 
     <section class="section overview-section" id="overview">
-      <h2 class="section-title">星期五能做什么</h2>
+      <h2 class="section-title">产品能力概览</h2>
       <p class="section-intro">
-        不是只会聊天的网页窗口。你描述目标，Agent 规划步骤、调用本机工具执行，结果回到对话里。
+        与仅支持文字对话的在线服务不同，星期五可直接访问本机文件与系统信息，并在用户确认后执行实际操作。
       </p>
       <div class="overview-pillars">
         <article class="overview-pillar">
-          <h3>听懂并规划</h3>
-          <p>自然语言描述任务，Agent 拆解步骤、选择工具，复杂流程不用自己写脚本。</p>
+          <h3>自然语言任务</h3>
+          <p>以目标描述代替命令行操作。例如：将桌面安装包归档至指定目录，并先输出待处理文件清单供确认。</p>
         </article>
         <article class="overview-pillar">
-          <h3>本机真正执行</h3>
-          <p>文件整理、系统体检、文档生成、截屏识图等 28+ 工具在 Windows 上运行，不依赖云端代操作。</p>
+          <h3>本机工具执行</h3>
+          <p>支持目录管理、系统体检、Office 文档生成、截图识图、软件下载等 28+ 项工具，任务在本地 Windows 环境完成。</p>
         </article>
         <article class="overview-pillar">
-          <h3>你始终掌控</h3>
-          <p>Ask / Agent / Yolo 多种模式；危险操作需确认；设置与会话保存在本机 <code>%APPDATA%\Friday\</code>。</p>
+          <h3>可控与安全</h3>
+          <p>Ask 模式仅查询不修改；Agent 模式对删改操作进行确认。会话与设置存储于 <code>%APPDATA%\Friday\</code>。</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" id="examples">
+      <h2 class="section-title">典型使用场景</h2>
+      <p class="section-intro">
+        以下为常见任务示例。完成 API 配置后，可在客户端直接发起同类请求。
+      </p>
+      <div class="feature-list">
+        <article class="feature-item">
+          <h3>文件整理</h3>
+          <p>列出下载目录中超过 30 天的安装包，经确认后执行归档或删除。</p>
+        </article>
+        <article class="feature-item">
+          <h3>系统检查</h3>
+          <p>汇总 CPU、内存与各磁盘剩余空间，生成可读的状态说明。</p>
+        </article>
+        <article class="feature-item">
+          <h3>文档生成</h3>
+          <p>依据会议纪要文本生成结构化 Word 文档，并应用指定标题。</p>
+        </article>
+        <article class="feature-item">
+          <h3>截图分析</h3>
+          <p>粘贴系统或应用报错截图，请求原因说明与处理建议（需配置视觉 API）。</p>
         </article>
       </div>
     </section>
 
     <section class="section highlight-section" id="wechat">
       <div class="highlight-card">
-        <h2>核心场景：微信远程部署任务</h2>
+        <h2>微信远程任务下发</h2>
         <p class="highlight-lead">
-          不在家也能用手机微信下发任务：整理、生图、脚本一键部署到家中电脑。执行在本机完成，进度与结果回到聊天；删除或改写前在聊天里审批。
+          配置微信端后，可通过手机向家中 Windows 发送任务指令。执行在目标电脑本地完成，进度与结果同步至微信会话。涉及删除或覆盖等操作时，须在聊天中审批后执行。
         </p>
         <ul class="highlight-points">
-          <li>手机微信下发，电脑自动执行</li>
-          <li>进度与结果回到微信，不在电脑前也能跟进</li>
-          <li>危险操作在聊天里审批后再动手</li>
+          <li>微信下发指令，电脑端自动执行</li>
+          <li>无需远程桌面，状态与日志在会话中查看</li>
+          <li>高风险操作在聊天中审批</li>
         </ul>
       </div>
     </section>
 
     <section class="section" id="features">
-      <h2 class="section-title">扩展能力</h2>
+      <h2 class="section-title">扩展与配置</h2>
       <p class="section-intro section-intro-tight">
-        概览之外，还可以按你的习惯继续配置。
+        核心功能安装后即可使用；以下能力可在设置中按需启用。
       </p>
-      <div class="feature-list">
+      <div class="feature-list feature-list--three">
         <article class="feature-item">
-          <h3>多模型可配置</h3>
-          <p>DeepSeek、火山方舟、小米 MiMo 等 API 自选，按场景切换对话与推理模型。</p>
+          <h3>多模型 API</h3>
+          <p>对话、推理、视觉与生图可分别配置 Key（DeepSeek、火山方舟、小米 MiMo 等），连接测试通过后再保存。</p>
         </article>
         <article class="feature-item">
-          <h3>技能与快捷指令</h3>
-          <p>输入 <code>/</code> 选技能，<code>Ctrl+V</code> 粘贴截图；常用任务不用每次重讲一遍。</p>
+          <h3>技能与快捷操作</h3>
+          <p>输入 <code>/</code> 选择技能包；<code>Ctrl+V</code> 粘贴截图进行视觉分析。常用流程可保存为技能以便复用。</p>
+        </article>
+        <article class="feature-item">
+          <h3>生图与插件</h3>
+          <p>可在设置中接入生图 API；GitHub 技能与规则扩展在「设置 → 扩展」中管理。</p>
         </article>
       </div>
     </section>
@@ -118,40 +148,40 @@
         <p class="download-version">
           当前版本 <strong id="downloadVersion">…</strong>
         </p>
-        <p class="download-note muted">ZIP 压缩包 · Windows 10 / 11（64 位）· 需要 WebView2 运行时</p>
-        <a class="primary-btn js-download-btn" href="#">下载压缩包</a>
+        <p class="download-note muted">安装包 ZIP · Windows 10 / 11（64 位）· 需 WebView2 运行时</p>
+        <a class="primary-btn js-download-btn" href="#">下载安装包</a>
         <p class="download-hint muted">
-          解压后双击 <code>Friday-Setup-版本号.exe</code>，按向导安装。由 Gitee Release 分发 ·
+          解压后运行其中的安装程序，按向导完成即可。由 Gitee Release 分发 ·
           <a id="allReleasesLink" href="#" target="_blank" rel="noopener noreferrer">查看全部版本</a>
         </p>
       </div>
     </section>
 
     <section class="section" id="changelog">
-      <h2 class="section-title">最新更新</h2>
+      <h2 class="section-title">更新日志</h2>
       <div class="changelog" id="changelogRoot">
         <p class="muted">加载中…</p>
       </div>
     </section>
 
     <section class="section" id="requirements">
-      <h2 class="section-title">运行要求</h2>
+      <h2 class="section-title">系统要求</h2>
       <ul class="requirements-list">
         <li>Windows 10 或 Windows 11（64 位）</li>
         <li>
           <a href="https://developer.microsoft.com/microsoft-edge/webview2/" target="_blank" rel="noopener noreferrer">
             Microsoft WebView2 运行时
           </a>
-          （Win11 通常已内置）
+          （Windows 11 通常已预装）
         </li>
-        <li>可联网配置 AI 服务 API Key</li>
-        <li>Agent Python 脚本功能需系统 Python 3.11+（可选）</li>
+        <li>联网并配置至少一个对话 API Key（如 DeepSeek）</li>
+        <li>Agent 运行 Python 数据分析脚本时需本机 Python 3.11+（可选）</li>
       </ul>
     </section>
   </main>
 
   <footer class="site-footer">
-    <a class="primary-btn footer-download js-download-btn" href="#">下载压缩包</a>
+    <a class="primary-btn footer-download js-download-btn" href="#">下载安装包</a>
     <p>© <span id="year"></span> 星期五</p>
     <p class="footer-version">当前版本 <span id="footerVersion">…</span></p>
     <p class="footer-links">

@@ -43,8 +43,14 @@ def main() -> int:
         print("Unexpected API response", file=sys.stderr)
         return 1
 
+    def _sort_key(rel: dict) -> str:
+        return str(rel.get("created_at") or rel.get("published_at") or "")
+
+    releases = sorted(releases, key=_sort_key, reverse=True)
     keep = max(1, args.keep)
     to_delete = releases[keep:]
+    kept = releases[:keep]
+    print("Keeping:", [r.get("tag_name") for r in kept])
     print(f"Total releases: {len(releases)}; keep {keep}; delete {len(to_delete)}")
     for rel in to_delete:
         tag = rel.get("tag_name", "")

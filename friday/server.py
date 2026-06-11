@@ -300,10 +300,10 @@ def _drop_session_lock(session_id: str) -> None:
 
 
 @app.get("/api/health")
-async def health() -> dict[str, str]:
-    if not _backend_ready:
-        return {"status": "starting"}
-    return {"status": "ok"}
+async def health() -> dict[str, object]:
+    from friday.health_check import build_health_payload
+
+    return await asyncio.to_thread(build_health_payload, backend_ready=_backend_ready)
 
 
 @app.get("/api/auth/token")
@@ -334,6 +334,26 @@ async def diagnostics_appdata() -> dict[str, str]:
     return {"path": str(get_appdata_dir())}
 
 
+@app.post("/api/diagnostics/export")
+async def diagnostics_export() -> FileResponse:
+    import tempfile
+    from datetime import datetime, timezone
+
+    from friday.diagnostics_bundle import export_diagnostic_bundle
+    from friday.edition import display_version
+    from friday.version import __version__
+
+    tmp = Path(tempfile.gettempdir()) / f"friday-diagnostic-{uuid.uuid4().hex}.zip"
+    path, _report = await asyncio.to_thread(export_diagnostic_bundle, tmp)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
+    filename = f"Friday-diagnostic-{display_version(__version__)}-{stamp}.zip"
+    return FileResponse(
+        path,
+        media_type="application/zip",
+        filename=filename,
+    )
+
+
 @app.get("/")
 async def index() -> HTMLResponse:
     html_path = WEB_DIR / "index.html"
@@ -344,7 +364,13 @@ async def index() -> HTMLResponse:
         html = html.replace("</head>", f"{inject}\n</head>", 1)
     else:
         html = inject + html
-    return HTMLResponse(html)
+    return HTMLResponse(
+        html,
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+            "Pragma": "no-cache",
+        },
+    )
 
 
 @app.get("/favicon.ico")
@@ -827,12 +853,13 @@ def _to_response(cfg: UserSettings) -> SettingsResponse:
     )
     from friday.category_profiles import category_profiles_summary
     from friday.llm_profiles import active_provider_id, llm_config_hint, profiles_summary
+    from friday.custom_endpoints import active_provider_id as category_active_provider
     from friday.model_providers import infer_llm_provider, infer_vision_provider
     from friday.portability import pop_startup_notices
     from friday.vision import masked_vision_key, vision_config_hint, vision_ready
 
     llm_provider = active_provider_id(cfg)
-    vision_provider = infer_vision_provider(cfg)
+    vision_provider = category_active_provider(cfg, "vision") or infer_vision_provider(cfg)
 
     notices = pop_startup_notices()
     autostart = {}
@@ -1715,6 +1742,7 @@ async def api_check_updates() -> UpdateCheckResponse:
         latest=info.latest,
         update_available=info.update_available,
         download_url=info.download_url,
+        download_sha256=info.download_sha256,
         release_notes=info.release_notes,
         checked=info.checked,
         source_repo=info.source_repo,
@@ -1733,6 +1761,7 @@ async def api_apply_update(payload: UpdateApplyPayload) -> UpdateApplyResponse:
         start_apply_update,
         download_url=payload.download_url,
         version=payload.version,
+        expected_sha256=payload.expected_sha256,
     )
     return UpdateApplyResponse(
         started=bool(result.get("started")),

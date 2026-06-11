@@ -1,6 +1,35 @@
 {
   "entries": [
     {
+      "version": "1.3.2",
+      "date": "2026-06-11",
+      "title": "可靠性、设置体验与无障碍；测试版可并行",
+      "sections": [
+        {
+          "label": "新功能",
+          "items": [
+            "崩溃本地记录（crashes/ 目录，保留最近 30 份）",
+            "设置页导出诊断包（脱敏 ZIP）",
+            "健康检查扩展：WebView / Gateway / Python 环境",
+            "日志轮转与过期清理",
+            "连续启动崩溃自动回滚 Friday.bak",
+            "Release SHA256 清单与应用内更新校验",
+            "设置侧栏 7 组导航重组",
+            "测试版 --dev 与正式版可同时运行"
+          ]
+        },
+        {
+          "label": "改进",
+          "items": [
+            "对话/微信/生成物空状态与 loading、error 反馈",
+            "状态栏 Gateway 指示",
+            "DESIGN token 审计与无障碍基线（键盘、焦点环、44px）",
+            "Gitee/GitHub 发布与配额清理优化"
+          ]
+        }
+      ]
+    },
+    {
       "version": "1.3.1",
       "date": "2026-06-11",
       "title": "修复发布包与一键更新",

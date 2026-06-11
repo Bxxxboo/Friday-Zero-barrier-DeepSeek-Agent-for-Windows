@@ -19,14 +19,36 @@ alwaysApply: true
 | **minor** | 新功能、较大 UI 重构（兼容） |
 | **major** | 破坏性变更 |
 
+## 发版顺序（强制）
+
+版本号与 changelog 已在工作区改好后：
+
+1. **先 commit + 双端 push**（`sync-remotes.ps1` 或 `publish-full-release` 第 3 步会自动 `git add -A` + commit）
+2. **再打包发布**（`make-release` → Gitee Release → GitHub Release）
+3. **最后部署官网**（Vercel，`publish-full-release` 内置）
+
+`GITEE_TOKEN` 已在 Windows **用户**环境变量定义时，**不必**在命令里再写 `$env:GITEE_TOKEN='...'`；脚本从 User/Machine 读取（见 `publish-release.mdc`）。
+
 ## 一键发布（推荐）
 
+用户**明确说发版并给出版本号**时，走完整流水线（含 commit、双端 push、Release、官网 Vercel）→ 见 **`publish-release.mdc`**。
+
 ```powershell
-$env:GITEE_TOKEN='令牌'
-scripts\publish-release.cmd -Bump patch -GitHubRepoName Friday-WeChat-Windows-AI-Butler
+# 目标版本已写入 friday/version.py 时：
+scripts\publish-full-release.cmd -Version 1.3.2
+
+# 或从当前版本递增 patch：
+scripts\publish-full-release.cmd -Bump patch
 ```
 
-步骤：sync GitHub+Gitee → Gitee Release → GitHub Release（有 gh 时）
+仅代码 + Release、**不**部署官网：
+
+```powershell
+scripts\publish-release.cmd -GitHubRepoName Friday-WeChat-Windows-AI-Butler
+# 版本已 bump 过时不要传 -Bump，避免重复递增
+```
+
+步骤：bump（可选）→ 官网 download.json → **commit + push 双端** → Gitee Release → GitHub Release
 
 ## 仅同步代码（不发安装包）
 

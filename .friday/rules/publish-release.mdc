@@ -1,0 +1,132 @@
+---
+description: 用户明确说「发布/更新版本」并给出版本号时，按此流程 bump、打 Release、推 Gitee+GitHub、部署官网
+alwaysApply: false
+---
+
+# 发版全流程（Gitee + GitHub + 官网）
+
+## 何时执行
+
+**仅当**用户在同一句或相邻指令中**同时**满足：
+
+1. 明确要**发布 / 更新版本 / 发 Release / 上线官网**
+2. 给出目标版本号（如 `1.3.2`）或 semver 增量（`patch` / `minor` / `major`）
+
+否则**不要** bump、不要 push、不要发 Release、不要部署 Vercel。
+
+用户只说「改个 bug」、未提发版 → 不动版本与远端。
+
+## 发版顺序（强制）
+
+1. **版本与 changelog** — `friday/version.py`、`scripts/version_info.py`、`CHANGELOG.md`、`assets/changelog.json` 已为目标版本  
+2. **先 commit + 双端 push** — `publish-full-release.ps1` 第 3 步调用 `sync-remotes.ps1`（`git add -A` → commit → `origin` + `gitee`）  
+3. **再打包发布** — `make-release` → Gitee Release（必做）→ GitHub Release  
+4. **部署官网** — Vercel production + alias `fridayaiagent.vercel.app`
+
+Agent 在用户授权发版时：**先确认工作区已含版本/changelog 改动，再执行一键脚本**；不要跳过 commit 直接打 Release。
+
+## 发版前检查（写在回复里再执行）
+
+| 项 | 要求 |
+|----|------|
+| `assets/changelog.json` | 顶层 `entries[0].version` 须为目标版本；无则先补条目再发 |
+| `GITEE_TOKEN` | **用户已在系统环境变量定义时无需再设**；脚本从 User/Machine 读取（会话 `$env:` 可能为空） |
+| `GITHUB_TOKEN` | 同上；或本机已登录 `gh` |
+| Inno Setup 6 | 否则 `Friday-Setup-*.exe` 打不出来 |
+| 临时目录 | 勿提交 `_qa_tmp_appdata/` 等（应在 `.gitignore`） |
+
+## 一键命令（推荐）
+
+目标版本为**显式 semver**（如 `1.3.2`）：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\publish-full-release.ps1 -Version 1.3.2
+```
+
+仅递增 patch/minor/major（不手写版本号）：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\publish-full-release.ps1 -Bump patch
+```
+
+## 脚本内步骤顺序（Agent 须跑通并汇报）
+
+1. **Bump** — `scripts\bump-version.ps1 -Set {版本}` 或 `-Part patch|minor|major`  
+   同步 `friday/version.py` + `scripts/version_info.py`
+2. **官网元数据** — `scripts\sync-website-download.ps1`  
+   生成 `website/download.json`、`website/changelog.json`
+3. **Git 双端** — `scripts\sync-remotes.ps1`（**不传** `-Bump`）  
+   commit + `git push origin main` + `git push gitee main`
+4. **Gitee Release**（国内更新源，必做）— `scripts\publish-gitee-release.ps1`  
+   构建并上传三附件：
+   - `Friday-Windows-{v}.zip` — **仅** `Friday-Setup-{v}.exe` + `VERSION.txt`（安装包 ZIP，无教程/脚本）
+   - `Friday-Update-{v}.zip` — 便携 `Friday/`（应用内更新）
+   - `Friday-Setup-{v}.exe`
+5. **GitHub Release**（必做）— `scripts\publish-github-release.ps1` 或 `publish-release.ps1` 第 3 步  
+   仓库名：`Friday-WeChat-Windows-AI-Butler`
+6. **官网部署** — `Set-Location website; npx vercel deploy --prod --yes`  
+   生产域名：`https://fridayaiagent.vercel.app`（`friday/version.py` → `WEBSITE_HOME`）  
+   **部署后必须绑定别名**（否则 `fridayaiagent.vercel.app` 可能仍指向旧 deployment）：
+   ```powershell
+   $dep = (npx vercel ls website --prod 2>&1 | Select-String 'https://website-\S+\.vercel\.app' | Select-Object -First 1).Matches[0].Value
+   npx vercel alias set $dep fridayaiagent.vercel.app
+   ```
+
+## Token 读取（Cursor 会话常丢失环境变量）
+
+```powershell
+if (-not $env:GITEE_TOKEN) {
+  $env:GITEE_TOKEN = [Environment]::GetEnvironmentVariable('GITEE_TOKEN', 'User')
+}
+if (-not $env:GITHUB_TOKEN) {
+  $env:GITHUB_TOKEN = [Environment]::GetEnvironmentVariable('GITHUB_TOKEN', 'User')
+}
+```
+
+## 发版后验证（必须执行并贴结果）
+
+```powershell
+# 官网版本
+Invoke-WebRequest -Uri "https://fridayaiagent.vercel.app/download.json" -UseBasicParsing | Select-Object -Expand Content
+
+# 本地版本与产物
+Select-String -Path friday\version.py -Pattern '__version__'
+Get-ChildItem release\Friday-*-$((Select-String friday\version.py -Pattern '__version__ = "(.+)"').Matches[0].Groups[1].Value).*
+```
+
+预期：官网 `version` 与 `friday/version.py` 一致；Gitee/GitHub Release 含上述三附件。
+
+## Gitee 附件配额
+
+上传失败且提示配额满 → 先 dry-run 再 prune：
+
+```powershell
+python scripts/prune_gitee_releases.py --keep 3 --dry-run
+python scripts/prune_gitee_releases.py --keep 3
+```
+
+## 官网下载区文案约定
+
+- 按钮：**下载安装包**（不是「下载压缩包」）
+- 说明：**安装包 ZIP** · 解压后运行其中的**安装程序**，按向导完成即可
+- **禁止**写「进 Friday 文件夹运行 Friday.exe」等便携版教程
+
+## 与 `version-and-github.mdc` 的关系
+
+- 本规则 = **用户主动发版**时的完整 SOP（含官网 Vercel）
+- `version-and-github.mdc` = 双远端与 semver 铁律；发版时两者同时遵守
+
+## 禁止
+
+- 用户未明确发版时 bump / push / Release / Vercel
+- 只推 GitHub 不推 Gitee
+- 只改 `download.json` 不部署 Vercel（线上会仍显示旧版本）
+- Windows ZIP 里塞 `安装教程.txt`、`解除锁定.ps1` 等冗长文件
+- 擅自 `git commit`（**本规则触发的发版除外**——用户已明确授权整条流水线）
+
+## 完成回复模板
+
+- 目标版本 / 上一版本
+- 已上传附件列表（Gitee + GitHub URL）
+- 官网 `download.json` 验证结果
+- 未改动范围 / 若某步跳过须说明原因

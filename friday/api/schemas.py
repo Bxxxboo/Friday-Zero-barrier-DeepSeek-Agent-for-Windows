@@ -414,6 +414,7 @@ class PluginResponse(BaseModel):
 class UpdateApplyPayload(BaseModel):
     download_url: str = ""
     version: str = ""
+    expected_sha256: str = ""
 
 
 class UpdateCheckResponse(BaseModel):
@@ -421,6 +422,7 @@ class UpdateCheckResponse(BaseModel):
     latest: str
     update_available: bool
     download_url: str
+    download_sha256: str = ""
     release_notes: str
     checked: bool
     source_repo: str = ""

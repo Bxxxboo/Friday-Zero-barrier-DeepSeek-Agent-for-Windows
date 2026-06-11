@@ -1,7 +1,7 @@
 param(
     [string]$RepoOwner = "Bxxxboo",
     [string]$RepoName = "Friday-WeChat-Windows-AI-Butler",
-    [string]$GitHubToken = $env:GITHUB_TOKEN,
+    [string]$GitHubToken = "",
     [switch]$SkipBuild,
     [switch]$SkipUpload
 )
@@ -10,8 +10,21 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 
+function Resolve-GitHubToken {
+    param([string]$Explicit)
+    if ($Explicit) { return $Explicit.Trim() }
+    $fromSession = ($env:GITHUB_TOKEN | ForEach-Object { "$_".Trim() })
+    if ($fromSession) { return $fromSession }
+    foreach ($scope in @("User", "Machine")) {
+        $fromProfile = ([Environment]::GetEnvironmentVariable("GITHUB_TOKEN", $scope) | ForEach-Object { "$_".Trim() })
+        if ($fromProfile) { return $fromProfile }
+    }
+    return ""
+}
+
+$GitHubToken = Resolve-GitHubToken -Explicit $GitHubToken
 if (-not $GitHubToken) {
-    throw "Set GITHUB_TOKEN first. Create at https://github.com/settings/tokens (scope: repo)"
+    throw "GITHUB_TOKEN not found. Set User env var or run: `$env:GITHUB_TOKEN='ghp_...' ; scripts\publish-github-release.cmd"
 }
 
 $env:GITHUB_TOKEN = $GitHubToken

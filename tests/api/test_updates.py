@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from friday.updates import _pick_download_url, check_for_updates, gitee_repo, github_repo
+from friday.updates import _pick_download_sha256, _pick_download_url, check_for_updates, gitee_repo, github_repo
 from friday.version import GITEE_REPO, GITHUB_REPO, __version__, release_update_zip_name, release_zip_name
 
 
@@ -30,11 +30,38 @@ def test_pick_download_prefers_update_zip_over_windows_zip():
             "html_url": "https://gitee.com/o/r/releases/tag/v1",
             "assets": [
                 {"name": "Friday-Windows-1.2.4.zip", "browser_download_url": "https://x/win.zip"},
-                {"name": "Friday-Update-1.2.4.zip", "browser_download_url": "https://x/update.zip"},
+                {"name": "Friday-Update-1.2.4.zip", "browser_download_url": "https://x/Friday-Update-1.2.4.zip"},
             ],
         }
     )
-    assert url == "https://x/update.zip"
+    assert url == "https://x/Friday-Update-1.2.4.zip"
+
+
+def test_pick_download_sha256_from_sums_asset():
+    digest = "c" * 64
+    url = _pick_download_url(
+        {
+            "assets": [
+                {"name": "Friday-Update-1.2.4.zip", "browser_download_url": "https://x/Friday-Update-1.2.4.zip"},
+                {
+                    "name": "SHA256SUMS.txt",
+                    "body": f"{digest}  Friday-Update-1.2.4.zip\n",
+                },
+            ],
+        }
+    )
+    assert _pick_download_sha256(
+        {
+            "assets": [
+                {"name": "Friday-Update-1.2.4.zip", "browser_download_url": "https://x/Friday-Update-1.2.4.zip"},
+                {
+                    "name": "SHA256SUMS.txt",
+                    "body": f"{digest}  Friday-Update-1.2.4.zip\n",
+                },
+            ],
+        },
+        url,
+    ) == digest
 
 
 def test_pick_download_prefers_windows_zip():

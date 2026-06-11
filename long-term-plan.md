@@ -1,6 +1,6 @@
 # 星期五 (Friday) 商业级成熟化 — 长期计划
 
-> 版本基准：v1.3.0（M1+M2 已发版）；M2.9 官网代码已就绪，待 Vercel 部署  
+> 版本基准：v1.3.2（M1～M2 已发版；M4/M5 代码合入本版）；M2 人工验收已完成（2026-06-11）  
 > 更新日期：2026-06-11  
 > 目标：从「功能稳定的 Python 工具」升级为「用户感知的成熟商业桌面应用」
 
@@ -27,10 +27,10 @@
 | 大任务 | 版本 | 进度 | 下一步 |
 |--------|------|------|--------|
 | **M1** 桌面进程身份 | v1.3.0 | ✅ 已随 v1.3.0 发版 | — |
-| **M2** 分发与安装 | v1.3.0 | ✅ 9/9 | 部署 Vercel（见 `docs/WEBSITE.md`） |
-| M3 信任与安全 | v1.4.x | 未开始 | 依赖 M2；**个人开发者采购 IV 证书**（见 M3.1） |
-| M4 可靠性与可观测 | v1.5.0 | 未开始 | 依赖 M2 备份/回滚基础 |
-| M5 产品体验抛光 | v1.6.0 | 未开始 | 可与 M4 后期并行 |
+| **M2** 分发与安装 | v1.3.0 | ✅ 已完成（含人工验收） | — |
+| M3 信任与安全 | v1.4.x | 2/5 进行中 | **M3.1 采购 IV 证书**（阻塞签名）；M3.3/M3.4 代码已就绪 |
+| M4 可靠性与可观测 | v1.5.0 | ✅ 已完成 | — |
+| M5 产品体验抛光 | v1.6.0 | ✅ 已完成 | — |
 | M6 架构调研 | v2.0 | 未开始 | 不阻塞 M1～M5 |
 
 ---
@@ -40,7 +40,7 @@
 | 大任务 | 版本 | 主题 | 子任务数 | 周期（估） |
 |--------|------|------|----------|-----------|
 | **M1** | v1.3.0 | 桌面进程身份 | 5 | ✅ 基本完成 |
-| **M2** | v1.3.0 | 分发与安装体验 | 9 | ✅ 已发（含 Setup） |
+| **M2** | v1.3.0 | 分发与安装体验 | 9 | ✅ 已发 + 人工验收通过 |
 | **M3** | v1.3.x | 信任与安全（签名） | 5 | 4～6 周 |
 | **M4** | v1.5.0 | 可靠性与可观测 | 5 | 3～4 周 |
 | **M5** | v1.6.0 | 产品体验抛光 | 6 | 4～6 周 |
@@ -256,23 +256,17 @@ https://gitee.com/Bxxxboo/friday/releases/download/v{version}/Friday-Setup-{vers
 
 **M2 整体验收：** 新用户从**官网或安装包**完成安装，全程不碰 ZIP、不跑 PowerShell 解除锁定；老用户仍可用 ZIP。
 
-**M2 人工验收清单（2026-06-11，安装包已就绪）：**
+**M2 人工验收清单（2026-06-11，用户确认通过）：**
 
-产物：`release/Friday-Setup-1.2.5.exe`（含安装后 `--install-launch` 置顶修复 + `Friday.exe`）
+验收包：`Friday-Setup-1.3.x`（含安装后 `--install-launch` 置顶 + `Friday.exe` + 内嵌 Unblock）
 
-```powershell
-# 重新打包含最新 dist（已执行过一次，需要时再跑）
-powershell -ExecutionPolicy Bypass -File scripts/build.ps1
-powershell -ExecutionPolicy Bypass -File scripts/build-installer.ps1
-```
+- [x] 干净目录安装（默认 `%LOCALAPPDATA%\Programs\Friday\`），安装结束勾选「启动星期五」→ 窗口自动置顶到前台
+- [x] 双击 `Friday.exe` 无 SmartScreen「已阻止」类提示（Unblock 已内嵌）
+- [x] 开始菜单 / 可选桌面快捷方式可启动
+- [x] 卸载后程序目录消失，`%APPDATA%\Friday\` 用户数据仍在
+- [x] 安装向导为简体中文（覆盖安装后生效）
 
-- [ ] 干净目录安装（默认 `%LOCALAPPDATA%\Programs\Friday\`），安装结束勾选「启动星期五」→ 窗口自动置顶到前台
-- [ ] 双击 `Friday.exe` 无 SmartScreen「已阻止」类提示（Unblock 已内嵌）
-- [ ] 开始菜单 / 可选桌面快捷方式可启动
-- [ ] 卸载后程序目录消失，`%APPDATA%\Friday\` 用户数据仍在
-- [ ] 安装向导为简体中文（覆盖安装后生效）
-
-v1.3.0 Release 已含 ZIP + Setup；人工验收项可继续补测。
+**M2 里程碑关闭。** 下一主线：**M3.1 采购 IV 代码签名证书**（或先发 v1.3.2 含 SHA256/设置修复，签名待 M3.2）。
 
 ---
 
@@ -299,17 +293,19 @@ v1.3.0 Release 已含 ZIP + Setup；人工验收项可继续补测。
 
 ### M3.3 Release SHA256 清单
 
-- [ ] **工作量：** 0.5 天  
+- [x] **工作量：** 0.5 天  
 - **内容：** 每个 Release 附 `SHA256SUMS.txt` 或 Gitee Release 说明内嵌哈希  
-- **涉及文件：** `scripts/make-release.ps1`, `scripts/publish_gitee_release.py`  
+- **涉及文件：** `scripts/make-release.ps1`, `scripts/publish_gitee_release.py`, `scripts/publish_github_release.py`, `friday/release_hashes.py`  
 - **验证：** Release 页可核对 ZIP/Setup 哈希
+- **2026-06-11：** `make-release.ps1` 生成 `release/SHA256SUMS.txt`；Gitee/GitHub 发布脚本上传该文件
 
 ### M3.4 更新下载校验
 
-- [ ] **工作量：** 1 天  
+- [x] **工作量：** 1 天  
 - **内容：** `update_installer.py` 下载后校验 SHA256，不匹配则拒绝安装  
-- **涉及文件：** `friday/update_installer.py`, `tests/api/test_update_installer.py`  
+- **涉及文件：** `friday/update_installer.py`, `friday/updates.py`, `tests/api/test_release_hashes.py`  
 - **验证：** pytest + 故意篡改包应失败并提示
+- **2026-06-11：** 检查更新返回 `download_sha256`；一键更新下载后校验；旧 Release 无清单时跳过校验（兼容）
 
 ### M3.5 崩溃/遥测 opt-in
 
@@ -328,42 +324,47 @@ v1.3.0 Release 已含 ZIP + Setup；人工验收项可继续补测。
 
 ### M4.1 崩溃捕获与本地落盘
 
-- [ ] **工作量：** 1～2 天  
+- [x] **工作量：** 1～2 天  
 - **内容：** 未处理异常 → `%APPDATA%/Friday/crashes/`；含时间、版本、堆栈  
-- **涉及文件：** 新建 `friday/crash_handler.py`；`run.py` / `desktop.py` 最早注册  
+- **涉及文件：** `friday/crash_handler.py`；`run.py` / `desktop.py` 最早注册  
 - **验证：** 故意 `raise` 一次 → `crashes/` 下有新文件
+- **2026-06-11：** 主线程 `sys.excepthook` + 后台 `threading.excepthook`；保留最近 30 份 `crash-*.log`
 
 ### M4.2 设置页「导出诊断包」
 
-- [ ] **工作量：** 1 天  
+- [x] **工作量：** 1 天  
 - **内容：** ZIP：版本、运行模式、日志尾部、系统信息、Gateway 状态（脱敏）  
-- **涉及文件：** `friday/server.py`, `web/settings.js`, `web/index.html`  
-- **验证：** 点击导出 → 得到可打开的 zip；无 API Key 明文
+- **涉及文件：** `friday/diagnostics_bundle.py`, `friday/server.py`, `web/settings.js`, `web/index.html`  
+- **验证：** 点击导出 → 得到可打开的 zip；无 API Key 明文  
+- **2026-06-11：** `POST /api/diagnostics/export`；设置页「导出诊断包」；`tests/api/test_diagnostics_bundle.py`
 
 ### M4.3 健康检查扩展
 
-- [ ] **工作量：** 0.5～1 天  
+- [x] **工作量：** 0.5～1 天  
 - **内容：** `/api/health` 增加 WebView、Gateway、Python env 子状态  
-- **涉及文件：** `friday/server.py`；相关 status 模块  
+- **涉及文件：** `friday/health_check.py`, `friday/server.py`  
 - **验证：**
   ```powershell
   curl http://127.0.0.1:PORT/api/health
   # JSON 含子服务 ok/degraded 字段
   ```
+- **2026-06-11：** `services.webview|gateway|python_env`；顶层 `status` 仍为 `starting|ok`；`degraded` 标记可选子服务异常
 
 ### M4.4 日志轮转
 
-- [ ] **工作量：** 1 天  
+- [x] **工作量：** 1 天  
 - **内容：** `friday.log` 大小上限 + 保留 N 天；启动时清理过期  
 - **涉及文件：** `friday/logging_config.py`  
-- **验证：** 配置小阈值后跑一段时间 → 出现 `.log.1` 或归档删除
+- **验证：** 配置小阈值后跑一段时间 → 出现 `.log.1` 或归档删除  
+- **2026-06-11：** `RotatingFileHandler`（默认 5MB / 14 份备份）；`purge_expired_logs()` 启动清理（默认 7 天）；`FRIDAY_LOG_MAX_BYTES` / `FRIDAY_LOG_RETAIN_DAYS` 可覆盖
 
 ### M4.5 启动崩溃触发回滚
 
-- [ ] **工作量：** 1 天  
+- [x] **工作量：** 1 天  
 - **内容：** 连续 3 次启动崩溃 → 自动从 `Friday.bak/` 恢复（衔接 M2.8）  
-- **涉及文件：** `friday/update_installer.py`, 启动入口  
-- **验证：** 模拟坏包连续启动 → 自动回滚并提示
+- **涉及文件：** `friday/update_rollback.py`, `friday/crash_handler.py`, `friday/desktop.py`, `run.py`  
+- **验证：** 模拟坏包连续启动 → 自动回滚并提示  
+- **2026-06-11：** `record_startup_crash()` 由崩溃钩子写入；`guard_startup_after_update()` 达 3 次后回滚；主窗口显示 `confirm_startup_success()` 清零
 
 ---
 
@@ -375,7 +376,7 @@ v1.3.0 Release 已含 ZIP + Setup；人工验收项可继续补测。
 
 ### M5.1 设置导航重组（7 组）
 
-- [ ] **工作量：** 2 天  
+- [x] **工作量：** 2 天  
 - **目标结构：**
   ```
   入门（API + 文件夹）
@@ -387,38 +388,44 @@ v1.3.0 Release 已含 ZIP + Setup；人工验收项可继续补测。
   关于（版本 / 诊断 / 更新）
   ```
 - **涉及文件：** `web/index.html`, `web/settings.js`, `web/i18n.js`, `web/styles.css`  
-- **验证：** 现有功能无丢失；E2E 或手工走一遍各面板
+- **验证：** 现有功能无丢失；E2E 或手工走一遍各面板  
+- **2026-06-11：** 7 组侧栏；`panel-app` 拆为 `panel-data` + `panel-about`；自启迁入定时任务；`app`/`logs` 别名兼容
 
 ### M5.2 交互状态：对话列表 empty
 
-- [ ] **工作量：** 0.5 天  
-- **涉及文件：** `web/chat.js`, `web/styles.css`  
-- **验证：** 无会话时显示引导文案 + 主操作（新建对话）
+- [x] **工作量：** 0.5 天  
+- **涉及文件：** `web/sessions.js`, `web/styles.css`, `web/i18n.js`  
+- **验证：** 无会话时显示引导文案 + 主操作（新建对话）  
+- **2026-06-11：** `session-list-empty` 空状态 +「新对话」按钮
 
 ### M5.3 交互状态：Gateway / 微信 loading & error
 
-- [ ] **工作量：** 1 天  
-- **涉及文件：** `web/weixin.js`, `web/statusbar.js`  
+- [x] **工作量：** 1 天  
+- **涉及文件：** `web/weixin.js`, `web/statusbar.js`, `web/index.html`, `web/styles.css`, `web/i18n.js`, `friday/status_bar.py`  
 - **验证：** 断网 / Gateway 未就绪时有明确状态，非空白或裸错误
+- **2026-06-11：** 微信面板 loading/错误空状态 + Gateway 状态条；状态栏新增 Gateway 指示；`/api/status-bar` 返回 gateway_* 字段
 
 ### M5.4 交互状态：生成物 empty
 
-- [ ] **工作量：** 0.5 天  
-- **涉及文件：** 生成物相关 `web/*.js`  
+- [x] **工作量：** 0.5 天  
+- **涉及文件：** `web/index.html`, `web/settings.js`, `web/styles.css`, `web/i18n.js`  
 - **验证：** 无生成物时显示说明与跳转设置
+- **2026-06-11：** `artifactStorageEmpty` 空状态 + 跳转「文件夹」面板；加载/失败文案 i18n
 
 ### M5.5 DESIGN.md token 审计（一轮）
 
-- [ ] **工作量：** 1 天  
+- [x] **工作量：** 1 天  
 - **内容：** 对照 `DESIGN.md` 检查 `web/styles.css` 硬编码色/间距；修明显偏离  
 - **验证：** 审计清单存档；无新增 AI slop 模式（紫渐变、三列图标卡片等）
+- **2026-06-11：** `docs/design-token-audit.md`；补 token（`--text-secondary`、`--surface-2`、`--status-checking`、`--space-*`）；移除 indigo slop 与错误色 fallback
 
 ### M5.6 无障碍基线
 
-- [ ] **工作量：** 1～2 天  
+- [x] **工作量：** 1～2 天  
 - **内容：** 设置页键盘 Tab 顺序；对比度 ≥ 4.5:1；触屏目标 ≥ 44px；`prefers-reduced-motion`  
 - **涉及文件：** `web/styles.css`, 各 panel HTML  
 - **验证：** 键盘可完成保存设置；axe 或手工抽查 3 个主流程
+- **2026-06-11：** `docs/a11y-baseline.md`；`--touch-target`、桌面 `focus-visible` 环；设置 tablist/焦点陷阱/方向键；侧栏对比度与 44px 触屏目标
 
 ---
 
@@ -479,9 +486,8 @@ v1.3.0 Release 已含 ZIP + Setup；人工验收项可继续补测。
 | 版本 | 大任务 | 用户可感知 |
 |------|--------|-----------|
 | **1.3.0** | M1 + M2 | Friday.exe / Setup 安装包 / 更新回滚 |
-| **1.3.x** | M3 | IV 签名、SmartScreen 友好 |
-| **1.5.0** | M4 | 崩溃可查、诊断包、回滚 |
-| **1.6.0** | M5 | 设置清晰、空状态温暖 |
+| **1.3.2** | M3.3/4 + M4 + M5 | SHA256 校验、诊断包、设置重组、无障碍、测试版并行 |
+| **1.3.x** | M3.1/2/5 | IV 签名、遥测 opt-in（待证书/产品决策） |
 | **2.0** | M6 | 视调研决定 |
 
 ## F. 设计评审记分卡

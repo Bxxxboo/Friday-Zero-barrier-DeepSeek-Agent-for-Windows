@@ -290,6 +290,7 @@ def apply_secrets_to_settings_data(
     secrets: dict[str, Any],
     *,
     fill_empty_only: bool = False,
+    profiles_fill_empty_only: bool = False,
 ) -> dict[str, Any]:
     """凭据库中的非空值覆盖 settings 数据；fill_empty_only 时仅回填空字段。"""
     merged = dict(data)
@@ -304,7 +305,7 @@ def apply_secrets_to_settings_data(
         stored = secrets.get(key)
         if not stored:
             continue
-        if fill_empty_only:
+        if fill_empty_only or profiles_fill_empty_only:
             merged[key] = _fill_empty_profile_keys(merged.get(key), stored)
             continue
         merged[key] = stored

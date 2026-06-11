@@ -48,6 +48,14 @@
       checking: () => F.t?.("status.imageGen.checking") || "生图 检测中",
       checkingHint: () => F.t?.("status.imageGen.checkingHint") || "正在检测生图 API…",
     },
+    gateway: {
+      disabled: () => F.t?.("status.gateway.disabled") || "微信 关",
+      unconfigured: () => F.t?.("status.gateway.unconfigured") || "微信 未配置",
+      online: () => F.t?.("status.gateway.on") || "Gateway 在线",
+      offline: () => F.t?.("status.gateway.off") || "Gateway 离线",
+      checking: () => F.t?.("status.gateway.checking") || "Gateway 检测中",
+      checkingHint: () => F.t?.("status.gateway.checkingHint") || "正在检测 OpenClaw Gateway…",
+    },
   };
 
   function resolveLabels(labels) {
@@ -65,6 +73,8 @@
     visionText: document.getElementById("statusVisionText"),
     imageGenDot: document.getElementById("statusImageGenDot"),
     imageGenText: document.getElementById("statusImageGenText"),
+    gatewayDot: document.getElementById("statusGatewayDot"),
+    gatewayText: document.getElementById("statusGatewayText"),
     tokens: document.getElementById("statusTokens"),
     tasks: document.getElementById("statusTasks"),
     workspace: document.getElementById("statusWorkspace"),
@@ -211,6 +221,17 @@
         dotEl: els.imageGenDot,
         textEl: els.imageGenText,
         labels: resolveLabels(SERVICE_LABELS.imageGen),
+      });
+
+      applyServiceState({
+        enabled: Boolean(data.gateway_enabled),
+        configured: Boolean(data.gateway_configured),
+        online: Boolean(data.gateway_online),
+        checking: Boolean(data.gateway_checking),
+        detail: data.gateway_reach_detail || "",
+        dotEl: els.gatewayDot,
+        textEl: els.gatewayText,
+        labels: resolveLabels(SERVICE_LABELS.gateway),
       });
     }
 

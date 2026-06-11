@@ -15,4 +15,4 @@ If Not fso.FileExists(pyw) Then
 End If
 
 sh.CurrentDirectory = root
-sh.Run """" & pyw & """ """ & runpy & """", 0, False
+sh.Run """" & pyw & """ """ & runpy & """ --dev", 0, False

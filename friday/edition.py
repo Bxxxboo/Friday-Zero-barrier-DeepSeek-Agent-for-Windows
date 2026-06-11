@@ -2,20 +2,37 @@
 
 from __future__ import annotations
 
+import os
+
+_DEV_INSTANCE_PORT = 58766
+
+
+def is_dev_edition() -> bool:
+    """源码测试版（快捷方式带 --dev 或 FRIDAY_DEV=1）。"""
+    return os.environ.get("FRIDAY_DEV", "").strip().lower() in {"1", "true", "yes", "on"}
+
 
 def window_title() -> str:
+    if is_dev_edition():
+        return "星期五（测试版）"
     return "星期五"
 
 
 def display_version(version: str) -> str:
+    if is_dev_edition():
+        return f"{version}-dev"
     return version
 
 
 def instance_port() -> int:
+    if is_dev_edition():
+        return _DEV_INSTANCE_PORT
     return 58765
 
 
 def app_user_model_id() -> str:
+    if is_dev_edition():
+        return "Friday.AIDesktop.Dev.2"
     return "Friday.AIDesktop.2"
 
 

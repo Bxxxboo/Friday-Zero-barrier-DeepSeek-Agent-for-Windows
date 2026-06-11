@@ -291,6 +291,7 @@
     }
     const valid = new Set((provider?.models || []).map((m) => m.id));
     if (model && valid.has(model)) return model;
+    if (model) return model;
     const first = provider?.models?.[0]?.id;
     return first || "";
   }
@@ -333,6 +334,7 @@
     if (provider?.models?.length) {
       const valid = new Set(provider.models.map((m) => m.id));
       if (model && valid.has(model)) return model;
+      if (model) return model;
       return provider.models[0]?.id || "";
     }
     if (provider?.id === "ark") {
