@@ -3,11 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>星期五 - 微信能遥控的 Windows AI 电脑管家</title>
-  <meta name="description" content="星期五：手机微信远程部署任务，指挥家中 Windows 电脑整理文件、生成文档、系统体检。大模型听懂人话，本地工具真正动手。" />
+  <title>星期五 - Windows AI 电脑管家</title>
+  <meta name="description" content="星期五：Windows 桌面 AI 管家。自然语言说需求，本机 Agent 规划并执行。支持微信远程下发任务，数据留在本机。" />
   <meta property="og:title" content="星期五 - Windows AI 电脑管家" />
-  <meta property="og:description" content="微信能遥控的 Windows AI 电脑管家。安装包下载，无需碰 ZIP。" />
+  <meta property="og:description" content="听懂人话、本机动手、微信可遥控的 Windows AI 电脑管家。" />
   <meta property="og:type" content="website" />
+  <meta property="og:image" content="assets/hero-app.png" />
   <link rel="icon" href="favicon.ico" type="image/x-icon" />
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -21,8 +22,9 @@
       </span>
     </a>
     <nav class="site-nav" aria-label="主导航">
+      <a href="#overview">概览</a>
       <a href="#wechat">微信部署</a>
-      <a href="#features">功能</a>
+      <a href="#features">扩展</a>
       <a href="#download">下载</a>
       <a href="#changelog">更新</a>
       <a href="#requirements">要求</a>
@@ -32,67 +34,96 @@
   <main id="top">
     <section class="hero">
       <div class="hero-inner">
-        <h1>手机微信发指令，<br />电脑上的任务立刻执行</h1>
+        <h1>
+          <span class="hero-line-brand">星期五</span>
+          <span class="hero-line-sub">你的 Windows AI 电脑管家</span>
+        </h1>
         <p class="lead">
-          出门在外用微信部署整理、文档、体检等任务。本机执行，结果回传聊天。
+          用自然语言交代任务，星期五会在本机规划步骤、调用工具完成。对话、设置、电脑体检，都在你的 Windows 上。
         </p>
-        <div class="hero-actions" id="download">
-          <a class="primary-btn" id="setupDownloadBtn" href="#">下载 Windows 版</a>
+        <div class="hero-actions">
+          <a class="primary-btn js-download-btn" href="#">下载压缩包</a>
+          <a class="ghost-btn" href="#overview">了解能力</a>
         </div>
       </div>
 
-      <div class="hero-visual" aria-hidden="true">
-        <div class="preview-card">
-          <div class="preview-bar">
-            <span class="preview-dot"></span>
-            <span class="preview-dot"></span>
-            <span class="preview-dot"></span>
-          </div>
-          <div class="preview-content">
-            <p class="preview-channel">微信远程任务</p>
-            <div class="preview-line preview-line-user">帮我把下载文件夹里上周的截图归档</div>
-            <div class="preview-line preview-line-bot">任务已部署：正在扫描下载文件夹，完成后把结果发回微信</div>
-            <div class="preview-tags">
-              <span>微信部署</span><span>文件</span><span>待确认</span>
-            </div>
-          </div>
-        </div>
+      <figure class="hero-visual">
+        <img
+          class="hero-screenshot"
+          src="assets/hero-app.png"
+          alt="星期五 Agent 模式：在本机执行电脑全面状态检查并生成报告"
+          width="1024"
+          height="803"
+          loading="eager"
+          decoding="async"
+        />
+      </figure>
+    </section>
+
+    <section class="section overview-section" id="overview">
+      <h2 class="section-title">星期五能做什么</h2>
+      <p class="section-intro">
+        不是只会聊天的网页窗口。你描述目标，Agent 规划步骤、调用本机工具执行，结果回到对话里。
+      </p>
+      <div class="overview-pillars">
+        <article class="overview-pillar">
+          <h3>听懂并规划</h3>
+          <p>自然语言描述任务，Agent 拆解步骤、选择工具，复杂流程不用自己写脚本。</p>
+        </article>
+        <article class="overview-pillar">
+          <h3>本机真正执行</h3>
+          <p>文件整理、系统体检、文档生成、截屏识图等 28+ 工具在 Windows 上运行，不依赖云端代操作。</p>
+        </article>
+        <article class="overview-pillar">
+          <h3>你始终掌控</h3>
+          <p>Ask / Agent / Yolo 多种模式；危险操作需确认；设置与会话保存在本机 <code>%APPDATA%\Friday\</code>。</p>
+        </article>
       </div>
     </section>
 
     <section class="section highlight-section" id="wechat">
       <div class="highlight-card">
-        <h2>微信远程部署任务</h2>
+        <h2>核心场景：微信远程部署任务</h2>
         <p class="highlight-lead">
-          手机微信就是 Windows 遥控器：发消息即可部署整理、生图、脚本；本机执行，进度与结果回到聊天；删除或改写前在聊天里审批。
+          不在家也能用手机微信下发任务：整理、生图、脚本一键部署到家中电脑。执行在本机完成，进度与结果回到聊天；删除或改写前在聊天里审批。
         </p>
         <ul class="highlight-points">
-          <li>不在电脑前也能下发任务</li>
-          <li>执行在本机完成，数据不上传云端</li>
-          <li>危险操作微信内审批，安全可控</li>
+          <li>手机微信下发，电脑自动执行</li>
+          <li>进度与结果回到微信，不在电脑前也能跟进</li>
+          <li>危险操作在聊天里审批后再动手</li>
         </ul>
       </div>
     </section>
 
     <section class="section" id="features">
-      <h2 class="section-title">更多能力</h2>
+      <h2 class="section-title">扩展能力</h2>
+      <p class="section-intro section-intro-tight">
+        概览之外，还可以按你的习惯继续配置。
+      </p>
       <div class="feature-list">
         <article class="feature-item">
-          <h3>Agent 智能执行</h3>
-          <p>Ask / Agent / Yolo 多种模式，复杂任务自动拆解，在本机逐步执行并反馈结果。</p>
-        </article>
-        <article class="feature-item">
-          <h3>28+ 本地工具</h3>
-          <p>文件整理、系统体检、文档生成、截屏识图、剪贴板与定时任务。</p>
-        </article>
-        <article class="feature-item">
           <h3>多模型可配置</h3>
-          <p>DeepSeek、火山方舟等 API 自选，按场景切换对话与推理模型。</p>
+          <p>DeepSeek、火山方舟、小米 MiMo 等 API 自选，按场景切换对话与推理模型。</p>
         </article>
         <article class="feature-item">
-          <h3>数据留在本机</h3>
-          <p>设置与会话保存在 <code>%APPDATA%\Friday\</code>，无需上传云端处理。</p>
+          <h3>技能与快捷指令</h3>
+          <p>输入 <code>/</code> 选技能，<code>Ctrl+V</code> 粘贴截图；常用任务不用每次重讲一遍。</p>
         </article>
+      </div>
+    </section>
+
+    <section class="section download-section" id="download">
+      <h2 class="section-title">下载安装</h2>
+      <div class="download-panel">
+        <p class="download-version">
+          当前版本 <strong id="downloadVersion">…</strong>
+        </p>
+        <p class="download-note muted">ZIP 压缩包 · Windows 10 / 11（64 位）· 需要 WebView2 运行时</p>
+        <a class="primary-btn js-download-btn" href="#">下载压缩包</a>
+        <p class="download-hint muted">
+          解压后双击 <code>Friday-Setup-版本号.exe</code>，按向导安装。由 Gitee Release 分发 ·
+          <a id="allReleasesLink" href="#" target="_blank" rel="noopener noreferrer">查看全部版本</a>
+        </p>
       </div>
     </section>
 
@@ -101,9 +132,6 @@
       <div class="changelog" id="changelogRoot">
         <p class="muted">加载中…</p>
       </div>
-      <p class="changelog-more muted">
-        <a id="allReleasesLink" href="#" target="_blank" rel="noopener noreferrer">查看全部版本</a>
-      </p>
     </section>
 
     <section class="section" id="requirements">
@@ -123,6 +151,7 @@
   </main>
 
   <footer class="site-footer">
+    <a class="primary-btn footer-download js-download-btn" href="#">下载压缩包</a>
     <p>© <span id="year"></span> 星期五</p>
     <p class="footer-version">当前版本 <span id="footerVersion">…</span></p>
     <p class="footer-links">

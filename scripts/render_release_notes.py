@@ -11,7 +11,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from friday.changelog import clear_cache, load_entries
-from friday.version import __version__, release_zip_name
+from friday.version import __version__, release_setup_name, release_zip_name
 
 
 def format_entry(entry: dict) -> str:
@@ -38,11 +38,12 @@ def render(version: str | None = None) -> str:
         return f"## 星期五 v{version}\n\nWindows AI 电脑管家。"
     body = format_entry(match)
     zip_name = release_zip_name(version)
+    setup_name = release_setup_name(version)
     body += f"""
 
 ### 安装
 1. 下载 `{zip_name}`
-2. 解压后运行 `星期五.exe`
+2. 解压后双击 `{setup_name}`，按向导完成安装
 3. 详见压缩包内 `安装教程.txt`
 
 ---

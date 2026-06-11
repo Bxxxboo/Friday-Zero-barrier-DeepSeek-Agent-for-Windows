@@ -53,6 +53,7 @@ if ($All) {
 
 $match = $entries | Where-Object { $_.version -eq $Version } | Select-Object -First 1
 $zipName = "Friday-Windows-$Version.zip"
+$setupName = "Friday-Setup-$Version.exe"
 if (-not $match) {
     Write-Output @"
 ## 星期五 v$Version
@@ -61,7 +62,7 @@ Windows AI 电脑管家。
 
 ### 安装
 1. 下载 ``$zipName``
-2. 解压后运行 ``星期五.exe``
+2. 解压后双击 ``$setupName``，按向导完成安装
 3. 详见压缩包内 ``安装教程.txt``
 "@
     exit 0
@@ -72,7 +73,7 @@ $body += @"
 
 ### 安装
 1. 下载 ``$zipName``
-2. 解压后运行 ``星期五.exe``
+2. 解压后双击 ``$setupName``，按向导完成安装
 3. 详见压缩包内 ``安装教程.txt``
 
 ---

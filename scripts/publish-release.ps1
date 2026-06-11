@@ -75,12 +75,18 @@ if (-not $SkipGithubRelease) {
         }
         $ReleaseNotes = & (Join-Path $Root "scripts\release-notes.ps1") | Out-String
         $ReleaseNotes = $ReleaseNotes.Trim()
+        $UpdateZip = Join-Path (Join-Path $Root "release") "Friday-Update-$Version.zip"
+        $SetupExe = Join-Path (Join-Path $Root "release") "Friday-Setup-$Version.exe"
+        $assets = @($Zip)
+        if (Test-Path $UpdateZip) { $assets += $UpdateZip }
+        if (Test-Path $SetupExe) { $assets += $SetupExe }
+
         gh release view $Tag --repo $Repo 2>$null
         if ($LASTEXITCODE -eq 0) {
-            gh release upload $Tag $Zip --repo $Repo --clobber
+            gh release upload $Tag @assets --repo $Repo --clobber
             gh release edit $Tag --repo $Repo --title "星期五 v$Version" --notes $ReleaseNotes
         } else {
-            gh release create $Tag $Zip --repo $Repo --title "星期五 v$Version" --notes $ReleaseNotes
+            gh release create $Tag @assets --repo $Repo --title "星期五 v$Version" --notes $ReleaseNotes
         }
         Write-Host "GitHub release: https://github.com/$Repo/releases/tag/$Tag" -ForegroundColor Green
     }

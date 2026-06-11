@@ -449,6 +449,7 @@ def _images_client(
     settings: UserSettings | None = None,
     *,
     read_timeout: float | None = None,
+    max_retries: int | None = None,
 ):
     from friday.api_connect import build_openai_client
 
@@ -457,6 +458,7 @@ def _images_client(
         base_url,
         settings,
         read_timeout=float(read_timeout if read_timeout is not None else IMAGE_GEN_HTTP_TIMEOUT),
+        max_retries=max_retries,
     )
 
 
@@ -481,12 +483,20 @@ def _call_images_api(
     settings: UserSettings | None = None,
     force_quality_high: bool = False,
     per_url_timeout: float | None = None,
+    max_retries: int | None = None,
+    test_quality_low: bool = False,
 ) -> bytes:
     last_exc: Exception | None = None
     read_timeout = float(per_url_timeout if per_url_timeout is not None else IMAGE_GEN_HTTP_TIMEOUT)
     for base in base_urls:
         try:
-            client = _images_client(api_key, base, settings, read_timeout=read_timeout)
+            client = _images_client(
+                api_key,
+                base,
+                settings,
+                read_timeout=read_timeout,
+                max_retries=max_retries,
+            )
             kwargs: dict[str, Any] = {
                 "model": model,
                 "prompt": prompt,
@@ -494,9 +504,12 @@ def _call_images_api(
                 "response_format": "b64_json",
                 "n": 1,
             }
-            quality = _image_gen_quality(model, size, force_high=force_quality_high)
-            if quality:
-                kwargs["quality"] = quality
+            if test_quality_low and _is_gpt_image2_model(model):
+                kwargs["quality"] = "low"
+            else:
+                quality = _image_gen_quality(model, size, force_high=force_quality_high)
+                if quality:
+                    kwargs["quality"] = quality
             response = client.images.generate(**kwargs)
             if not response.data:
                 raise ValueError("API 未返回图片")
@@ -1311,6 +1324,8 @@ def _strict_test_via_images_client(
             size=size,
             settings=settings,
             per_url_timeout=timeout,
+            max_retries=0,
+            test_quality_low=True,
         )
     except Exception as exc:  # noqa: BLE001
         return False, format_api_error(exc, context="api_test", service="生图 API").split("\n")[0][:240]
@@ -1321,8 +1336,6 @@ def _strict_test_via_images_client(
 
 def test_image_gen_connection(settings: UserSettings) -> tuple[bool, str]:
     import time
-
-    from friday.config import IMAGE_GEN_HTTP_TIMEOUT_MIN
 
     if not settings.image_gen_enabled:
         return False, "请先勾选「启用生图」"
@@ -1342,33 +1355,14 @@ def test_image_gen_connection(settings: UserSettings) -> tuple[bool, str]:
     if hint:
         return False, hint
 
-    if _is_ark_image_gen_endpoint(settings):
-        client_timeout = max(90.0, float(IMAGE_GEN_HTTP_TIMEOUT_MIN))
-        deadline = time.monotonic() + client_timeout + 15.0
-        ok, message = _strict_test_via_images_client(settings, timeout=client_timeout)
-        if ok:
-            return True, message
-        if time.monotonic() >= deadline:
-            return _settings_test_timed_out(message)
-        return ok, message
-
-    client_timeout = max(90.0, float(IMAGE_GEN_HTTP_TIMEOUT_MIN))
-    overall_deadline = time.monotonic() + client_timeout + 20.0
-    ok, message = verify_image_gen_api(
-        settings,
-        strict=True,
-        primary_only=True,
-        timeout=25.0,
-        deadline=time.monotonic() + 30.0,
-    )
-    if ok:
-        return True, message
-    if message and not _settings_test_probe_retryable(message):
-        return False, message
+    tool_timeout, http_timeout, _per_url = resolve_image_gen_timeouts(settings, "")
+    # 慢中转常见 60～90s；跳过 25s 短探测，直接走完整生图路径
+    client_timeout = float(max(http_timeout, 120.0))
+    deadline = time.monotonic() + float(tool_timeout) + 25.0
 
     ok, message = _strict_test_via_images_client(settings, timeout=client_timeout)
     if ok:
         return True, message
-    if time.monotonic() >= overall_deadline:
+    if time.monotonic() >= deadline:
         return _settings_test_timed_out(message)
     return False, message or "生图 API 不可用，请检查 Key、Base URL 与模型/接入点"

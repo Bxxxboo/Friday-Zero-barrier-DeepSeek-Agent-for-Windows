@@ -411,37 +411,31 @@ def test_verify_image_gen_api_prefers_models_http(tmp_appdata, monkeypatch):
     assert "images" not in calls
 
 
-def test_test_image_gen_connection_uses_strict_probe(tmp_appdata, monkeypatch):
-    calls: list[dict[str, object]] = []
-    client_calls: list[object] = []
+def test_test_image_gen_connection_skips_short_probe(tmp_appdata, monkeypatch):
+    client_calls: list[float] = []
+    verify_calls: list[object] = []
 
-    def fake_verify(*_a, **kwargs):
-        calls.append(dict(kwargs))
-        return False, "模型不可用"
-
-    monkeypatch.setattr("friday.image_gen.verify_image_gen_api", fake_verify)
+    monkeypatch.setattr(
+        "friday.image_gen.verify_image_gen_api",
+        lambda *_a, **_k: verify_calls.append(True) or (False, "should not run"),
+    )
     monkeypatch.setattr(
         "friday.image_gen._strict_test_via_images_client",
-        lambda *_a, **_k: client_calls.append(True) or (False, "client failed"),
+        lambda _settings, *, timeout: client_calls.append(timeout) or (False, "client failed"),
     )
 
     with patch("friday.image_gen.generate_image") as mock_generate:
         ok, _message = image_gen_module.test_image_gen_connection(_settings())
         assert not ok
-        assert len(calls) == 1
-        assert calls[0].get("strict")
-        assert calls[0].get("primary_only")
-        assert client_calls == []
+        assert verify_calls == []
+        assert client_calls
+        assert client_calls[0] >= 120
         mock_generate.assert_not_called()
 
 
-def test_test_image_gen_connection_retries_after_probe_timeout(tmp_appdata, monkeypatch):
+def test_test_image_gen_connection_uses_full_client_timeout(tmp_appdata, monkeypatch):
     client_calls: list[float] = []
 
-    monkeypatch.setattr(
-        "friday.image_gen.verify_image_gen_api",
-        lambda *_a, **_k: (False, "生图探测超时（端点响应较慢）"),
-    )
     monkeypatch.setattr(
         "friday.image_gen._strict_test_via_images_client",
         lambda _settings, *, timeout: client_calls.append(timeout)
@@ -452,7 +446,7 @@ def test_test_image_gen_connection_retries_after_probe_timeout(tmp_appdata, monk
     assert ok
     assert "可正常调用" in msg
     assert client_calls
-    assert client_calls[0] >= 90
+    assert client_calls[0] >= 120
 
 
 def test_test_image_gen_connection_ark_uses_client_probe(tmp_appdata, monkeypatch):
@@ -481,7 +475,7 @@ def test_test_image_gen_connection_ark_uses_client_probe(tmp_appdata, monkeypatc
     assert ok
     assert "可正常调用" in msg
     assert client_calls
-    assert client_calls[0] >= 90
+    assert client_calls[0] >= 120
     assert verify_calls == []
 
 

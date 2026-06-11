@@ -26,8 +26,9 @@ $payload = [ordered]@{
     tag         = $tag
     gitee_home  = $giteeHome
     releases_page = "$giteeHome/releases"
-    setup_url   = "$giteeHome/releases/download/$tag/$setupName"
+    download_url = "$giteeHome/releases/download/$tag/$zipName"
     zip_url     = "$giteeHome/releases/download/$tag/$zipName"
+    setup_url   = "$giteeHome/releases/download/$tag/$setupName"
     setup_name  = $setupName
     zip_name    = $zipName
 }

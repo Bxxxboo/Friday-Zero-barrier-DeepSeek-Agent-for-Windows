@@ -9,6 +9,12 @@
     if (el) el.href = href;
   }
 
+  function setDownloadLinks(href) {
+    document.querySelectorAll(".js-download-btn").forEach((el) => {
+      el.href = href || "#";
+    });
+  }
+
   function renderChangelog(entry) {
     const root = document.getElementById("changelogRoot");
     if (!root || !entry) {
@@ -66,9 +72,10 @@
     const date = info.date || "";
     const versionLabel = date ? `v${version}（${date}）` : `v${version}`;
     setText("footerVersion", versionLabel);
+    setText("downloadVersion", versionLabel);
     setText("year", String(new Date().getFullYear()));
 
-    setHref("setupDownloadBtn", info.setup_url || "#");
+    setDownloadLinks(info.download_url || info.zip_url || info.setup_url || "#");
     setHref("allReleasesLink", info.releases_page || info.gitee_home || "#");
   }
 
@@ -79,6 +86,7 @@
       renderChangelog(changelog);
     } catch {
       setText("footerVersion", "加载失败");
+      setText("downloadVersion", "加载失败");
       const root = document.getElementById("changelogRoot");
       if (root) root.innerHTML = '<p class="muted">无法加载下载信息，请稍后再试。</p>';
     }

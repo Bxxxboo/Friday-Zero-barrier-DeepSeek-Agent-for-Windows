@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>隐私计算技术验证平台</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg-top: #0b1a2e;
+      --bg-bottom: #122a45;
+      --surface: rgba(255, 255, 255, 0.04);
+      --accent: #4a9eff;
+      --text-primary: #eef4fb;
+      --text-secondary: #a8bdd4;
+      --text-muted: #7a92ad;
+      --border: rgba(255, 255, 255, 0.1);
+      --slide-w: 1920px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #081420;
+      font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .viewport {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg-top);
+    }
+
+    .slide {
+      position: relative;
+      width: min(100vw, var(--slide-w));
+      height: min(100vh, calc(min(100vw, var(--slide-w)) * 9 / 16));
+      max-height: 100vh;
+      max-width: calc(100vh * 16 / 9);
+      padding: 52px 72px 48px;
+      display: flex;
+      flex-direction: column;
+      background: linear-gradient(165deg, var(--bg-top) 0%, var(--bg-bottom) 100%);
+      overflow: hidden;
+    }
+
+    .slide-bar {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 4px;
+      background: var(--accent);
+    }
+
+    .header {
+      flex-shrink: 0;
+      text-align: center;
+      margin-bottom: 28px;
+    }
+
+    .title {
+      font-size: clamp(38px, 3.4vw, 56px);
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      color: var(--text-primary);
+      line-height: 1.25;
+    }
+
+    .intro {
+      max-width: 1240px;
+      margin: 20px auto 0;
+      font-size: clamp(16px, 1.2vw, 20px);
+      line-height: 1.8;
+      font-weight: 400;
+      color: var(--text-secondary);
+      text-align: center;
+    }
+
+    .intro em {
+      font-style: normal;
+      color: var(--accent);
+      font-weight: 500;
+    }
+
+    .intro strong {
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    .platforms {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 40px;
+      min-height: 0;
+    }
+
+    .platform {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .platform-head {
+      margin-bottom: 14px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .platform-name {
+      font-size: clamp(20px, 1.6vw, 26px);
+      font-weight: 600;
+      color: var(--text-primary);
+      letter-spacing: 0.03em;
+    }
+
+    .platform-name::before {
+      content: "";
+      display: inline-block;
+      width: 4px;
+      height: 1em;
+      margin-right: 10px;
+      vertical-align: -0.1em;
+      background: var(--accent);
+      border-radius: 2px;
+    }
+
+    .platform-sub {
+      margin-top: 6px;
+      margin-left: 14px;
+      font-size: 14px;
+      color: var(--text-muted);
+      font-weight: 400;
+    }
+
+    .platform-frame {
+      flex: 1;
+      min-height: 0;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      padding: 6px;
+      overflow: hidden;
+    }
+
+    .platform-frame img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: top center;
+      border-radius: 4px;
+      display: block;
+    }
+
+    @media print {
+      html, body {
+        overflow: visible;
+        background: white;
+      }
+      .viewport {
+        width: 1920px;
+        height: 1080px;
+      }
+      .slide {
+        width: 1920px;
+        height: 1080px;
+        max-width: none;
+        max-height: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="viewport">
+    <main class="slide" role="document" aria-label="隐私计算技术验证平台">
+      <div class="slide-bar" aria-hidden="true"></div>
+
+      <header class="header">
+        <h1 class="title">隐私计算技术验证平台</h1>
+        <p class="intro">
+          隐私计算平台融合差分隐私、安全多方计算、同态加密等多种数据安全技术，致力于实现数据流转与使用过程的<em>「可用不可见」</em>，主要包含<strong>脱敏工具集</strong>和<strong>联邦 XGBoost 训练系统</strong>两个部分。
+        </p>
+      </header>
+
+      <section class="platforms">
+        <article class="platform">
+          <div class="platform-head">
+            <h2 class="platform-name">脱敏平台</h2>
+            <p class="platform-sub">个人敏感信息按需脱敏工具集</p>
+          </div>
+          <div class="platform-frame">
+            <img
+              src="assets/desensitization.png"
+              alt="脱敏平台界面截图"
+              width="800"
+              height="450"
+            />
+          </div>
+        </article>
+
+        <article class="platform">
+          <div class="platform-head">
+            <h2 class="platform-name">联邦 XGBoost 训练平台</h2>
+            <p class="platform-sub">高效隐私保护的联邦 XGBoost 训练平台</p>
+          </div>
+          <div class="platform-frame">
+            <img
+              src="assets/federated-xgboost.png"
+              alt="联邦 XGBoost 训练平台界面截图"
+              width="800"
+              height="450"
+            />
+          </div>
+        </article>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

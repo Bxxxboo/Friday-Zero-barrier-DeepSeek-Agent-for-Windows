@@ -3,7 +3,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 from friday.updates import _pick_download_url, check_for_updates, gitee_repo, github_repo
-from friday.version import GITEE_REPO, GITHUB_REPO, __version__, release_zip_name
+from friday.version import GITEE_REPO, GITHUB_REPO, __version__, release_update_zip_name, release_zip_name
 
 
 def test_github_repo_default():
@@ -20,6 +20,21 @@ def test_gitee_repo_default():
 def test_release_zip_name_matches_version():
     assert release_zip_name() == f"Friday-Windows-{__version__}.zip"
     assert release_zip_name("1.0.0") == "Friday-Windows-1.0.0.zip"
+    assert release_update_zip_name() == f"Friday-Update-{__version__}.zip"
+    assert release_update_zip_name("1.0.0") == "Friday-Update-1.0.0.zip"
+
+
+def test_pick_download_prefers_update_zip_over_windows_zip():
+    url = _pick_download_url(
+        {
+            "html_url": "https://gitee.com/o/r/releases/tag/v1",
+            "assets": [
+                {"name": "Friday-Windows-1.2.4.zip", "browser_download_url": "https://x/win.zip"},
+                {"name": "Friday-Update-1.2.4.zip", "browser_download_url": "https://x/update.zip"},
+            ],
+        }
+    )
+    assert url == "https://x/update.zip"
 
 
 def test_pick_download_prefers_windows_zip():

@@ -74,7 +74,7 @@ def can_auto_update() -> tuple[bool, str]:
     if install is None or not install.is_dir():
         return False, "无法定位程序安装目录。"
     if not (install / Path(sys.executable).name).is_file():
-        return False, "安装目录不完整，请重新解压 Friday-Windows.zip。"
+        return False, "安装目录不完整，请重新运行安装程序或覆盖解压 Friday-Update.zip。"
     return True, ""
 
 
@@ -187,7 +187,7 @@ def _format_update_error(exc: BaseException) -> tuple[str, str]:
         if detail:
             hint = "若反复失败，请完全退出星期五后，用手动下载 zip 覆盖解压。"
             if "Friday 程序文件夹" in detail:
-                hint = "请确认下载的是官方 Friday-Windows.zip，不要使用配置包或其它 zip。"
+                hint = "请确认下载的是官方 Friday-Update.zip，不要使用配置包或其它 zip。"
             return detail[:240], hint
 
     detail = str(exc).strip() or type(exc).__name__
@@ -303,7 +303,7 @@ def _extract_release(zip_path: Path, dest_dir: Path) -> Path:
     if app_dir is None:
         raise RuntimeError(
             "更新包中未找到 Friday 程序文件夹（应含 Friday.exe）。"
-            "请确认下载的是 Friday-Windows.zip 官方安装包。"
+            "请确认下载的是 Friday-Update.zip 官方更新包。"
         )
     return app_dir
 
@@ -461,7 +461,7 @@ def start_apply_update(*, download_url: str, version: str) -> dict[str, object]:
     """后台下载并触发替换脚本；成功后会自动退出当前进程。"""
     can, reason = can_auto_update()
     if not can:
-        return {"started": False, "message": reason, "hint": "请使用「手动下载」获取 Friday-Windows.zip 后覆盖解压。"}
+        return {"started": False, "message": reason, "hint": "请使用「手动下载」获取 Friday-Update.zip 后覆盖解压。"}
 
     url = (download_url or "").strip()
     ver = (version or "").strip()

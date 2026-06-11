@@ -1,13 +1,19 @@
 ﻿"""应用版本号 —— 与 PyInstaller version_info 保持一致。"""
 
-__version__ = "1.3.0"
-__version_tuple__ = (1, 3, 0, 0)
+__version__ = "1.3.1"
+__version_tuple__ = (1, 3, 1, 0)
 
 
 def release_zip_name(version: str | None = None) -> str:
-    """Windows ZIP 包文件名，与 scripts/make-release.ps1 一致。"""
+    """官网/手动下载 ZIP（内含 Setup 安装程序），与 scripts/make-release.ps1 一致。"""
     v = (version or __version__).strip()
     return f"Friday-Windows-{v}.zip"
+
+
+def release_update_zip_name(version: str | None = None) -> str:
+    """应用内一键更新 ZIP（便携 Friday 目录），与 scripts/make-release.ps1 一致。"""
+    v = (version or __version__).strip()
+    return f"Friday-Update-{v}.zip"
 
 
 def release_setup_name(version: str | None = None) -> str:
@@ -24,4 +30,4 @@ GITEE_REPO = "Bxxxboo/friday"
 GITEE_HOME = f"https://gitee.com/{GITEE_REPO}"
 
 # 官网（Vercel）。部署后填 production URL；空则应用内仍链 Gitee Releases。
-WEBSITE_HOME = ""
+WEBSITE_HOME = "https://fridayaiagent.vercel.app"

@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from friday.version import __version__, release_zip_name
+from friday.version import __version__, release_setup_name, release_update_zip_name, release_zip_name
 
 API = "https://api.github.com"
 UPLOAD = "https://uploads.github.com"
@@ -121,6 +121,25 @@ def main() -> int:
         )
         release_id = release["id"]
 
+    def upload_asset(path: Path, *, content_type: str) -> None:
+        if not path.is_file():
+            print(f"Asset not found (optional): {path}", file=sys.stderr)
+            return
+        release_data = _request("GET", f"{API}/repos/{repo}/releases/{release_id}", token)
+        for asset in release_data.get("assets") or []:
+            if str(asset.get("name", "")) == path.name:
+                aid = asset["id"]
+                print(f"Removing existing asset {path.name} (id {aid}) ...")
+                _request("DELETE", f"{API}/repos/{repo}/releases/assets/{aid}", token)
+        print(f"Uploading {path.name} ({path.stat().st_size // (1024 * 1024)} MB) ...")
+        _request(
+            "POST",
+            f"{UPLOAD}/repos/{repo}/releases/{release_id}/assets?name={urllib.parse.quote(path.name)}",
+            token,
+            raw=path.read_bytes(),
+            content_type=content_type,
+        )
+
     if args.skip_upload:
         print("Skip upload.")
     else:
@@ -128,23 +147,9 @@ def main() -> int:
         if not zip_path.is_file():
             print(f"Zip not found: {zip_path}", file=sys.stderr)
             return 1
-        zip_name = zip_path.name
-        release = _request("GET", f"{API}/repos/{repo}/releases/{release_id}", token)
-        for asset in release.get("assets") or []:
-            name = str(asset.get("name", ""))
-            if name == zip_name or name == "Friday-Windows.zip":
-                aid = asset["id"]
-                print(f"Removing existing asset {name} (id {aid}) ...")
-                _request("DELETE", f"{API}/repos/{repo}/releases/assets/{aid}", token)
-        print(f"Uploading {zip_name} ...")
-        data = zip_path.read_bytes()
-        _request(
-            "POST",
-            f"{UPLOAD}/repos/{repo}/releases/{release_id}/assets?name={urllib.parse.quote(zip_name)}",
-            token,
-            raw=data,
-            content_type="application/zip",
-        )
+        upload_asset(zip_path, content_type="application/zip")
+        upload_asset(ROOT / "release" / release_update_zip_name(args.version), content_type="application/zip")
+        upload_asset(ROOT / "release" / release_setup_name(args.version), content_type="application/octet-stream")
 
     print(f"Done: https://github.com/{repo}/releases/tag/{tag}")
     return 0
