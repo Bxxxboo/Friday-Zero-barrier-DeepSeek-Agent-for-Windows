@@ -13,6 +13,7 @@ from friday.interaction_modes import (
     normalize_mode,
     tool_allowed_in_mode,
 )
+from friday.os_path_guard import block_reason_for_destructive_paths
 from friday.paths import known_folders
 from friday.storage import UserSettings, resolved_workspace
 
@@ -131,6 +132,7 @@ READ_ONLY_TOOLS = {
 MEMORY_TOOLS = frozenset({
     "remember_user_fact",
     "forget_user_fact",
+    "append_work_note",
 })
 
 # 所有接受路径参数的工具（读 + 写），用于工作区限制
@@ -299,6 +301,10 @@ def evaluate_tool(
     enabled, reason = _tool_enabled(cfg, tool_name)
     if not enabled:
         return ToolDecision(False, False, reason)
+
+    os_block = block_reason_for_destructive_paths(tool_name, _extract_paths(tool_name, arguments))
+    if os_block:
+        return ToolDecision(False, False, os_block)
 
     risk = classify_tool(tool_name)
 

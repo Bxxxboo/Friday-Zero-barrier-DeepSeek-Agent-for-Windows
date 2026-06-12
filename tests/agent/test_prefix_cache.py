@@ -3,13 +3,15 @@ from __future__ import annotations
 from unittest.mock import patch
 
 from friday.brain import DeepSeekBrain
-from friday.config import COMPACT_SUMMARY_MARKER
+from friday.config import COMPACT_SUMMARY_MARKER, CONTEXT_COMPACT_TOOL_ROUNDS, PLAN_ANCHOR_MARKER
 from friday.prefix_cache import (
     build_frozen_prefix,
     compute_prefix_fingerprint,
     compute_settings_fingerprint,
+    count_tool_rounds_since_last_compact,
     deterministic_summary,
     is_compact_summary_message,
+    is_plan_anchor_message,
     split_message_regions,
 )
 from friday.storage import UserSettings
@@ -100,6 +102,82 @@ def test_prepare_messages_skips_when_under_threshold():
     ]
     out = brain.prepare_messages(messages, tool_definitions=[])
     assert out is messages or out == messages
+
+
+def test_count_tool_rounds_since_last_compact():
+    messages = [{"role": "system", "content": "sys"}]
+    for i in range(CONTEXT_COMPACT_TOOL_ROUNDS):
+        messages.append({"role": "assistant", "content": "", "tool_calls": [{"id": f"c{i}", "function": {"name": "list_directory"}}]})
+        messages.append({"role": "tool", "content": f"ok {i}"})
+    assert count_tool_rounds_since_last_compact(messages) == CONTEXT_COMPACT_TOOL_ROUNDS
+    messages.insert(2, {"role": "user", "content": f"{COMPACT_SUMMARY_MARKER}\nold"})
+    assert count_tool_rounds_since_last_compact(messages) == CONTEXT_COMPACT_TOOL_ROUNDS - 1
+
+
+def test_split_message_regions_keeps_plan_anchor():
+    messages = [
+        {"role": "system", "content": "sys"},
+        {"role": "user", "content": f"{PLAN_ANCHOR_MARKER}\nplan"},
+        {"role": "user", "content": "u1"},
+        {"role": "assistant", "content": "a1"},
+        {"role": "user", "content": "u2"},
+        {"role": "assistant", "content": "a2"},
+        {"role": "user", "content": "u3"},
+        {"role": "assistant", "content": "a3"},
+    ]
+    _system, summaries, compactable, tail = split_message_regions(messages, min_keep_recent=3)
+    assert len(summaries) == 1
+    assert is_plan_anchor_message(summaries[0])
+    assert len(compactable) == 3
+
+
+def test_prepare_messages_compacts_on_tool_rounds_even_under_ratio():
+    settings = UserSettings(api_key="sk-test", model="deepseek-chat")
+    brain = DeepSeekBrain(settings)
+    brain._max_context = 200_000
+    messages = [{"role": "system", "content": "sys"}]
+    for i in range(CONTEXT_COMPACT_TOOL_ROUNDS + 2):
+        messages.append({"role": "assistant", "content": "", "tool_calls": [{"id": f"c{i}", "type": "function", "function": {"name": "list_directory", "arguments": "{}"}}]})
+        messages.append({"role": "tool", "tool_call_id": f"c{i}", "content": f"dir {i}"})
+    messages.extend([
+        {"role": "user", "content": "u-tail"},
+        {"role": "assistant", "content": "a-tail"},
+        {"role": "user", "content": "u-tail2"},
+        {"role": "assistant", "content": "a-tail2"},
+        {"role": "user", "content": "u-tail3"},
+        {"role": "assistant", "content": "a-tail3"},
+    ])
+    with patch.object(
+        brain,
+        "_summarize_message_batch",
+        side_effect=lambda batch: deterministic_summary(batch),
+    ):
+        prepared = brain.prepare_messages(messages, tool_definitions=[])
+    assert any(is_compact_summary_message(m) for m in prepared)
+
+
+def test_prepare_messages_keeps_plan_anchor_when_compacting():
+    from friday.plan import upsert_plan_anchor
+
+    settings = UserSettings(api_key="sk-test", model="deepseek-chat")
+    brain = DeepSeekBrain(settings)
+    brain._max_context = 900
+    messages = upsert_plan_anchor(
+        [{"role": "system", "content": "sys"}],
+        "【当前任务计划】\n- [ ] 整理桌面",
+    )
+    for i in range(12):
+        messages.append({"role": "user", "content": f"question {i} " + ("X" * 200)})
+        messages.append({"role": "assistant", "content": f"answer {i} " + ("Y" * 200)})
+        messages.append({"role": "tool", "content": "Z" * 400})
+    with patch.object(
+        brain,
+        "_summarize_message_batch",
+        side_effect=lambda batch: deterministic_summary(batch),
+    ):
+        prepared = brain.prepare_messages(messages, tool_definitions=[])
+    assert any(is_plan_anchor_message(m) for m in prepared)
+    assert any(is_compact_summary_message(m) for m in prepared)
 
 
 def test_agent_pins_prefix_on_init():

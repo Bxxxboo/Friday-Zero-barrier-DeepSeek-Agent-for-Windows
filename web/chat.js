@@ -266,6 +266,56 @@
   /* ── 事件分发 ── */
 
   const runningChatSessions = new Set();
+  const runningUserTextBySession = new Map();
+
+  let stopConfirmResolver = null;
+
+  function resolveStopConfirm(choice) {
+    const modal = document.getElementById("stopConfirmModal");
+    modal?.classList.add("hidden");
+    const resolve = stopConfirmResolver;
+    stopConfirmResolver = null;
+    resolve?.(choice);
+  }
+
+  function showStopConfirmModal() {
+    const modal = document.getElementById("stopConfirmModal");
+    if (!modal) return Promise.resolve("continue");
+    return new Promise((resolve) => {
+      stopConfirmResolver = resolve;
+      modal.classList.remove("hidden");
+      document.getElementById("stopConfirmContinue")?.focus();
+    });
+  }
+
+  function activeRunningSessionId() {
+    return [...runningChatSessions][runningChatSessions.size - 1] || F.activeSessionId || "";
+  }
+
+  function restoreRunningMessageToComposer(sessionId, textOverride = "") {
+    const savedText = String(textOverride || runningUserTextBySession.get(sessionId) || "").trim();
+    if (!savedText) return;
+    if (F.chatInput) {
+      F.chatInput.value = savedText;
+      F.syncComposerInputHeight?.();
+      F.updateInputState();
+      F.chatInput.focus();
+    }
+    const session = F.getActiveSession?.();
+    if (session?.messages?.length && sessionId === F.activeSessionId) {
+      const last = session.messages[session.messages.length - 1];
+      if (last?.kind === "user" && String(last.text || "").trim() === savedText.trim()) {
+        session.messages.pop();
+        const nodes = F.chatLog?.querySelectorAll(".message.user");
+        const lastNode = nodes?.[nodes.length - 1];
+        lastNode?.remove();
+      }
+    }
+  }
+
+  function clearRunningUserText(sessionId) {
+    if (sessionId) runningUserTextBySession.delete(sessionId);
+  }
 
   const BACKGROUND_CHAT_EVENTS = new Set([
     "assistant_start",
@@ -337,7 +387,10 @@
         break;
       case "assistant": {
         const doneSessionId = data.session?.id;
-        if (doneSessionId) runningChatSessions.delete(doneSessionId);
+        if (doneSessionId) {
+          runningChatSessions.delete(doneSessionId);
+          clearRunningUserText(doneSessionId);
+        }
         if (background) {
           void syncBackgroundSessionMessages(doneSessionId);
           if (data.usage) F.applyStatusUsage?.(data.usage);
@@ -383,6 +436,7 @@
         clearStreamingMessage(false);
         F.removeThinking();
         appendMessage("error", data.message, false);
+        clearRunningUserText(F.activeSessionId);
         runningChatSessions.delete(F.activeSessionId);
         F.setBusy(false);
         F.setConnectionStatus("就绪", true);
@@ -452,7 +506,19 @@
       case "plan_updated":
         F.applySessionPlan?.(data);
         break;
-      case "session_updated":
+      case "context_rebuild":
+        showContextRebuildNotice();
+        break;
+      case "session_updated": {
+        const sid = data.session_id;
+        void (async () => {
+          await F.refreshSessionList?.();
+          if (sid && sid === F.activeSessionId) {
+            await F.loadSessionDetail?.(sid, false);
+          }
+        })();
+        break;
+      }
       case "sessions_updated":
         void F.refreshSessionList?.();
         break;
@@ -950,6 +1016,7 @@
       /* 保存失败不阻断对话 */
     }
 
+    runningUserTextBySession.set(F.activeSessionId, text || displayText);
     runningChatSessions.add(F.activeSessionId);
     F.ws.send(
       JSON.stringify({
@@ -972,6 +1039,25 @@
     if (num >= 1024 ** 2) return `${(num / (1024 ** 2)).toFixed(1)} MB`;
     if (num >= 1024) return `${(num / 1024).toFixed(1)} KB`;
     return `${num} B`;
+  }
+
+  let contextRebuildNoticeEl = null;
+
+  function showContextRebuildNotice() {
+    if (contextRebuildNoticeEl) return;
+    const bar = document.createElement("div");
+    bar.className = "context-rebuild-notice";
+    bar.setAttribute("role", "status");
+    bar.innerHTML =
+      '<span>上下文已自动整理以继续长对话。</span>' +
+      '<button type="button" class="context-rebuild-dismiss" aria-label="关闭">×</button>';
+    bar.querySelector(".context-rebuild-dismiss")?.addEventListener("click", () => {
+      bar.remove();
+      contextRebuildNoticeEl = null;
+    });
+    const main = document.querySelector(".main");
+    if (main) main.insertBefore(bar, main.firstChild?.nextSibling || null);
+    contextRebuildNoticeEl = bar;
   }
 
   function showAutoApprovalNote(_data) {
@@ -1135,8 +1221,9 @@
 
   /* ── 停止生成 ── */
 
-  async function stopChat() {
-    if (!F.busy) return;
+  async function executeStopChat() {
+    if (!F.busy && !hasBackgroundChatTurn()) return;
+    const sessionId = activeRunningSessionId();
     removeProgress();
     F.removeThinking();
     clearStreamingMessage(false);
@@ -1146,14 +1233,65 @@
       await F.apiFetch("/api/chat/cancel", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          session_id: [...runningChatSessions][runningChatSessions.size - 1] || F.activeSessionId || "",
-        }),
+        body: JSON.stringify({ session_id: sessionId }),
       });
     } catch {
       // 忽略网络错误，UI 由助手返回的结果恢复
     }
+    runningChatSessions.delete(sessionId);
+    clearRunningUserText(sessionId);
     flushQueue();
+  }
+
+  async function requestStopChat() {
+    if (!F.busy && !hasBackgroundChatTurn()) return;
+    if (stopConfirmResolver) return;
+    const choice = await showStopConfirmModal();
+    if (choice === "continue") return;
+    const sessionId = activeRunningSessionId();
+    if (choice === "modify") {
+      const savedText = runningUserTextBySession.get(sessionId) || "";
+      await executeStopChat();
+      restoreRunningMessageToComposer(sessionId, savedText);
+      return;
+    }
+    if (choice === "abort") {
+      await executeStopChat();
+    }
+  }
+
+  function bindStopButton() {
+    const btn = F.stopBtn || document.getElementById("stopBtn");
+    if (!btn || btn.dataset.stopBound === "1") return;
+    btn.dataset.stopBound = "1";
+    btn.addEventListener("click", () => {
+      void requestStopChat();
+    });
+  }
+
+  function bindStopConfirmModal() {
+    const modal = document.getElementById("stopConfirmModal");
+    if (!modal || modal.dataset.bound === "1") return;
+    modal.dataset.bound = "1";
+    document.getElementById("stopConfirmContinue")?.addEventListener("click", () => {
+      resolveStopConfirm("continue");
+    });
+    document.getElementById("stopConfirmAbort")?.addEventListener("click", () => {
+      resolveStopConfirm("abort");
+    });
+    document.getElementById("stopConfirmModify")?.addEventListener("click", () => {
+      resolveStopConfirm("modify");
+    });
+    modal.addEventListener("click", (event) => {
+      if (event.target === modal) resolveStopConfirm("continue");
+    });
+    document.addEventListener("keydown", (event) => {
+      if (modal.classList.contains("hidden")) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        resolveStopConfirm("continue");
+      }
+    });
   }
 
   /* ── 挂载 ── */
@@ -1167,7 +1305,11 @@
   F.sendChat = sendChat;
   F.showApprovalInChat = showApprovalInChat;
   F.resolveApproval = resolveApproval;
-  F.stopChat = stopChat;
+  // 旧版 app.js 缓存仍调用 F.stopChat()，统一走确认弹窗
+  F.stopChat = requestStopChat;
+  F.requestStopChat = requestStopChat;
+  bindStopConfirmModal();
+  bindStopButton();
   F.hasComposerAttachment = hasComposerAttachment;
   F.hasComposerAttachmentPreview = hasComposerAttachmentPreview;
   F.clearComposerAttachment = clearPendingImages;

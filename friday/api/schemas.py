@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 # --- 设置 / 诊断 ---
@@ -67,6 +67,9 @@ class SettingsPayload(BaseModel):
     artifact_trash_ttl_days: int | None = None
     artifact_session_delete_grace_days: int | None = None
     artifact_auto_gc_enabled: bool | None = None
+    context_smart_enabled: bool | None = None
+    goal_verifier_enabled: bool | None = None
+    dream_memory_enabled: bool | None = None
 
 
 class SettingsResponse(BaseModel):
@@ -136,6 +139,9 @@ class SettingsResponse(BaseModel):
     artifact_trash_ttl_days: int = 7
     artifact_session_delete_grace_days: int = 7
     artifact_auto_gc_enabled: bool = True
+    context_smart_enabled: bool = True
+    goal_verifier_enabled: bool = True
+    dream_memory_enabled: bool = False
 
 
 class TestResponse(BaseModel):
@@ -430,6 +436,8 @@ class UpdateCheckResponse(BaseModel):
     source_kind: str = ""
     can_auto_update: bool = False
     auto_update_hint: str = ""
+    last_apply_failed: bool = False
+    last_apply_hint: str = ""
 
 
 class UpdateApplyResponse(BaseModel):
@@ -489,6 +497,19 @@ class MCPConfigPayload(BaseModel):
     servers: list[MCPServerPayload] = []
 
 
+# --- 状态栏 ---
+
+
+class StatusBarContextMeter(BaseModel):
+    """`/api/status-bar` 上下文仪表字段（M6.2.1）。"""
+
+    context_tokens: int = 0
+    max_context: int = 0
+    context_budget: int = 0
+    compact_threshold: int = 0
+    budget_ratio: float = 0.0
+
+
 # --- 微信桥 ---
 
 
@@ -512,3 +533,7 @@ class WeixinSetupRunPayload(BaseModel):
 
 class WeixinBridgeTogglePayload(BaseModel):
     enabled: bool = True
+
+
+class WorkspaceMemoryPayload(BaseModel):
+    content: str = Field(default="", max_length=65536)

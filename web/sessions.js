@@ -192,6 +192,16 @@
       openSessionRenameModal(session.id);
     });
 
+    const forkBtn = document.createElement("button");
+    forkBtn.type = "button";
+    forkBtn.className = "session-context-item";
+    forkBtn.textContent = F.t?.("chat.fork.action") || "分叉会话";
+    forkBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      closeSessionContextMenu();
+      void forkSession(session.id);
+    });
+
     const deleteBtn = document.createElement("button");
     deleteBtn.type = "button";
     deleteBtn.className = "session-context-item danger";
@@ -202,7 +212,7 @@
       void deleteSession(session.id);
     });
 
-    menu.append(renameBtn, deleteBtn);
+    menu.append(renameBtn, forkBtn, deleteBtn);
     document.body.appendChild(menu);
     sessionContextMenu = menu;
 
@@ -315,6 +325,25 @@
     }
   }
 
+  async function forkSession(sessionId) {
+    if (F.busy) return;
+    const res = await F.apiFetch(`/api/sessions/${encodeURIComponent(sessionId)}/fork`, { method: "POST" });
+    if (!res.ok) return;
+    const data = await res.json();
+    const restored = {
+      id: data.id,
+      title: data.title,
+      updatedAt: data.updated_at,
+      createdAt: data.created_at,
+      messages: F.toUiMessages(data.messages),
+    };
+    F.sessions = F.sessions.filter((s) => s.id !== restored.id);
+    F.sessions.unshift(restored);
+    F.activeSessionId = restored.id;
+    renderSessionList();
+    await loadSessionDetail(restored.id, false);
+  }
+
   async function deleteSession(sessionId) {
     if (F.busy) return;
     const res = await F.apiFetch(`/api/sessions/${sessionId}`, { method: "DELETE" });
@@ -393,4 +422,5 @@
   F.deleteSession = deleteSession;
   F.applySessionMeta = applySessionMeta;
   F.renameSession = renameSession;
+  F.forkSession = forkSession;
 })();

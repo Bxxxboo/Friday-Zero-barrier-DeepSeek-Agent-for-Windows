@@ -1,8 +1,8 @@
 ﻿"""应用版本号 —— 与 PyInstaller version_info 保持一致。"""
 
-__version__ = "1.3.5"
-__dev_version__ = "1.3.5-dev"
-__version_tuple__ = (1, 3, 5, 0)
+__version__ = "1.3.6"
+__dev_version__ = "1.3.6-dev"
+__version_tuple__ = (1, 3, 6, 0)
 
 
 def release_zip_name(version: str | None = None) -> str:

@@ -167,8 +167,6 @@
     F.chatInput?.focus();
   });
 
-  F.stopBtn?.addEventListener("click", () => F.stopChat());
-
   document.getElementById("newChatBtn")?.addEventListener("click", () => F.createSession(true));
   document.getElementById("openSettingsBtn")?.addEventListener("click", () => F.openSettings("llm"));
   document.getElementById("closeSettingsBtn")?.addEventListener("click", () => F.closeSettings());

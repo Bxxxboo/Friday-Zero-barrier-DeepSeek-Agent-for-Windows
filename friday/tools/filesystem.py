@@ -7,7 +7,15 @@ from collections import defaultdict, deque
 from datetime import datetime
 from pathlib import Path
 
+from friday.os_path_guard import block_reason_for_destructive_paths
 from friday.tools._decorators import register_tool
+
+
+def _reject_windows_c_os(tool_name: str, *paths: str) -> str | None:
+    reason = block_reason_for_destructive_paths(tool_name, [str(p) for p in paths if p])
+    if reason:
+        return f"⛔ {reason}"
+    return None
 
 _SKIP_SEARCH_DIRS = frozenset({
     "$Recycle.Bin",
@@ -141,6 +149,8 @@ def read_text_file(path: str, max_chars: int = 8000) -> str:
     },
 )
 def write_text_file(path: str, content: str) -> str:
+    if blocked := _reject_windows_c_os("write_text_file", path):
+        return blocked
     target = _resolve(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
@@ -166,6 +176,8 @@ def write_text_file(path: str, content: str) -> str:
     },
 )
 def move_file(source: str, destination: str) -> str:
+    if blocked := _reject_windows_c_os("move_file", source, destination):
+        return blocked
     src = _resolve(source)
     dst = _resolve(destination)
     if not src.exists():
@@ -188,6 +200,8 @@ def move_file(source: str, destination: str) -> str:
     },
 )
 def organize_directory(path: str, by: str = "extension") -> str:
+    if blocked := _reject_windows_c_os("organize_directory", path):
+        return blocked
     target = _resolve(path)
     if not target.exists() or not target.is_dir():
         return f"目录不存在: {target}"
@@ -232,6 +246,8 @@ def organize_directory(path: str, by: str = "extension") -> str:
     },
 )
 def delete_file(path: str) -> str:
+    if blocked := _reject_windows_c_os("delete_file", path):
+        return blocked
     target = _resolve(path)
     if not target.exists():
         return f"文件不存在: {target}"
@@ -253,6 +269,8 @@ def delete_file(path: str) -> str:
     },
 )
 def delete_directory(path: str) -> str:
+    if blocked := _reject_windows_c_os("delete_directory", path):
+        return blocked
     target = _resolve(path)
     if not target.exists():
         return f"目录不存在: {target}"

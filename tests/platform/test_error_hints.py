@@ -74,6 +74,14 @@ def test_classify_image_gen_unauthorized():
     assert hint.detail == "生图 API Key 无效"
 
 
+def test_classify_insufficient_balance_not_auth():
+    raw = "Error code: 403 - {'code': 'INSUFFICIENT_BALANCE', 'message': 'Insufficient account balance'}"
+    hint = classify_error(raw, context="image_gen")
+    assert hint.code == "api_balance"
+    assert "余额" in hint.detail
+    assert hint.code != "image_gen_auth"
+
+
 def test_classify_vision_unauthorized():
     hint = classify_error("Error code: 401 - Unauthorized", context="vision")
     assert hint.code == "vision_auth"
@@ -137,6 +145,21 @@ def test_build_test_response_classifies_technical_error():
     assert payload["message"] == "生图 API Key 无效"
     assert payload["code"] == "image_gen_auth"
     assert payload["hint"]
+
+
+def test_build_test_response_preserves_multi_endpoint_image_gen():
+    payload = build_test_response(
+        False,
+        "所有生图地址均不可用：\n"
+        "· next.zhima.world：暂无可用通道(503)\n"
+        "· api.iotwq.top：Key 对此中转无效\n"
+        "请为每个中转填写匹配的 Key，或只保留支持 gpt-image-2 且有余额的主地址",
+        service="生图 API",
+        context="image_gen",
+    )
+    assert payload["code"] == "image_gen_endpoints"
+    assert "next.zhima.world" in payload["message"]
+    assert payload["message"] != "生图 API Key 无效"
 
 
 def test_build_test_response_keeps_user_facing_message():

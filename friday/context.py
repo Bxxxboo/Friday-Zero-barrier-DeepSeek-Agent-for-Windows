@@ -261,3 +261,30 @@ def flatten_message_blocks(blocks: list[list[dict[str, Any]]]) -> list[dict[str,
     for block in blocks:
         flat.extend(block)
     return flat
+
+
+def prune_old_tool_results(
+    messages: list[dict[str, Any]],
+    *,
+    keep_tail_blocks: int = 4,
+) -> list[dict[str, Any]]:
+    """checkpoint/rebuild 后丢弃旧 tool 输出，保留最近若干工具轮次。"""
+    if not messages:
+        return messages
+    blocks = iter_message_blocks(messages)
+    if len(blocks) <= keep_tail_blocks:
+        return messages
+
+    pruned_blocks: list[list[dict[str, Any]]] = []
+    tail_start = len(blocks) - keep_tail_blocks
+    for idx, block in enumerate(blocks):
+        if idx < tail_start and len(block) > 1 and block[0].get("role") == "assistant":
+            assistant = dict(block[0])
+            assistant.pop("tool_calls", None)
+            note = "[较早工具结果已 prune，完整记录见会话展示层]"
+            content = str(assistant.get("content") or "").strip()
+            assistant["content"] = f"{content}\n{note}".strip() if content else note
+            pruned_blocks.append([assistant])
+            continue
+        pruned_blocks.append(block)
+    return flatten_message_blocks(pruned_blocks)

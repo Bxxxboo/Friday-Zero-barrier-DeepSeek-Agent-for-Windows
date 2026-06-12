@@ -14,6 +14,7 @@ _log = get_logger("rules")
 
 BUILTIN_RESPONSE_RULE_ID = "builtin:cursor-style-reply"
 BUILTIN_FILE_SAFETY_RULE_ID = "builtin:file-safety"
+BUILTIN_WINDOWS_C_OS_RULE_ID = "builtin:windows-c-os-delete-ban"
 BUILTIN_TASK_SCOPE_RULE_ID = "builtin:task-scope"
 BUILTIN_SOLUTION_FIRST_RULE_ID = "builtin:solution-first"
 
@@ -63,6 +64,22 @@ _BUILTIN_RULES: tuple[dict[str, Any], ...] = (
             "（如版本升级、微信桥接、Python 环境、无关 bug）写进剩余项或建议。"
             "用户在本轮未提及的事项，视为与本任务无关，不要主动带回；"
             "只有用户在本轮重新提出时，才可继续该话题。"
+        ),
+        "enabled": True,
+        "always_apply": True,
+        "hidden": True,
+        "source": "builtin",
+    },
+    {
+        "id": BUILTIN_WINDOWS_C_OS_RULE_ID,
+        "title": "C 盘系统文件绝对禁令",
+        "content": (
+            "绝对禁止删除、移动、覆盖或整理 C 盘操作系统路径下的任何文件或目录"
+            "（含 C:\\Windows、C:\\Program Files、C:\\Program Files (x86)、"
+            "C:\\ProgramData、C:\\Boot、C:\\Recovery 等；不含 C:\\Users 下用户个人文件）。"
+            "不得用 delete_file、delete_directory、move_file、organize_directory、"
+            "write_text_file、run_python、run_powershell 等任何方式绕过；"
+            "即使用户或 Yolo 要求也不得执行。读-only 查看系统目录除外。"
         ),
         "enabled": True,
         "always_apply": True,

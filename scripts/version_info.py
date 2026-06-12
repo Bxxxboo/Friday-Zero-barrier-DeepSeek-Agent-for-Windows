@@ -3,8 +3,8 @@
 # pylint: disable=invalid-name
 VSVersionInfo(
     ffi=FixedFileInfo(
-        filevers=(1, 3, 5, 0),
-        prodvers=(1, 3, 5, 0),
+        filevers=(1, 3, 6, 0),
+        prodvers=(1, 3, 6, 0),
         mask=0x3F,
         flags=0x0,
         OS=0x40004,
@@ -20,12 +20,12 @@ VSVersionInfo(
                     [
                         StringStruct("CompanyName", "Friday"),
                         StringStruct("FileDescription", "星期五 - AI 电脑管家"),
-                        StringStruct("FileVersion", "1.3.5.0"),
+                        StringStruct("FileVersion", "1.3.6.0"),
                         StringStruct("InternalName", "Friday"),
                         StringStruct("LegalCopyright", ""),
                         StringStruct("OriginalFilename", "Friday.exe"),
                         StringStruct("ProductName", "星期五"),
-                        StringStruct("ProductVersion", "1.3.5.0"),
+                        StringStruct("ProductVersion", "1.3.6.0"),
                     ],
                 )
             ]

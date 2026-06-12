@@ -21,6 +21,7 @@
     api: false,
     vision: false,
     imageGen: false,
+    gateway: false,
   };
 
   const GATEWAY_LABELS = {
@@ -101,6 +102,9 @@
     gatewayDot: document.getElementById("statusGatewayDot"),
     gatewayText: document.getElementById("statusGatewayText"),
     tokens: document.getElementById("statusTokens"),
+    contextDot: document.getElementById("statusContextDot"),
+    contextPct: document.getElementById("statusContextPct"),
+    contextGroup: document.getElementById("statusContextGroup"),
     tasks: document.getElementById("statusTasks"),
     workspace: document.getElementById("statusWorkspace"),
     model: document.getElementById("statusModel"),
@@ -111,6 +115,49 @@
     if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(1)}M`;
     if (num >= 1000) return `${(num / 1000).toFixed(1)}k`;
     return String(num);
+  }
+
+  function contextStateFromRatio(ratio) {
+    if (ratio >= 1) return "ctx-over";
+    if (ratio >= 0.8) return "ctx-high";
+    if (ratio >= 0.5) return "ctx-warn";
+    return "ctx-ok";
+  }
+
+  function buildContextTitle(data) {
+    const ratio = Number(data.budget_ratio) || 0;
+    const pct = Math.round(ratio * 100);
+    const template = F.t?.("status.context.title")
+      || "上下文 {used} / {budget} tokens（{pct}%）\n达 {threshold} tokens 时将自动压缩历史";
+    return template
+      .replace("{used}", formatTokens(data.context_tokens))
+      .replace("{budget}", formatTokens(data.context_budget))
+      .replace("{pct}", String(pct))
+      .replace("{threshold}", formatTokens(data.compact_threshold));
+  }
+
+  function applyContextMeter(data) {
+    if (!els.contextDot || !els.contextPct) return;
+    const sessionId = F.activeSessionId || "";
+    const budget = Number(data.context_budget) || 0;
+    const tokens = Number(data.context_tokens) || 0;
+    const ratio = Number(data.budget_ratio) || 0;
+
+    if (!sessionId || budget <= 0) {
+      setDot(els.contextDot, "disabled");
+      els.contextPct.textContent = "—";
+      if (els.contextGroup) {
+        els.contextGroup.title = F.t?.("status.contextUsage") || "当前会话上下文占用（估算）";
+      }
+      return;
+    }
+
+    const pct = Math.min(999, Math.round(ratio * 100));
+    setDot(els.contextDot, contextStateFromRatio(ratio));
+    els.contextPct.textContent = `${pct}%`;
+    if (els.contextGroup) {
+      els.contextGroup.title = buildContextTitle({ ...data, context_tokens: tokens || data.context_tokens });
+    }
   }
 
   function workspaceLabel(path) {
@@ -167,11 +214,17 @@
     return bootPhase
       || startupTestPending.api
       || startupTestPending.vision
-      || startupTestPending.imageGen;
+      || startupTestPending.imageGen
+      || startupTestPending.gateway;
   }
 
   function finishBootIfIdle() {
-    if (!startupTestPending.api && !startupTestPending.vision && !startupTestPending.imageGen) {
+    if (
+      !startupTestPending.api
+      && !startupTestPending.vision
+      && !startupTestPending.imageGen
+      && !startupTestPending.gateway
+    ) {
       bootPhase = false;
       void refreshStatusBar({ force: true });
     }
@@ -208,6 +261,16 @@
       dotEl: els.imageGenDot,
       textEl: els.imageGenText,
       labels: resolveLabels(SERVICE_LABELS.imageGen),
+    });
+    applyServiceState({
+      enabled: true,
+      configured: true,
+      online: false,
+      checking: true,
+      detail: resolveLabels(SERVICE_LABELS.gateway).checkingHint,
+      dotEl: els.gatewayDot,
+      textEl: els.gatewayText,
+      labels: resolveLabels(SERVICE_LABELS.gateway),
     });
   }
 
@@ -379,6 +442,18 @@
       labels: resolveLabels(SERVICE_LABELS.imageGen),
     });
 
+    const gatewayOn = data.weixin_bridge_enabled !== false;
+    applyServiceState({
+      enabled: gatewayOn,
+      configured: gatewayOn,
+      online: false,
+      checking: gatewayOn,
+      detail: gatewayOn ? resolveLabels(SERVICE_LABELS.gateway).checkingHint : "",
+      dotEl: els.gatewayDot,
+      textEl: els.gatewayText,
+      labels: resolveLabels(SERVICE_LABELS.gateway),
+    });
+
     if (els.workspace) {
       els.workspace.textContent = workspaceLabel(data.workspace);
       if (data.workspace) els.workspace.title = data.workspace;
@@ -404,6 +479,7 @@
     if (els.model && data.model) {
       els.model.textContent = data.model;
     }
+    applyContextMeter(data);
   }
 
   async function runServiceStartupTest({
@@ -508,6 +584,67 @@
     }
   }
 
+  async function runGatewayStartupTest({ enabled, dotEl, textEl, labels }) {
+    if (!enabled) {
+      applyServiceState({
+        enabled: false,
+        configured: false,
+        online: false,
+        checking: false,
+        detail: "",
+        dotEl,
+        textEl,
+        labels,
+      });
+      return;
+    }
+
+    startupTestPending.gateway = true;
+    applyServiceState({
+      enabled: true,
+      configured: true,
+      online: false,
+      checking: true,
+      detail: labels.checkingHint || "",
+      dotEl,
+      textEl,
+      labels,
+    });
+
+    try {
+      const res = await F.apiFetchWithTimeout(
+        `/api/status-bar${statusBarQuery("", {})}`,
+        {},
+        15000,
+      );
+      const data = await res.json().catch(() => ({}));
+      applyServiceState({
+        enabled: Boolean(data.gateway_enabled),
+        configured: Boolean(data.gateway_configured),
+        online: Boolean(data.gateway_online),
+        checking: false,
+        detail: data.gateway_reach_detail || "",
+        dotEl,
+        textEl,
+        labels,
+      });
+    } catch (err) {
+      applyServiceState({
+        enabled: true,
+        configured: true,
+        online: false,
+        checking: false,
+        detail: err?.message || "检测失败",
+        dotEl,
+        textEl,
+        labels,
+      });
+    } finally {
+      startupTestPending.gateway = false;
+      finishBootIfIdle();
+    }
+  }
+
   async function runStartupApiTests() {
     if (!F.resolveApiToken?.()) return;
     if (startupTestsStarted) return;
@@ -519,10 +656,12 @@
     const visionReady = Boolean(snap.vision_enabled && snap.vision_ready);
     const imageGenOn = Boolean(snap.image_gen_enabled);
     const imageGenReady = Boolean(snap.image_gen_enabled && snap.image_gen_ready);
+    const gatewayOn = snap.weixin_bridge_enabled !== false;
 
     if (apiReady) startupTestPending.api = true;
     if (visionOn && visionReady) startupTestPending.vision = true;
     if (imageGenOn && imageGenReady) startupTestPending.imageGen = true;
+    if (gatewayOn) startupTestPending.gateway = true;
 
     void refreshStatusBarMetaOnly();
 
@@ -559,7 +698,19 @@
       labels: resolveLabels(SERVICE_LABELS.imageGen),
     });
 
-    if (!startupTestPending.api && !startupTestPending.vision && !startupTestPending.imageGen) {
+    void runGatewayStartupTest({
+      enabled: gatewayOn,
+      dotEl: els.gatewayDot,
+      textEl: els.gatewayText,
+      labels: resolveLabels(SERVICE_LABELS.gateway),
+    });
+
+    if (
+      !startupTestPending.api
+      && !startupTestPending.vision
+      && !startupTestPending.imageGen
+      && !startupTestPending.gateway
+    ) {
       bootPhase = false;
     }
   }

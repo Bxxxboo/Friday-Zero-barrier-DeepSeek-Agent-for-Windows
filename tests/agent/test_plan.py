@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from friday.config import PLAN_ANCHOR_MARKER
 from friday.plan import (
     auto_complete_todos_from_assistant,
     auto_complete_todos_from_tool,
@@ -8,7 +9,9 @@ from friday.plan import (
     normalize_todos,
     plan_prompt_block,
     sync_todos_from_plan,
+    upsert_plan_anchor,
 )
+from friday.prefix_cache import is_plan_anchor_message
 from friday.sessions import ChatSession, create_session, get_session, save_session_fields
 
 
@@ -16,6 +19,20 @@ def test_normalize_todos():
     items = normalize_todos([{"text": "a", "done": True}, {"text": ""}, "bad"])
     assert len(items) == 1
     assert items[0]["text"] == "a"
+
+
+def test_upsert_plan_anchor_replaces_stale_anchor():
+    messages = [
+        {"role": "system", "content": "sys"},
+        {"role": "user", "content": f"{PLAN_ANCHOR_MARKER}\n旧计划"},
+        {"role": "user", "content": "hello"},
+    ]
+    out = upsert_plan_anchor(messages, "【当前任务计划】\n新步骤")
+    anchors = [m for m in out if is_plan_anchor_message(m)]
+    assert len(anchors) == 1
+    assert "新步骤" in anchors[0]["content"]
+    assert out[0]["content"] == "sys"
+    assert out[1] is anchors[0]
 
 
 def test_plan_prompt_block():

@@ -7,7 +7,9 @@ import time
 import uuid
 from typing import Any
 
+from friday.config import PLAN_ANCHOR_MARKER
 from friday.logging_config import get_logger
+from friday.prefix_cache import is_plan_anchor_message
 from friday.sessions import ChatSession, get_session, save_session_fields
 
 _log = get_logger("plan")
@@ -239,6 +241,34 @@ def auto_complete_todos_from_assistant(session_id: str, assistant_text: str) -> 
         return _score_todo_match(todo_text, haystack)
 
     return _mark_todos_done(session_id, matcher, min_score=0.5)
+
+
+def upsert_plan_anchor(
+    messages: list[dict[str, Any]],
+    plan_block: str,
+) -> list[dict[str, Any]]:
+    """刷新计划锚点消息：折叠时保留在摘要区，优先于可压缩正文。"""
+    filtered = [m for m in messages if not is_plan_anchor_message(m)]
+    block = (plan_block or "").strip()
+    if not block:
+        return filtered
+    anchor = {
+        "role": "user",
+        "content": f"{PLAN_ANCHOR_MARKER}\n{block}",
+    }
+    if not filtered:
+        return [anchor]
+    if filtered[0].get("role") == "system":
+        return [filtered[0], anchor, *filtered[1:]]
+    return [anchor, *filtered]
+
+
+def upsert_plan_anchor_for_session(
+    session_id: str,
+    messages: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    session = get_session(session_id)
+    return upsert_plan_anchor(messages, plan_prompt_block(session))
 
 
 def plan_prompt_block(session: ChatSession | None) -> str:

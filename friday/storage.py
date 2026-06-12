@@ -142,6 +142,9 @@ class UserSettings:
     artifact_trash_ttl_days: int = 7
     artifact_session_delete_grace_days: int = 7
     artifact_auto_gc_enabled: bool = True
+    context_smart_enabled: bool = True
+    goal_verifier_enabled: bool = True
+    dream_memory_enabled: bool = False
 
     @classmethod
     def from_dict(cls, data: dict) -> "UserSettings":

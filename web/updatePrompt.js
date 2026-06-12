@@ -96,6 +96,9 @@
     try {
       const res = await F.apiFetchWithTimeout("/api/updates/check", {}, 12000);
       const data = await res.json();
+      if (data.last_apply_failed && data.last_apply_hint) {
+        window.alert(data.last_apply_hint);
+      }
       if (!data.checked || !data.update_available) return;
       if (getDismissedVersion() === data.latest) return;
       showModal(data);

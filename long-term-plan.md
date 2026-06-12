@@ -1,7 +1,7 @@
 # 星期五 (Friday) 商业级成熟化 — 长期计划
 
 > 版本基准：v1.3.2（M1～M2 已发版；M4/M5 代码合入本版）；M2 人工验收已完成（2026-06-11）  
-> 更新日期：2026-06-11  
+> 更新日期：2026-06-11（M6.2 上下文/会话智能计划已写入）  
 > 目标：从「功能稳定的 Python 工具」升级为「用户感知的成熟商业桌面应用」
 
 ---
@@ -31,7 +31,8 @@
 | M3 信任与安全 | v1.4.x | 2/5 进行中 | **M3.1 采购 IV 证书**（阻塞签名）；M3.3/M3.4 代码已就绪 |
 | M4 可靠性与可观测 | v1.5.0 | ✅ 已完成 | — |
 | M5 产品体验抛光 | v1.6.0 | ✅ 已完成 | — |
-| M6 架构调研 | v2.0 | 未开始 | 不阻塞 M1～M5 |
+| M6 架构与智能 | v1.4～v1.6 | **28/28 M6.2 已完成** | 等你指令 bump 发 v1.4.x～v1.6（可分批发） |
+| M6.1 打包调研 | v2.0 | 未开始 | 可选，不阻塞 M6.2 |
 
 ---
 
@@ -44,7 +45,8 @@
 | **M3** | v1.3.x | 信任与安全（签名） | 5 | 4～6 周 |
 | **M4** | v1.5.0 | 可靠性与可观测 | 5 | 3～4 周 |
 | **M5** | v1.6.0 | 产品体验抛光 | 6 | 4～6 周 |
-| **M6** | v2.0 | 架构演进（调研） | 1 | 按需 |
+| **M6.2** | v1.4～v1.6 | 上下文与会话智能 | 28 | 6～10 周 |
+| **M6.1** | v2.0 | 打包方案调研（文档） | 1 | 按需 |
 
 ---
 
@@ -429,16 +431,70 @@ https://gitee.com/Bxxxboo/friday/releases/download/v{version}/Friday-Setup-{vers
 
 ---
 
-## M6 — 架构演进调研（v2.0，可选）
+## M6 — 架构与智能演进
 
-**不阻塞 M1～M5。** 产出文档即可，不写生产代码。
+**不阻塞 M3 签名。** M6.1 仅文档；**M6.2 为生产代码**，详细设计见 [`docs/context-session-plan.md`](docs/context-session-plan.md)。
 
-### M6.1 打包方案评估文档
+**已拍板：** 实现路径 A（渐进增强）+ SELECTIVE EXPANSION；纳入 Goal、会话 fork、FTS、Dream；Max 采样 defer。
+
+### M6.1 打包方案评估文档（v2.0，可选）
 
 - [ ] **工作量：** 1～2 天  
 - **内容：** PyInstaller onedir / onefile / Nuitka / Tauri 对比：体积、启动、构建、Agent Python 兼容性  
 - **涉及文件：** 新建 `docs/architecture-v2-options.md`  
 - **验证：** 文档含推荐结论与「v2.0 前不做什么」
+
+---
+
+## M6.2 — 上下文与会话智能（v1.4.0～v1.6.0）
+
+**用户可感知：** 长聊不傻、跨天接得上、能搜历史对话、工作区规矩记得住、复杂任务少早停。
+
+**参考：** [MiMo Code](https://github.com/XiaomiMiMo/MiMo-Code) 分层记忆 + checkpoint + rebuild。
+
+**依赖：** 无硬依赖 M3；建议 M6.2.5 前合入微信桌面同步修复。
+
+### 大计划 P0 — 可观测与压缩前移（v1.4.0）
+
+- [x] **M6.2.1** 上下文 token API（0.5d）— `brain.py`, `status_bar.py`, `api/schemas.py`  
+- [x] **M6.2.2** 状态栏上下文 UI（0.5d）— `statusbar.js`, `styles.css`, `i18n.js`  
+- [x] **M6.2.3** 压缩双触发策略（1d）— `config.py`, `brain.py`, `agent.py`  
+- [x] **M6.2.4** plan 块折叠优先级（0.5d）— `plan.py`, `agent.py`  
+- [x] **M6.2.5** Phase 0 回归（0.5d）— `tests/weixin/`, `tests/agent/test_prefix_cache.py`  
+
+### 大计划 P1 — Checkpoint Writer（v1.4.x）
+
+- [x] **M6.2.6** writer 模块骨架（1d）— 新建 `checkpoint_writer.py`  
+- [x] **M6.2.7** checkpoint.md 11 字段 schema（0.5d）  
+- [x] **M6.2.8** 触发 20/45/70% 增量（1d）— `brain.py`, `agent.py`  
+- [x] **M6.2.9** LLM 摘要 + deterministic fallback（0.5d）  
+- [x] **M6.2.10** notes.md append 通道（0.5d）  
+- [x] **M6.2.11** UI 工作记忆只读面板（1d）— `chat.js`, `server.py`  
+- [x] **M6.2.12** writer 单元测试（1d）— `tests/brain/test_checkpoint_writer.py`  
+
+### 大计划 P2 — Rebuild + Goal + Fork（v1.5.0）
+
+- [x] **M6.2.13** context_assembler 分层预算（1.5d）— 新建 `context_assembler.py`  
+- [x] **M6.2.14** rebuild 管线 85% 触发（1.5d）— `brain.py`, `agent.py`  
+- [x] **M6.2.15** tool 结果 prune（1d）— `context.py`, `sessions.py`  
+- [x] **M6.2.16** 微信统一 assembler（1d）— `weixin/bridge.py`  
+- [x] **M6.2.17** Goal 完成校验（1.5d）— 新建 `goal_verifier.py`  
+- [x] **M6.2.18** 会话 fork（1d）— `sessions.py`, `sessions.js`  
+- [x] **M6.2.19** rebuild 提示 UI（0.5d）  
+- [x] **M6.2.20** 长对话集成测试（1.5d）  
+
+### 大计划 P3 — MEMORY + FTS + Dream（v1.5.x～v1.6.0）
+
+- [x] **M6.2.21** 工作区 MEMORY.md + 晋升（1d）— `workspace_memory.py`  
+- [x] **M6.2.22** MEMORY 设置页审阅/编辑（1.5d）— `settings.js`  
+- [x] **M6.2.23** history.db + FTS5 schema（1d）— `history_index.py`  
+- [x] **M6.2.24** 消息双写索引同步（1d）  
+- [x] **M6.2.25** 历史搜索 API + UI（1.5d）  
+- [x] **M6.2.26** Dream 定期蒸馏（1.5d，默认关）— `dream_task.py`  
+- [x] **M6.2.27** ChatSession 扩展字段（0.5d）— `sessions.py`  
+- [x] **M6.2.28** 全量回归矩阵（1d）  
+
+**发版节奏：** v1.4.0（P0）→ v1.4.x（P1）→ v1.5.0（P2）→ v1.5.1～v1.6.0（P3）
 
 ---
 
@@ -462,6 +518,7 @@ https://gitee.com/Bxxxboo/friday/releases/download/v{version}/Friday-Setup-{vers
 3. **卸载入口**（M2.5）
 4. **诊断包** + 更新回滚（M4+M2.8）
 5. UI **全状态有规格**（M5）
+6. 长对话 **上下文智能**（M6.2）
 
 ## C. 明确不做
 
@@ -470,6 +527,7 @@ https://gitee.com/Bxxxboo/friday/releases/download/v{version}/Friday-Setup-{vers
 - 云端账号 / 订阅计费
 - 完全去掉 Python 运行时
 - 全量多语言（保留中英骨架即可）
+- Max 采样 / judge（M6.2 本期不做，见 TODOS）
 
 ## D. 应复用资产
 
@@ -479,6 +537,8 @@ https://gitee.com/Bxxxboo/friday/releases/download/v{version}/Friday-Setup-{vers
 | `scripts/version_info.py` | M1/M3 签名元数据 |
 | `friday/update_installer.py` | M2.7/M2.8/M3.4/M4.5 |
 | `friday/python_env.py` | M1.2 FridayAgent |
+| `friday/brain.py` + `prefix_cache.py` | M6.2 压缩/rebuild |
+| `friday/user_memory.py` + `plan.py` | M6.2 全局记忆与计划注入 |
 | Playwright E2E | 每大任务结束回归 |
 
 ## E. 版本里程碑
@@ -488,7 +548,11 @@ https://gitee.com/Bxxxboo/friday/releases/download/v{version}/Friday-Setup-{vers
 | **1.3.0** | M1 + M2 | Friday.exe / Setup 安装包 / 更新回滚 |
 | **1.3.2** | M3.3/4 + M4 + M5 | SHA256 校验、诊断包、设置重组、无障碍、测试版并行 |
 | **1.3.x** | M3.1/2/5 | IV 签名、遥测 opt-in（待证书/产品决策） |
-| **2.0** | M6 | 视调研决定 |
+| **1.4.0** | M6.2 P0 | 上下文仪表、压缩前移 |
+| **1.4.x** | M6.2 P1 | checkpoint 工作记忆 |
+| **1.5.0** | M6.2 P2 | rebuild、Goal、会话 fork |
+| **1.5.x～1.6.0** | M6.2 P3 | MEMORY、历史 FTS、Dream |
+| **2.0** | M6.1 | 打包调研，视结论决定 |
 
 ## F. 设计评审记分卡
 
@@ -499,6 +563,7 @@ https://gitee.com/Bxxxboo/friday/releases/download/v{version}/Friday-Setup-{vers
 | 用户旅程 | 6/10 | 8/10 | M2 + M4.2 |
 | 进程/分发 | 3/10 | 9/10 | M1 + M2 + M3 |
 | a11y | 4/10 | 7/10 | M5.6 |
+| 上下文智能 | 3/10 | 8/10 | M6.2 |
 
 ## G. 已拍板决策
 
@@ -509,8 +574,9 @@ https://gitee.com/Bxxxboo/friday/releases/download/v{version}/Friday-Setup-{vers
 | 安装器 | Inno Setup（M2） |
 | 代码签名 | **IV 证书**（个人开发者，M3 前采购；有公司主体时改用 OV） |
 | 官网 | **阶段 1：Vercel 页面 + Gitee Release 下载**（0 元 MVP）；**后续可升级** 阿里云 OSS/CDN 加速下载 + 自有域名/SEO |
-| 架构迁移 | v2.0 再评估（M6） |
+| 架构迁移 | v2.0 再评估（M6.1） |
+| 上下文/会话 | **A 渐进 + M6.2**（Goal/fork/FTS/Dream 纳入；Max defer） |
 
 ---
 
-*计划结构：6 个大任务（M1～M6），共 31 个子任务。随实现进度更新勾选与「当前进度」表。*
+*计划结构：M1～M5 + M6.1 调研 + **M6.2 共 28 子任务**。详表见 `docs/context-session-plan.md`。*

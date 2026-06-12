@@ -35,6 +35,10 @@ class ChatSession:
     title_pinned: bool = False
     plan_markdown: str = ""
     todos: list[dict[str, Any]] = field(default_factory=list)
+    checkpoint_version: int = 0
+    context_cycle: int = 0
+    workspace_id: str = ""
+    source: str = "desktop"
 
     def to_summary(self) -> SessionSummary:
         return SessionSummary(
@@ -185,6 +189,10 @@ def _parse_session_data(data: dict[str, Any]) -> ChatSession | None:
             title_pinned=bool(data.get("title_pinned", False)),
             plan_markdown=str(data.get("plan_markdown", "") or ""),
             todos=list(data.get("todos") or []) if isinstance(data.get("todos"), list) else [],
+            checkpoint_version=int(data.get("checkpoint_version", 0) or 0),
+            context_cycle=int(data.get("context_cycle", 0) or 0),
+            workspace_id=str(data.get("workspace_id", "") or ""),
+            source=str(data.get("source", "desktop") or "desktop"),
         )
     except (KeyError, TypeError, ValueError):
         return None
@@ -217,6 +225,10 @@ def _save_session(session: ChatSession) -> None:
         "title_pinned": session.title_pinned,
         "plan_markdown": session.plan_markdown,
         "todos": session.todos,
+        "checkpoint_version": session.checkpoint_version,
+        "context_cycle": session.context_cycle,
+        "workspace_id": session.workspace_id,
+        "source": session.source,
         "display_messages": display,
         "agent_messages": _compress_agent_messages(session.agent_messages),
     }
@@ -242,7 +254,23 @@ def migrate_session_files() -> int:
     return migrated
 
 
-def create_session(title: str = "新对话", *, title_pinned: bool = False, activate: bool = True) -> ChatSession:
+def _workspace_id_for_session() -> str:
+    from friday.storage import load_settings, resolved_workspace
+
+    ws = resolved_workspace(load_settings())
+    import hashlib
+
+    digest = hashlib.sha256(str(ws).encode("utf-8")).hexdigest()[:12]
+    return digest
+
+
+def create_session(
+    title: str = "新对话",
+    *,
+    title_pinned: bool = False,
+    activate: bool = True,
+    source: str = "desktop",
+) -> ChatSession:
     session_id = uuid.uuid4().hex[:12]
     now = time.time()
     session = ChatSession(
@@ -253,6 +281,8 @@ def create_session(title: str = "新对话", *, title_pinned: bool = False, acti
         agent_messages=[],
         display_messages=[],
         title_pinned=title_pinned,
+        workspace_id=_workspace_id_for_session(),
+        source=source or "desktop",
     )
     _save_session(session)
     index = _read_index()
@@ -321,6 +351,18 @@ def save_agent_state(
         session.title = title[:32] + ("…" if len(title) > 32 else "")
 
     _save_session(session)
+    try:
+        from friday.checkpoint_writer import maybe_schedule_checkpoint
+
+        maybe_schedule_checkpoint(session_id, session.agent_messages)
+    except Exception:
+        _log.debug("checkpoint 调度跳过 | id=%s", session_id, exc_info=True)
+    try:
+        from friday.history_index import index_session_messages
+
+        index_session_messages(session_id, session.agent_messages, session.display_messages)
+    except Exception:
+        _log.debug("history 索引跳过 | id=%s", session_id, exc_info=True)
     try:
         from friday.artifacts import sync_session_references
 
@@ -461,6 +503,65 @@ def session_display_messages(session: ChatSession) -> list[dict[str, Any]]:
     if session.display_messages:
         return session.display_messages
     return []
+
+
+def fork_session(
+    session_id: str,
+    *,
+    title_suffix: str = " (分支)",
+    activate: bool = True,
+) -> ChatSession | None:
+    """从 checkpoint + plan 种子新建会话。"""
+    source = get_session(session_id)
+    if source is None:
+        return None
+
+    title = (source.title or "新对话").strip()
+    if title_suffix and not title.endswith(title_suffix.strip()):
+        title = f"{title}{title_suffix}"[:64]
+
+    child = create_session(title=title, title_pinned=True, activate=activate, source="fork")
+    child.plan_markdown = source.plan_markdown
+    child.todos = list(source.todos)
+    child.checkpoint_version = 0
+    child.workspace_id = source.workspace_id or _workspace_id_for_session()
+
+    seed: list[dict[str, Any]] = []
+    from friday.checkpoint_writer import checkpoint_path, format_checkpoint_for_prompt
+
+    ck_prompt = format_checkpoint_for_prompt(session_id)
+    if ck_prompt:
+        seed.append({"role": "user", "content": ck_prompt})
+    elif checkpoint_path(session_id).exists():
+        seed.append({
+            "role": "user",
+            "content": checkpoint_path(session_id).read_text(encoding="utf-8")[:4000],
+        })
+
+    from friday.plan import plan_prompt_block
+
+    plan_block = plan_prompt_block(source)
+    if plan_block:
+        seed.append({"role": "user", "content": plan_block})
+
+    if seed:
+        child.agent_messages = seed
+        child.display_messages = _slim_display_messages(seed)
+
+    _save_session(child)
+
+    src_sidecar = get_appdata_dir() / "sessions" / session_id
+    dst_sidecar = get_appdata_dir() / "sessions" / child.id
+    if src_sidecar.is_dir():
+        import shutil
+
+        dst_sidecar.mkdir(parents=True, exist_ok=True)
+        for name in ("checkpoint.md", "checkpoint_meta.json"):
+            src = src_sidecar / name
+            if src.exists():
+                shutil.copy2(src, dst_sidecar / name)
+
+    return child
 
 
 def ensure_default_session() -> ChatSession:

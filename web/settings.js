@@ -236,6 +236,8 @@
     fillSecurityForm(data);
     applyAutostartUi(data);
     fillArtifactForm(data);
+    fillContextSmartForm(data);
+    void loadWorkspaceMemoryEditor();
     applyUiSettings(data);
     F.updateApiStatus(data.api_ready);
     F.bootSettingsSnapshot = data;
@@ -1156,6 +1158,88 @@
     void saveArtifactPolicy();
   });
 
+  function fillContextSmartForm(data) {
+    const smart = document.getElementById("contextSmartEnabled");
+    const goal = document.getElementById("goalVerifierEnabled");
+    const dream = document.getElementById("dreamMemoryEnabled");
+    if (smart) smart.checked = data.context_smart_enabled !== false;
+    if (goal) goal.checked = data.goal_verifier_enabled !== false;
+    if (dream) dream.checked = !!data.dream_memory_enabled;
+  }
+
+  async function loadWorkspaceMemoryEditor() {
+    const editor = document.getElementById("workspaceMemoryEditor");
+    if (!editor) return;
+    try {
+      const res = await F.apiFetch("/api/workspace-memory");
+      editor.value = res.content || "";
+    } catch {
+      editor.value = "";
+    }
+  }
+
+  async function saveWorkspaceMemory() {
+    const editor = document.getElementById("workspaceMemoryEditor");
+    const resultEl = document.getElementById("workspaceMemoryResult");
+    if (!editor) return;
+    if (resultEl) resultEl.textContent = "保存中…";
+    try {
+      const res = await F.apiFetch("/api/workspace-memory", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: editor.value }),
+      });
+      if (!res.ok) throw new Error("save failed");
+      if (resultEl) {
+        resultEl.className = "settings-result ok";
+        resultEl.textContent = "工作区记忆已保存。";
+      }
+    } catch {
+      if (resultEl) {
+        resultEl.className = "settings-result error";
+        resultEl.textContent = "保存失败。";
+      }
+    }
+  }
+
+  async function saveContextSmartSettings() {
+    const resultEl = document.getElementById("contextSmartResult");
+    const payload = {
+      context_smart_enabled: document.getElementById("contextSmartEnabled")?.checked !== false,
+      goal_verifier_enabled: document.getElementById("goalVerifierEnabled")?.checked !== false,
+      dream_memory_enabled: document.getElementById("dreamMemoryEnabled")?.checked === true,
+    };
+    try {
+      const res = await F.apiFetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      if (resultEl) {
+        resultEl.className = "settings-result success";
+        resultEl.textContent = "上下文智能设置已保存。";
+      }
+    } catch {
+      if (resultEl) {
+        resultEl.className = "settings-result error";
+        resultEl.textContent = "保存失败。";
+      }
+    }
+  }
+
+  document.getElementById("workspaceMemoryReloadBtn")?.addEventListener("click", () => {
+    void loadWorkspaceMemoryEditor();
+  });
+  document.getElementById("workspaceMemorySaveBtn")?.addEventListener("click", () => {
+    void saveWorkspaceMemory();
+  });
+  ["contextSmartEnabled", "goalVerifierEnabled", "dreamMemoryEnabled"].forEach((id) => {
+    document.getElementById(id)?.addEventListener("change", () => {
+      void saveContextSmartSettings();
+    });
+  });
+
   async function exportDiagnosticBundle() {
     const btn = document.getElementById("diagnosticsExportBtn");
     const resultEl = document.getElementById("logsResult");
@@ -1589,6 +1673,10 @@
       const res = await F.apiFetch("/api/updates/check");
       const data = await res.json();
       lastUpdateInfo = data;
+      if (data.last_apply_failed && data.last_apply_hint && resultEl) {
+        resultEl.className = "settings-result error";
+        resultEl.textContent = data.last_apply_hint;
+      }
       if (!data.checked) {
         if (resultEl) resultEl.textContent = "无法读取更新源配置";
         downloadLink?.classList.add("hidden");

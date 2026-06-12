@@ -333,38 +333,106 @@ def _extract_release(zip_path: Path, dest_dir: Path) -> Path:
     return app_dir
 
 
+def last_apply_result_path() -> Path:
+    return _updates_dir() / "last-apply-result.json"
+
+
+def read_last_apply_result() -> dict[str, object]:
+    path = last_apply_result_path()
+    if not path.is_file():
+        return {}
+    try:
+        import json
+
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def clear_last_apply_result() -> None:
+    last_apply_result_path().unlink(missing_ok=True)
+
+
 def _write_updater_script() -> Path:
     script = r"""param(
     [Parameter(Mandatory = $true)][int]$ParentPid,
     [Parameter(Mandatory = $true)][string]$TargetDir,
     [Parameter(Mandatory = $true)][string]$SourceDir,
     [Parameter(Mandatory = $true)][string]$ExePath,
-    [Parameter(Mandatory = $true)][string]$CleanupDir
+    [Parameter(Mandatory = $true)][string]$CleanupDir,
+    [Parameter(Mandatory = $true)][string]$Version
 )
 
 $ErrorActionPreference = "SilentlyContinue"
+$ResultFile = Join-Path $env:APPDATA "Friday\updates\last-apply-result.json"
+
+function Write-ApplyResult([bool]$Ok, [int]$ExitCode, [string]$Detail) {
+    $dir = Split-Path -Parent $ResultFile
+    if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    $payload = @{
+        ok = $Ok
+        exit_code = $ExitCode
+        detail = $Detail
+        version = $Version
+        target_dir = $TargetDir
+        finished_at = (Get-Date).ToUniversalTime().ToString("o")
+    }
+    $payload | ConvertTo-Json -Compress | Set-Content -LiteralPath $ResultFile -Encoding UTF8
+}
+
+function Stop-FridayInstallProcesses([string]$InstallDir) {
+    if (-not $InstallDir) { return }
+    $root = ($InstallDir -replace '\\+$', '').ToLowerInvariant()
+    foreach ($name in @("Friday", "星期五")) {
+        Get-Process -Name $name -ErrorAction SilentlyContinue | ForEach-Object {
+            try {
+                $path = $_.Path
+                if ($path -and $path.ToLowerInvariant().StartsWith($root)) {
+                    Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+                }
+            } catch {}
+        }
+    }
+}
+
+Write-ApplyResult $false 0 "updater_started"
+
 $deadline = (Get-Date).AddMinutes(3)
 while ((Get-Process -Id $ParentPid -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) {
     Start-Sleep -Milliseconds 400
 }
 if (Get-Process -Id $ParentPid -ErrorAction SilentlyContinue) {
+    & taskkill.exe /PID $ParentPid /T /F 2>$null | Out-Null
     Stop-Process -Id $ParentPid -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 2
 }
+Stop-FridayInstallProcesses $TargetDir
 Start-Sleep -Seconds 1
 
-if (-not (Test-Path -LiteralPath $SourceDir)) { exit 2 }
+if (-not (Test-Path -LiteralPath $SourceDir)) {
+    Write-ApplyResult $false 2 "source_missing"
+    exit 2
+}
 if (-not (Test-Path -LiteralPath $TargetDir)) { New-Item -ItemType Directory -Path $TargetDir -Force | Out-Null }
 
 $BackupDir = Join-Path (Split-Path -Parent $TargetDir) "Friday.bak"
-$robolog = Join-Path $env:TEMP ("friday-update-" + [guid]::NewGuid().ToString("n") + ".log")
+$robolog = Join-Path $env:APPDATA ("Friday\updates\robocopy-" + [guid]::NewGuid().ToString("n") + ".log")
+New-Item -ItemType Directory -Force -Path (Split-Path $robolog) | Out-Null
 & robocopy $SourceDir $TargetDir /E /COPY:DAT /R:2 /W:2 /NFL /NDL /NJH /NJS /NP /LOG:$robolog | Out-Null
 $code = $LASTEXITCODE
 if ($code -ge 8) {
+    Stop-FridayInstallProcesses $TargetDir
+    Start-Sleep -Seconds 1
+    & robocopy $SourceDir $TargetDir /E /COPY:DAT /R:2 /W:2 /NFL /NDL /NJH /NJS /NP /LOG:$robolog | Out-Null
+    $code = $LASTEXITCODE
+}
+if ($code -ge 8) {
     if (Test-Path -LiteralPath $BackupDir) {
-        $restoreLog = Join-Path $env:TEMP ("friday-restore-" + [guid]::NewGuid().ToString("n") + ".log")
+        $restoreLog = Join-Path $env:APPDATA ("Friday\updates\restore-" + [guid]::NewGuid().ToString("n") + ".log")
         & robocopy $BackupDir $TargetDir /E /COPY:DAT /R:2 /W:2 /NFL /NDL /NJH /NJS /NP /LOG:$restoreLog | Out-Null
     }
+    Write-ApplyResult $false $code ("robocopy_failed log=" + $robolog)
     exit $code
 }
 
@@ -375,6 +443,8 @@ if (Test-Path -LiteralPath $ExePath) {
     $workDir = Split-Path -Parent $ExePath
     Start-Process -FilePath $ExePath -ArgumentList "--install-launch" -WorkingDirectory $workDir
 }
+
+Write-ApplyResult $true 0 "ok"
 
 if ($CleanupDir -and (Test-Path -LiteralPath $CleanupDir)) {
     Start-Sleep -Seconds 2
@@ -387,7 +457,38 @@ exit 0
     return path
 
 
-def _launch_updater(*, target_dir: Path, source_dir: Path, exe_path: Path, cleanup_dir: Path) -> None:
+def format_last_apply_failure(*, current: str) -> str:
+    data = read_last_apply_result()
+    if data.get("ok") is not False:
+        return ""
+    target = str(data.get("version") or "").strip()
+    if target:
+        from friday.updates import _is_newer
+
+        if not _is_newer(current, target):
+            clear_last_apply_result()
+            return ""
+    detail = str(data.get("detail") or "")
+    if "robocopy" in detail:
+        return (
+            f"上次自动更新 v{target or '新版本'} 未能完成（安装目录文件被占用或复制失败）。"
+            "请先完全退出星期五（任务管理器确认无 Friday.exe）后重试，"
+            f"或从 Gitee Releases 手动安装 Friday-Setup-{target}.exe。"
+        )
+    return (
+        f"上次自动更新 v{target or '新版本'} 未完成。"
+        "请重试一键更新，或手动下载安装包覆盖安装。"
+    )
+
+
+def _launch_updater(
+    *,
+    target_dir: Path,
+    source_dir: Path,
+    exe_path: Path,
+    cleanup_dir: Path,
+    version: str,
+) -> None:
     script = _write_updater_script()
     args = [
         "powershell",
@@ -408,6 +509,8 @@ def _launch_updater(*, target_dir: Path, source_dir: Path, exe_path: Path, clean
         str(exe_path),
         "-CleanupDir",
         str(cleanup_dir),
+        "-Version",
+        version,
     ]
     creationflags = subprocess.CREATE_NO_WINDOW
     if sys.platform == "win32":
@@ -463,6 +566,7 @@ def _apply_worker(*, download_url: str, version: str, expected_sha256: str = "")
             source_dir=new_app_dir,
             exe_path=restart_exe,
             cleanup_dir=work_dir,
+            version=version,
         )
 
         _report("restarting", 100, "更新已开始，正在重启星期五…", "请勿手动关闭 PowerShell 窗口")

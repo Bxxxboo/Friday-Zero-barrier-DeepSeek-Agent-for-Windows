@@ -11,6 +11,7 @@ from friday.config import (
     COMPACT_SUMMARY_MARKER,
     CONTEXT_COMPACT_BATCH,
     CONTEXT_COMPACT_RATIO,
+    CONTEXT_COMPACT_TOOL_ROUNDS,
     CONTEXT_MIN_KEEP_RECENT,
 )
 from friday.logging_config import get_logger
@@ -310,11 +311,21 @@ class DeepSeekBrain:
         budget = int(self._max_context * _SAFETY_RATIO)
         threshold = int(budget * CONTEXT_COMPACT_RATIO)
 
+        from friday.prefix_cache import count_tool_rounds_since_last_compact
+
         token_count = self.count_tokens(messages) + tool_tokens
-        if token_count <= threshold:
+        tool_rounds = count_tool_rounds_since_last_compact(messages)
+        over_ratio = token_count > threshold
+        over_tool_rounds = tool_rounds >= CONTEXT_COMPACT_TOOL_ROUNDS
+        if not over_ratio and not over_tool_rounds:
             return messages
 
-        return self._compact_append_only(messages, budget=budget, tool_tokens=tool_tokens)
+        return self._compact_append_only(
+            messages,
+            budget=budget,
+            tool_tokens=tool_tokens,
+            force_once=over_tool_rounds and not over_ratio,
+        )
 
     def _summarize_message_batch(self, batch: list[dict[str, Any]]) -> str:
         from friday.prefix_cache import deterministic_summary, format_messages_for_summary
@@ -356,6 +367,7 @@ class DeepSeekBrain:
         *,
         budget: int,
         tool_tokens: int,
+        force_once: bool = False,
     ) -> list[dict[str, Any]]:
         """折叠最老的可压缩消息为一条摘要（追加式，不原地改写）。"""
         from friday.prefix_cache import split_message_regions
@@ -363,10 +375,11 @@ class DeepSeekBrain:
         working = list(messages)
         min_keep = CONTEXT_MIN_KEEP_RECENT
         max_rounds = 8
+        forced_pending = force_once
 
         for round_idx in range(max_rounds):
             token_count = self.count_tokens(working) + tool_tokens
-            if token_count <= budget:
+            if token_count <= budget and not forced_pending:
                 break
             if len(working) <= 1 + min_keep:
                 break
@@ -406,6 +419,7 @@ class DeepSeekBrain:
                 "content": f"{COMPACT_SUMMARY_MARKER}\n{summary_body}",
             }
             working = [system, *summaries, summary_msg, *remaining, *tail]
+            forced_pending = False
             _log.info(
                 "上下文 append-only 折叠 | round=%d folded=%d kept=%d tokens≈%d",
                 round_idx + 1,
@@ -587,3 +601,41 @@ class DeepSeekBrain:
             return False, format_api_error(
                 exc, context="api_test", service=llm_service_label(self.settings)
             )
+
+
+def compute_context_meter(
+    settings: UserSettings,
+    messages: list[dict[str, Any]] | None = None,
+    *,
+    tool_definitions: list[dict[str, Any]] | None = None,
+) -> dict[str, int | float]:
+    """估算下一轮 API 请求的上下文占用（消息 + 工具定义）。"""
+    from friday.tools.registry import get_frozen_tool_definitions
+
+    tools = tool_definitions if tool_definitions is not None else get_frozen_tool_definitions(settings)
+    max_context = resolve_max_context(settings)
+    budget = int(max_context * _SAFETY_RATIO)
+    threshold = int(budget * CONTEXT_COMPACT_RATIO)
+
+    msg_list = list(messages or [])
+    if not msg_list:
+        return {
+            "context_tokens": 0,
+            "max_context": max_context,
+            "context_budget": budget,
+            "compact_threshold": threshold,
+            "budget_ratio": 0.0,
+        }
+
+    brain = DeepSeekBrain(settings)
+    message_tokens = brain.count_tokens(msg_list)
+    tool_tokens = brain._estimate_tools_tokens(tools) if tools else 200
+    context_tokens = int(message_tokens + tool_tokens)
+    ratio = float(context_tokens / budget) if budget > 0 else 0.0
+    return {
+        "context_tokens": context_tokens,
+        "max_context": max_context,
+        "context_budget": budget,
+        "compact_threshold": threshold,
+        "budget_ratio": round(ratio, 4),
+    }

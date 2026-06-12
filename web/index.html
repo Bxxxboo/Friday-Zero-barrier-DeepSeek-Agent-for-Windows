@@ -115,7 +115,7 @@
       transform: none;
     }
   </style>
-  <link rel="stylesheet" href="/static/styles.css?v=91" />
+  <link rel="stylesheet" href="/static/styles.css?v=92" />
 </head>
 <body>
   <div class="app-boot-overlay" id="appBootOverlay" aria-live="polite">
@@ -338,12 +338,16 @@
         <span class="status-dot" id="statusImageGenDot" data-state="checking" aria-hidden="true"></span>
         <span class="status-text" id="statusImageGenText" data-i18n="status.imageGen.checking">生图 检测中</span>
         <span class="status-divider" aria-hidden="true"></span>
-        <span class="status-dot" id="statusGatewayDot" data-state="disabled" aria-hidden="true"></span>
-        <span class="status-text" id="statusGatewayText">微信 关</span>
+        <span class="status-dot" id="statusGatewayDot" data-state="checking" aria-hidden="true"></span>
+        <span class="status-text" id="statusGatewayText" data-i18n="status.gateway.checking">微信 检测中</span>
       </div>
       <div class="status-group" data-i18n-title="status.tokenUsage" title="当前会话 Token 用量">
         <svg class="status-icon" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm0 1.2a5.8 5.8 0 1 1 0 11.6A5.8 5.8 0 0 1 8 2.2Zm-.3 2.5h.6v3.4l2.8 1.6-.3.5-3.1-1.8V4.7Z"/></svg>
         <span class="status-text"><span data-i18n="status.tokens">tokens</span> <strong id="statusTokens">0</strong></span>
+      </div>
+      <div class="status-group status-context" id="statusContextGroup" data-i18n-title="status.contextUsage" title="当前会话上下文占用">
+        <span class="status-dot status-dot-sm" id="statusContextDot" data-state="disabled" aria-hidden="true"></span>
+        <span class="status-text"><span data-i18n="status.context">上下文</span> <strong id="statusContextPct">—</strong></span>
       </div>
       <div class="status-group" data-i18n-title="status.taskCount" title="定时任务数量">
         <svg class="status-icon" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M3 2h10v1H3V2Zm0 3h10v1H3V5Zm0 3h6v1H3V8Zm0 3h4v1H3v-1Zm5 2h8v1H8v-1Z"/></svg>
@@ -922,6 +926,32 @@
               </div>
               <div class="settings-result" id="artifactStorageResult"></div>
             </div>
+            <div class="settings-group workspace-memory-group">
+              <h5>工作区记忆 (MEMORY.md)</h5>
+              <p class="settings-hint">跨会话保留的项目规矩与稳定事实。检查点重复出现的事实会自动晋升到此。</p>
+              <textarea id="workspaceMemoryEditor" rows="8" spellcheck="false" placeholder="（空）"></textarea>
+              <div class="settings-actions">
+                <button type="button" class="ghost-btn" id="workspaceMemoryReloadBtn">重新加载</button>
+                <button type="button" class="primary-btn" id="workspaceMemorySaveBtn">保存记忆</button>
+              </div>
+              <div class="settings-result" id="workspaceMemoryResult"></div>
+            </div>
+            <div class="settings-group context-smart-group">
+              <h5>上下文智能</h5>
+              <label class="settings-check">
+                <input type="checkbox" id="contextSmartEnabled" checked />
+                <span>启用检查点 / rebuild / 分层注入（关闭后恢复旧压缩行为）</span>
+              </label>
+              <label class="settings-check">
+                <input type="checkbox" id="goalVerifierEnabled" checked />
+                <span>复杂任务完成校验（拦截过早收尾）</span>
+              </label>
+              <label class="settings-check">
+                <input type="checkbox" id="dreamMemoryEnabled" />
+                <span>每周 Dream 蒸馏（合并去重 MEMORY，默认关闭）</span>
+              </label>
+            </div>
+            <div class="settings-result" id="contextSmartResult"></div>
             <div class="settings-result" id="logsResult"></div>
           </section>
           <section class="settings-section" id="panel-about">
@@ -1236,6 +1266,18 @@
     </div>
   </div>
 
+  <div class="modal hidden" id="stopConfirmModal" role="dialog" aria-modal="true" aria-labelledby="stopConfirmTitle">
+    <div class="modal-card stop-confirm-card">
+      <h3 id="stopConfirmTitle" data-i18n="composer.stopConfirm.title">是否暂停当前执行任务？</h3>
+      <p class="modal-summary" data-i18n="composer.stopConfirm.summary">暂停后将停止生成。</p>
+      <div class="modal-actions stop-confirm-actions">
+        <button type="button" class="ghost-btn" id="stopConfirmModify" data-i18n="composer.stopModify">修改</button>
+        <button type="button" class="ghost-btn" id="stopConfirmAbort" data-i18n="composer.stopAbort">取消</button>
+        <button type="button" class="primary-btn" id="stopConfirmContinue" data-i18n="composer.stopContinue">继续</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal hidden" id="yoloUnlockModal" aria-modal="true" role="dialog" aria-labelledby="yoloUnlockTitle">
     <div class="modal-card yolo-unlock-card">
       <h3 id="yoloUnlockTitle" data-i18n="yolo.title">开启 Yolo 模式</h3>
@@ -1256,7 +1298,7 @@
 
   <script defer src="/static/vendor/marked.min.js"></script>
   <script defer src="/static/vendor/purify.min.js"></script>
-  <script defer src="/static/i18n.js?v=10"></script>
+  <script defer src="/static/i18n.js?v=11"></script>
   <script defer src="/static/utils.js?v=68"></script>
   <script defer src="/static/errorHints.js?v=2"></script>
   <script defer src="/static/providers.js?v=14"></script>
@@ -1272,12 +1314,12 @@
   <script defer src="/static/history.js?v=51"></script>
   <script defer src="/static/schedules.js?v=51"></script>
   <script defer src="/static/mode.js?v=54"></script>
-  <script defer src="/static/statusbar.js?v=56"></script>
+  <script defer src="/static/statusbar.js?v=57"></script>
   <script defer src="/static/plan.js?v=9"></script>
   <script defer src="/static/vendor/gsap.min.js"></script>
   <script defer src="/static/motion.js?v=1"></script>
-  <script defer src="/static/chat.js?v=66"></script>
-  <script defer src="/static/app.js?v=63"></script>
+  <script defer src="/static/chat.js?v=69"></script>
+  <script defer src="/static/app.js?v=64"></script>
 </body>
 </html>
 

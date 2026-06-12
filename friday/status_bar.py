@@ -10,11 +10,18 @@ from typing import Any
 from friday.storage import load_settings, resolved_workspace
 
 
+SessionContextLoader = Callable[
+    [str],
+    tuple[list[dict[str, Any]] | None, list[dict[str, Any]] | None],
+]
+
+
 async def build_status_bar_snapshot(
     *,
     session_id: str = "",
     cached_only: bool = False,
     session_usage: Callable[[str], dict[str, Any]] | None = None,
+    session_context: SessionContextLoader | None = None,
 ) -> dict[str, object]:
     from friday.image_gen import image_gen_ready
     from friday.python_env import python_ready_light
@@ -129,6 +136,19 @@ async def build_status_bar_snapshot(
         _resolve_gateway(),
     )
 
+    from friday.brain import compute_context_meter
+
+    sid = session_id.strip()
+    ctx_messages: list[dict[str, Any]] | None = None
+    ctx_tools: list[dict[str, Any]] | None = None
+    if sid and session_context is not None:
+        ctx_messages, ctx_tools = session_context(sid)
+    context_meter = compute_context_meter(
+        cfg,
+        ctx_messages,
+        tool_definitions=ctx_tools,
+    )
+
     return {
         "api_online": llm_online,
         "api_configured": llm_configured,
@@ -155,6 +175,11 @@ async def build_status_bar_snapshot(
         "tokens_prompt": prompt_tokens,
         "tokens_completion": completion_tokens,
         "tokens_total": prompt_tokens + completion_tokens,
+        "context_tokens": context_meter["context_tokens"],
+        "max_context": context_meter["max_context"],
+        "context_budget": context_meter["context_budget"],
+        "compact_threshold": context_meter["compact_threshold"],
+        "budget_ratio": context_meter["budget_ratio"],
         "tasks": len(list_schedules()),
         "interaction_mode": getattr(cfg, "interaction_mode", "agent"),
         "python_ready": python_ready_light(workspace),

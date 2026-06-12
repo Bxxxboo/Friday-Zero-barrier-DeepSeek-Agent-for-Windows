@@ -51,6 +51,7 @@ class FridayAgent:
         self.session_completion_tokens = 0
         self._frozen_prefix: Any = None
         self._loop_hint_injected = False
+        self._context_rebuilt = False
         self._pin_prefix(force=True)
 
     def _pin_prefix(self, *, force: bool = False) -> bool:
@@ -203,12 +204,45 @@ class FridayAgent:
             _log.warning("已修复会话中损坏的 tool 消息顺序")
             self.messages = sanitized
 
+        session_id = str((self.operation_meta or {}).get("session_id", ""))
+        if session_id:
+            from friday.plan import upsert_plan_anchor_for_session
+
+            self.messages = upsert_plan_anchor_for_session(session_id, self.messages)
+
+            from friday.context_assembler import rebuild_messages
+
+            rebuilt, did_rebuild = (self.messages, False)
+            if not self._context_rebuilt:
+                rebuilt, did_rebuild = rebuild_messages(
+                    session_id,
+                    self.messages,
+                    settings=self.settings,
+                )
+            if did_rebuild:
+                self._context_rebuilt = True
+                self.messages = rebuilt
+                self._emit(on_event, "context_rebuild", {"session_id": session_id})
+                try:
+                    from friday.sessions import get_session, save_session_fields
+
+                    session = get_session(session_id)
+                    if session:
+                        save_session_fields(session_id, context_cycle=session.context_cycle + 1)
+                except Exception:
+                    _log.debug("context_cycle 更新失败", exc_info=True)
+
         prepared = self.brain.prepare_messages(
             self.messages,
             tool_definitions=self._frozen_prefix.tool_definitions if tools else None,
         )
         if prepared is not self.messages and prepared != self.messages:
             self.messages = prepared
+
+        if session_id:
+            from friday.checkpoint_writer import maybe_schedule_checkpoint
+
+            maybe_schedule_checkpoint(session_id, self.messages, settings=self.settings)
 
         tool_defs = self._frozen_prefix.tool_definitions if tools else None
 
@@ -624,6 +658,15 @@ class FridayAgent:
             "tool_call_id": call_id,
             "content": compressed,
         })
+        session_id = str((self.operation_meta or {}).get("session_id", ""))
+        if session_id and len(result) > 120:
+            try:
+                from friday.checkpoint_writer import append_session_note
+
+                snippet = result[:400].replace("\n", " ")
+                append_session_note(session_id, f"工具 {name}: {snippet}")
+            except Exception:
+                _log.debug("append_session_note 跳过", exc_info=True)
 
     def _parse_tool_call(self, call: dict[str, Any]) -> tuple[str, dict[str, Any], str]:
         function = call.get("function") or {}
@@ -707,6 +750,7 @@ class FridayAgent:
     def run(self, user_text: str, on_event: EventCallback | None = None) -> str:
         self._cancel_event.clear()
         self._loop_hint_injected = False
+        self._context_rebuilt = False
         self.brain.reset_turn_api_calls()
         from friday.agent_context import current_session_id
 
@@ -770,6 +814,17 @@ class FridayAgent:
                 reply = (finish.content or "").strip()
                 if not reply:
                     return self._wrap_up_reply(on_event, reason="empty_reply")
+                if session_id:
+                    from friday.goal_verifier import verify_goal_complete
+
+                    verdict = verify_goal_complete(session_id, reply, settings=self.settings, brain=self.brain)
+                    if verdict.get("block"):
+                        hint = str(verdict.get("reason") or "任务可能尚未完成")
+                        self.messages.append({
+                            "role": "user",
+                            "content": f"【系统提示】{hint} 请继续执行未完成项，不要过早收尾。",
+                        })
+                        continue
                 if session_id:
                     from friday.plan import auto_complete_todos_from_assistant
 

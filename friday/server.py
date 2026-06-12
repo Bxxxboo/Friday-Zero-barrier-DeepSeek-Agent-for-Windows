@@ -109,6 +109,7 @@ from friday.api.schemas import (
     UpdateApplyPayload,
     UpdateApplyResponse,
     UpdateCheckResponse,
+    WorkspaceMemoryPayload,
     YoloUnlockPayload,
 )
 from friday.storage import (
@@ -143,6 +144,22 @@ async def _lifespan(app: FastAPI):
         ensure_builtin_rules()
         migrate_session_files()
         ensure_default_session()
+        try:
+            from friday.history_index import ensure_schema
+
+            ensure_schema()
+        except Exception:
+            from friday.logging_config import get_logger
+
+            get_logger("history_index").exception("历史索引初始化失败")
+        try:
+            from friday.dream_task import run_dream_if_due
+
+            run_dream_if_due()
+        except Exception:
+            from friday.logging_config import get_logger
+
+            get_logger("dream_task").exception("Dream 任务启动失败")
         try:
             from friday.artifacts import ensure_friday_dirs, run_gc
 
@@ -468,6 +485,57 @@ async def sync_session_plan_api(session_id: str) -> dict[str, Any]:
     if not result.get("ok"):
         raise HTTPException(status_code=404, detail="会话不存在")
     return result
+
+
+@app.get("/api/sessions/{session_id}/checkpoint")
+async def get_session_checkpoint_api(session_id: str) -> dict[str, Any]:
+    if not session_exists(session_id):
+        raise HTTPException(status_code=404, detail="会话不存在")
+    from friday.checkpoint_writer import read_checkpoint
+
+    return read_checkpoint(session_id)
+
+
+@app.post("/api/sessions/{session_id}/fork", response_model=SessionDetailResponse)
+async def fork_session_api(session_id: str) -> SessionDetailResponse:
+    from friday.sessions import fork_session
+
+    if not session_exists(session_id):
+        raise HTTPException(status_code=404, detail="会话不存在")
+    child = fork_session(session_id)
+    if child is None:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    set_active_session(child.id)
+    _agent_cache.pop(child.id, None)
+    return _session_to_detail(child)
+
+
+@app.get("/api/history/search")
+async def search_history_api(q: str = "", limit: int = 30) -> dict[str, Any]:
+    from friday.history_index import search_messages
+
+    hits = search_messages(q, limit=min(max(limit, 1), 100))
+    return {"ok": True, "query": q, "hits": hits}
+
+
+@app.get("/api/workspace-memory")
+async def get_workspace_memory_api() -> dict[str, Any]:
+    from friday.storage import load_settings, resolved_workspace
+    from friday.workspace_memory import load_memory
+
+    workspace = resolved_workspace(load_settings())
+    content = load_memory(workspace)
+    return {"ok": True, "workspace": workspace, "content": content}
+
+
+@app.put("/api/workspace-memory")
+async def put_workspace_memory_api(payload: WorkspaceMemoryPayload) -> dict[str, Any]:
+    from friday.storage import load_settings, resolved_workspace
+    from friday.workspace_memory import save_memory
+
+    workspace = resolved_workspace(load_settings())
+    save_memory(workspace, payload.content)
+    return {"ok": True, "message": "工作区记忆已保存"}
 
 
 @app.get("/api/mcp/servers")
@@ -933,6 +1001,9 @@ def _to_response(cfg: UserSettings) -> SettingsResponse:
         artifact_trash_ttl_days=int(getattr(cfg, "artifact_trash_ttl_days", 7) or 7),
         artifact_session_delete_grace_days=int(getattr(cfg, "artifact_session_delete_grace_days", 7) or 7),
         artifact_auto_gc_enabled=bool(getattr(cfg, "artifact_auto_gc_enabled", True)),
+        context_smart_enabled=bool(getattr(cfg, "context_smart_enabled", True)),
+        goal_verifier_enabled=bool(getattr(cfg, "goal_verifier_enabled", True)),
+        dream_memory_enabled=bool(getattr(cfg, "dream_memory_enabled", False)),
     )
 
 
@@ -1734,6 +1805,9 @@ async def api_check_updates() -> UpdateCheckResponse:
 
     info = await asyncio.to_thread(check_for_updates)
     auto_ok, auto_hint = can_auto_update()
+    from friday.update_installer import format_last_apply_failure
+
+    last_hint = format_last_apply_failure(current=info.current)
     return UpdateCheckResponse(
         current=info.current,
         latest=info.latest,
@@ -1747,6 +1821,8 @@ async def api_check_updates() -> UpdateCheckResponse:
         source_kind=info.source_kind,
         can_auto_update=auto_ok,
         auto_update_hint=auto_hint,
+        last_apply_failed=bool(last_hint),
+        last_apply_hint=last_hint,
     )
 
 
@@ -1833,10 +1909,24 @@ async def get_status_bar(session_id: str = "", cached_only: bool = False) -> dic
             return _agent_cache[sid].usage_snapshot()
         return {}
 
+    def _session_context(sid: str) -> tuple[list[dict[str, object]] | None, list[dict[str, object]] | None]:
+        if not sid:
+            return None, None
+        agent = _agent_cache.get(sid)
+        if agent is not None:
+            frozen = getattr(agent, "_frozen_prefix", None)
+            tools = list(frozen.tool_definitions) if frozen is not None else None
+            return list(agent.messages), tools
+        session = get_session(sid)
+        if session is not None:
+            return list(session.agent_messages), None
+        return None, None
+
     return await build_status_bar_snapshot(
         session_id=session_id,
         cached_only=cached_only,
         session_usage=_usage,
+        session_context=_session_context,
     )
 
 

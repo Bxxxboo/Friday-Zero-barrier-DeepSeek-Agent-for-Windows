@@ -233,29 +233,62 @@ def _format_weixin_agent_error(exc: BaseException) -> str:
     return "执行出错，请稍后重试，或在星期五桌面版查看日志。"
 
 
-def _save_weixin_agent_state(session_id: str, agent: Any, *, user_message: str) -> None:
+def _notify_weixin_session_saved(session_id: str) -> None:
+    try:
+        from friday.ws_broadcast import notify_session_updated
+
+        notify_session_updated(session_id, source="weixin")
+    except Exception:
+        pass
+
+
+def _persist_weixin_messages(
+    session_id: str,
+    messages: list[dict[str, Any]],
+    *,
+    user_message: str,
+) -> str | None:
     try:
         saved = save_agent_state(
             session_id,
-            agent.messages,
+            messages,
             user_text=user_message,
             activate=False,
         )
+        return saved.id
     except ValueError:
         _log.warning("微信会话不存在，尝试重建后保存 | session=%s", session_id)
         from friday.sessions import create_session
 
         saved = create_session("我的微信", title_pinned=True, activate=False)
-        save_agent_state(saved.id, agent.messages, user_text=user_message, activate=False)
+        save_agent_state(saved.id, messages, user_text=user_message, activate=False)
+        return saved.id
     except Exception:
         _log.exception("微信会话保存失败 | session=%s", session_id)
-        return
-    try:
-        from friday.ws_broadcast import notify_session_updated
+        return None
 
-        notify_session_updated(saved.id, source="weixin")
-    except Exception:
-        pass
+
+def _record_weixin_turn(session_id: str, *, user_text: str, assistant_text: str) -> None:
+    """写入一轮微信对话并通知桌面端（问候快路径等不经 Agent 的场景）。"""
+    body = (assistant_text or "").strip()
+    if not body:
+        return
+    user_message = f"[来自微信 remote]\n{user_text.strip()}"
+    from friday.sessions import get_session
+
+    session = get_session(session_id)
+    messages: list[dict[str, Any]] = list(session.agent_messages) if session else []
+    messages.append({"role": "user", "content": user_message})
+    messages.append({"role": "assistant", "content": body})
+    saved_id = _persist_weixin_messages(session_id, messages, user_message=user_message)
+    if saved_id:
+        _notify_weixin_session_saved(saved_id)
+
+
+def _save_weixin_agent_state(session_id: str, agent: Any, *, user_message: str) -> None:
+    saved_id = _persist_weixin_messages(session_id, agent.messages, user_message=user_message)
+    if saved_id:
+        _notify_weixin_session_saved(saved_id)
 
 
 def _make_weixin_approval_bridge(
@@ -394,6 +427,12 @@ def _run_agent(
     }
 
     user_message = f"[来自微信 remote]\n{text.strip()}"
+    if session:
+        from friday.plan import plan_prompt_block
+
+        plan_block = plan_prompt_block(session)
+        if plan_block:
+            user_message = f"{plan_block}\n{user_message}"
     try:
         result = agent.run(user_message)
     except Exception as exc:  # noqa: BLE001
@@ -530,6 +569,7 @@ def handle_inbound(req: InboundRequest) -> InboundResponse:
         greeting = _maybe_greeting_reply(text)
         if greeting is not None and settings.api_ready:
             _log.info("微信问候快路径 | peer=%s session=%s", peer_id, session_id)
+            _record_weixin_turn(session_id, user_text=text, assistant_text=greeting)
             return _deliver_weixin_reply(
                 account,
                 peer_id=peer_id,

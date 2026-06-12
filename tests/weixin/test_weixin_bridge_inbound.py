@@ -62,6 +62,10 @@ def test_handle_inbound_returns_agent_reply_via_openclaw(tmp_appdata, monkeypatc
 
 
 def test_handle_inbound_greeting_fast_path_skips_agent(tmp_appdata, monkeypatch):
+    from friday.sessions import create_session, get_session
+
+    session = create_session("我的微信", title_pinned=True, activate=False)
+    notified: list[str] = []
     monkeypatch.setattr(
         "friday.weixin.bridge.load_settings",
         lambda: UserSettings(
@@ -70,7 +74,10 @@ def test_handle_inbound_greeting_fast_path_skips_agent(tmp_appdata, monkeypatch)
         ),
     )
     monkeypatch.setattr("friday.weixin.bridge.resolve_account", lambda _aid: _account())
-    monkeypatch.setattr("friday.weixin.bridge.resolve_session_id", lambda *_a, **_k: "wx-session-1")
+    monkeypatch.setattr(
+        "friday.weixin.bridge.resolve_session_id",
+        lambda *_a, **_k: session.id,
+    )
 
     def fail_agent(**_kwargs):
         raise AssertionError("_run_agent should not be called for greetings")
@@ -81,6 +88,10 @@ def test_handle_inbound_greeting_fast_path_skips_agent(tmp_appdata, monkeypatch)
         "friday.weixin.bridge.send_peer_text",
         lambda *_a, text, **_k: sent.append(text),
     )
+    monkeypatch.setattr(
+        "friday.weixin.bridge._notify_weixin_session_saved",
+        lambda sid: notified.append(sid),
+    )
 
     result = handle_inbound(
         InboundRequest(text="你好", sender_id="peer-123", account_id="bot-1"),
@@ -90,6 +101,12 @@ def test_handle_inbound_greeting_fast_path_skips_agent(tmp_appdata, monkeypatch)
     assert result.reply == ""
     assert len(sent) == 1
     assert "星期五" in sent[0]
+    updated = get_session(session.id)
+    assert updated is not None
+    assert len(updated.display_messages) == 2
+    assert "来自微信" in updated.display_messages[0]["content"]
+    assert "星期五" in updated.display_messages[1]["content"]
+    assert notified == [session.id]
 
 
 def test_handle_inbound_falls_back_to_openclaw_when_ilink_fails(tmp_appdata, monkeypatch):

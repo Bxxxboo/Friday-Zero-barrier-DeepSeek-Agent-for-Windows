@@ -56,7 +56,24 @@ def _is_user_facing(text: str) -> bool:
     return bool(re.search(r"[\u4e00-\u9fff]", raw[:48]))
 
 
+def _is_balance_error(text: str, lower: str) -> bool:
+    return any(
+        token in lower
+        for token in (
+            "insufficient_balance",
+            "insufficient balance",
+            "insufficient account balance",
+            "accountoverdue",
+            "余额不足",
+            "余额不够",
+            "欠费",
+        )
+    )
+
+
 def _remote_api_auth_failure(text: str, lower: str) -> bool:
+    if _is_balance_error(text, lower):
+        return False
     if text == "401":
         return True
     if any(k in lower for k in ("401", "403")):
@@ -153,6 +170,14 @@ def classify_error(raw: Any = "", *, context: str = "") -> ErrorHint:
             "auth_401",
             "本地认证已过期",
             "已尝试自动恢复；若仍失败，请完全退出星期五后重新打开",
+        )
+
+    if _is_balance_error(text, lower):
+        detail = "生图账户余额不足" if ctx == "image_gen" or "生图" in text else "API 账户余额不足"
+        return ErrorHint(
+            "api_balance",
+            detail,
+            "请在中转站控制台充值，或更换有余额的 API Key；主地址与备用地址可能余额不同",
         )
 
     if _remote_api_auth_failure(text, lower):
@@ -327,6 +352,17 @@ def build_test_response(
         return {"ok": True, "message": message, "code": "ok", "hint": ""}
 
     text = str(message or "").strip()
+    if text.startswith("所有生图地址均不可用"):
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        hint_line = lines[-1] if lines and _looks_like_hint(lines[-1]) else ""
+        body = "\n".join(lines[:-1] if hint_line else lines)
+        return {
+            "ok": False,
+            "message": body,
+            "hint": hint_line,
+            "code": "image_gen_endpoints",
+        }
+
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     if len(lines) >= 2 and _looks_like_hint(lines[-1]):
         head = lines[0]

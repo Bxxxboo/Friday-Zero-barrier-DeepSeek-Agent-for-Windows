@@ -65,3 +65,13 @@ def test_move_existing_file_requires_approval():
     safety = analyze_python_code(code)
     assert safety.blocked is False
     assert safety.always_require_approval is True
+
+
+def test_blocks_windows_c_os_delete_in_python():
+    code = r"""
+import os
+os.remove(r"C:\Windows\Temp\friday_test.txt")
+"""
+    safety = analyze_python_code(code)
+    assert safety.blocked is True
+    assert "绝对禁止" in safety.block_reason

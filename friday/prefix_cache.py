@@ -7,7 +7,7 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from friday.config import COMPACT_SUMMARY_MARKER
+from friday.config import COMPACT_SUMMARY_MARKER, PLAN_ANCHOR_MARKER
 from friday.logging_config import get_logger
 from friday.storage import UserSettings, resolved_workspace
 
@@ -81,6 +81,30 @@ def is_compact_summary_message(msg: dict[str, Any]) -> bool:
     return content.startswith(COMPACT_SUMMARY_MARKER)
 
 
+def is_plan_anchor_message(msg: dict[str, Any]) -> bool:
+    if msg.get("role") != "user":
+        return False
+    content = str(msg.get("content", ""))
+    return content.startswith(PLAN_ANCHOR_MARKER)
+
+
+def is_protected_context_message(msg: dict[str, Any]) -> bool:
+    return is_compact_summary_message(msg) or is_plan_anchor_message(msg)
+
+
+def count_tool_rounds_since_last_compact(messages: list[dict[str, Any]]) -> int:
+    """统计最近一次自动摘要之后已完成的工具调用轮次。"""
+    start = 0
+    for idx, msg in enumerate(messages):
+        if is_compact_summary_message(msg):
+            start = idx + 1
+    count = 0
+    for msg in messages[start:]:
+        if msg.get("role") == "assistant" and msg.get("tool_calls"):
+            count += 1
+    return count
+
+
 def split_message_regions(
     messages: list[dict[str, Any]],
     *,
@@ -99,7 +123,7 @@ def split_message_regions(
     summaries: list[dict[str, Any]] = []
     compactable: list[dict[str, Any]] = []
     for msg in body:
-        if is_compact_summary_message(msg):
+        if is_protected_context_message(msg):
             summaries.append(msg)
         else:
             compactable.append(msg)

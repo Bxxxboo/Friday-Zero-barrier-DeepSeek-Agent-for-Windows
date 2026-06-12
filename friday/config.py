@@ -19,7 +19,40 @@ API_MAX_RETRIES = 2
 CONTEXT_COMPACT_RATIO = 0.80  # 达到上下文预算 80% 时触发折叠
 CONTEXT_MIN_KEEP_RECENT = 8  # 折叠时保留最近 N 条（不含 system）
 CONTEXT_COMPACT_BATCH = 10  # 每次折叠的消息条数
+CONTEXT_COMPACT_TOOL_ROUNDS = 15  # 自上次摘要以来工具轮次达 N 时也触发折叠
 COMPACT_SUMMARY_MARKER = "[前文摘要 · 自动压缩]"
+PLAN_ANCHOR_MARKER = "[任务计划 · 会话锚点]"
+
+# Checkpoint writer（M6.2 P1）
+CHECKPOINT_TRIGGER_RATIOS = (0.20, 0.45, 0.70)  # token 预算比例触发档位
+CONTEXT_REBUILD_RATIO = 0.85  # rebuild 触发（P2）
+CHECKPOINT_MARKER = "[工作记忆 · 会话检查点]"
+CHECKPOINT_FIELD_KEYS = (
+    "goal_context",
+    "current_state",
+    "key_paths",
+    "completed",
+    "pending",
+    "decisions",
+    "user_prefs",
+    "errors_avoid",
+    "tools_summary",
+    "todos_snapshot",
+    "resume_hint",
+)
+CHECKPOINT_FIELD_LABELS = {
+    "goal_context": "目标与背景",
+    "current_state": "当前状态",
+    "key_paths": "关键路径",
+    "completed": "已完成",
+    "pending": "未完成",
+    "decisions": "重要决策",
+    "user_prefs": "用户偏好",
+    "errors_avoid": "错误与规避",
+    "tools_summary": "工具与操作摘要",
+    "todos_snapshot": "待办快照",
+    "resume_hint": "续聊提示",
+}
 
 # 工具执行超时（秒）
 TOOL_TIMEOUT_READ = 30
@@ -62,7 +95,14 @@ __all__ = [
     "CONTEXT_COMPACT_RATIO",
     "CONTEXT_MIN_KEEP_RECENT",
     "CONTEXT_COMPACT_BATCH",
+    "CONTEXT_COMPACT_TOOL_ROUNDS",
     "COMPACT_SUMMARY_MARKER",
+    "PLAN_ANCHOR_MARKER",
+    "CHECKPOINT_TRIGGER_RATIOS",
+    "CONTEXT_REBUILD_RATIO",
+    "CHECKPOINT_MARKER",
+    "CHECKPOINT_FIELD_KEYS",
+    "CHECKPOINT_FIELD_LABELS",
     "TOOL_TIMEOUT_READ",
     "TOOL_TIMEOUT_VISION",
     "TOOL_TIMEOUT_IMAGE_GEN",

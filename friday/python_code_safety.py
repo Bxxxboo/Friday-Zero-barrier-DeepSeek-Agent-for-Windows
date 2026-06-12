@@ -6,7 +6,23 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from friday.os_path_guard import OS_DELETE_BLOCK_REASON
 from friday.paths import get_appdata_dir
+
+_WINDOWS_C_OS_CODE_MARKERS: tuple[str, ...] = (
+    "c:/windows",
+    "c:\\windows",
+    "c:/program files (x86)",
+    "c:\\program files (x86)",
+    "c:/program files",
+    "c:\\program files",
+    "c:/programdata",
+    "c:\\programdata",
+    "c:/boot",
+    "c:\\boot",
+    "c:/recovery",
+    "c:\\recovery",
+)
 
 
 @dataclass(frozen=True)
@@ -102,6 +118,10 @@ def analyze_python_code(code: str) -> PythonCodeSafety:
                 "请改用专用文件工具，或请用户在设置/日志界面手动处理。"
             ),
         )
+
+    norm = _normalize(text)
+    if (deletes or overwrites) and any(marker in norm for marker in _WINDOWS_C_OS_CODE_MARKERS):
+        return PythonCodeSafety(blocked=True, block_reason=OS_DELETE_BLOCK_REASON)
 
     force_approval = deletes + [w for w in overwrites if w not in deletes]
     if force_approval:

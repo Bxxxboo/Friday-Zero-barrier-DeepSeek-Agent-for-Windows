@@ -396,12 +396,26 @@ def masked_image_gen_key(settings: UserSettings) -> str:
 
 
 def default_base_url(settings: UserSettings) -> str:
-    custom = settings.image_gen_base_url.strip()
+    """生图请求 Base URL。仅当生图地址留空时，才继承大模型自定义中转。"""
+    custom = settings.image_gen_base_url.strip().rstrip("/")
+    llm_base = (settings.base_url or "").strip().rstrip("/")
+    factory_llm = UserSettings.base_url.strip().rstrip("/")
+    provider = (settings.image_gen_provider or "").strip() or "openai_compat"
+
+    def _inherit_llm_base() -> str | None:
+        if provider != "openai_compat" or not llm_base or llm_base == factory_llm:
+            return None
+        return llm_base
+
     if custom:
-        return custom.rstrip("/")
+        return custom
+
     from friday.model_providers import default_image_gen_base_url
 
-    return default_image_gen_base_url(settings.image_gen_provider or "openai_compat")
+    inherited = _inherit_llm_base()
+    if inherited:
+        return inherited
+    return default_image_gen_base_url(provider).rstrip("/")
 
 
 def _parse_fallback_urls(settings: UserSettings) -> list[str]:
@@ -486,6 +500,7 @@ def _call_images_api(
     max_retries: int | None = None,
     test_quality_low: bool = False,
 ) -> bytes:
+    failures: list[tuple[str, str]] = []
     last_exc: Exception | None = None
     read_timeout = float(per_url_timeout if per_url_timeout is not None else IMAGE_GEN_HTTP_TIMEOUT)
     for base in base_urls:
@@ -522,9 +537,10 @@ def _call_images_api(
             raise ValueError("API 响应缺少 b64_json 或 url")
         except Exception as exc:  # noqa: BLE001
             last_exc = exc
+            failures.append((base, str(exc)))
             _log.warning("生图 API 失败 | base=%s err=%s", base, exc)
             continue
-    msg = str(last_exc) if last_exc else "所有端点均失败"
+    msg = _format_image_gen_failures(failures) if failures else "所有端点均失败"
     raise RuntimeError(msg) from last_exc
 
 
@@ -666,6 +682,9 @@ def generate_image(
             register_generated_image(out_path)
         except Exception:
             _log.exception("登记生图文件失败")
+        from friday.api_connect import record_service_status
+
+        record_service_status("image_gen", settings, True, "对话生图成功")
         return {
             "ok": True,
             "path": str(out_path).replace("\\", "/"),
@@ -875,6 +894,131 @@ def _humanize_image_gen_size_error(body: str, *, settings: UserSettings | None =
     )
 
 
+def _short_image_gen_host(base_url: str) -> str:
+    from urllib.parse import urlparse
+
+    host = urlparse((base_url or "").strip()).netloc
+    return host or (base_url or "").strip().rstrip("/")
+
+
+def _parse_openai_client_error(text: str) -> tuple[int | None, str]:
+    raw = (text or "").strip()
+    match = re.search(r"Error code:\s*(\d+)", raw, re.IGNORECASE)
+    code = int(match.group(1)) if match else None
+    body = raw.split(" - ", 1)[1] if " - " in raw else raw
+    detail = _extract_api_error_message(body) or raw
+    return code, detail
+
+
+def _is_no_available_accounts_error(text: str) -> bool:
+    lower = (text or "").lower()
+    return "no available compatible accounts" in lower or "无可用" in lower and "通道" in lower
+
+
+def _humanize_image_gen_endpoint_failure(
+    base_url: str,
+    error_text: str,
+    *,
+    brief: bool = False,
+) -> str:
+    code, detail = _parse_openai_client_error(error_text)
+    lower = f"{detail} {error_text}".lower()
+    host = _short_image_gen_host(base_url)
+
+    if _is_insufficient_balance_error(lower):
+        return "账户余额不足" if brief else f"生图中转账户余额不足（{host}），请充值或更换地址"
+    if _is_no_available_accounts_error(lower) or (code == 503 and "compatible" in lower):
+        return "暂无可用通道(503)" if brief else (
+            f"中转站 {host} 暂无可用通道（HTTP 503），请稍后重试、换模型或联系中转站"
+        )
+    if code == 503:
+        return "服务暂不可用(503)" if brief else f"中转站 {host} 暂不可用（HTTP 503），请稍后重试"
+    if code == 401 or (code == 403 and "invalid_api_key" in lower):
+        return "Key 对此中转无效" if brief else (
+            f"API Key 对 {host} 无效（HTTP {code or 401}）；不同中转站的 Key 通常不通用"
+        )
+    if code in {401, 403}:
+        return f"未授权({code})" if brief else f"中转站 {host} 拒绝访问（HTTP {code}）"
+    if code == 404 or _is_html_api_error(lower):
+        return "接口不存在(404)" if brief else f"中转站 {host} 无生图接口（HTTP 404）"
+    if code and code >= 500:
+        snippet = detail[:48] if detail else f"HTTP {code}"
+        return f"{snippet}({code})" if brief else f"中转站 {host} 异常：{snippet}"
+    snippet = (detail or error_text).split("\n")[0][:120]
+    return snippet if brief else f"中转站 {host}：{snippet}"
+
+
+def _format_image_gen_failures(failures: list[tuple[str, str]]) -> str:
+    cleaned = [(base.strip(), err.strip()) for base, err in failures if base.strip() and err.strip()]
+    if not cleaned:
+        return "所有生图地址均不可用，请检查 Key、Base URL 与模型名"
+    if len(cleaned) == 1:
+        return _humanize_image_gen_endpoint_failure(cleaned[0][0], cleaned[0][1])
+    lines = ["所有生图地址均不可用："]
+    for base, err in cleaned:
+        lines.append(f"· {_short_image_gen_host(base)}：{_humanize_image_gen_endpoint_failure(base, err, brief=True)}")
+    lines.append("请为每个中转填写匹配的 Key，或只保留支持 gpt-image-2 且有余额的主地址")
+    return "\n".join(lines)
+
+
+def _is_html_api_error(text: str) -> bool:
+    lower = (text or "").lower()
+    return "<html" in lower or "</html>" in lower
+
+
+def _humanize_image_gen_client_error(message: str, *, settings: UserSettings | None = None) -> str:
+    text = (message or "").strip()
+    if not text:
+        return "生图 API 不可用，请检查 Key、Base URL 与模型名"
+    if text.startswith("所有生图地址均不可用"):
+        return text
+    lower = text.lower()
+    bases = _candidate_base_urls(settings) if settings else []
+    host_note = f"（已尝试：{'、'.join(bases[:3])}）" if bases else ""
+
+    if _is_no_available_accounts_error(lower) or (re.search(r"Error code:\s*503", text, re.I) and "compatible" in lower):
+        return (
+            f"生图中转暂无可用通道（HTTP 503）{host_note}。"
+            "请稍后重试、更换模型，或联系中转站确认 gpt-image-2 是否开通"
+        )
+
+    if _is_insufficient_balance_error(lower):
+        return (
+            f"生图中转账户余额不足{host_note}。"
+            "请在中转站充值，或将主地址换为有余额的备用 URL"
+        )
+    if _is_html_api_error(lower):
+        if "404" in lower or "not found" in lower:
+            return (
+                f"生图接口地址不存在（HTTP 404）{host_note}。"
+                "请确认 Base URL 支持 OpenAI 兼容的 /images/generations；"
+                "MiMo 等大模型官方地址通常不支持生图，勿与大模型 Base URL 混用"
+            )
+        return f"生图 API 返回了 HTML 错误页而非 JSON{host_note}，请检查 Base URL 是否正确"
+    if "404" in lower and "not found" in lower:
+        return (
+            f"生图接口地址不存在（HTTP 404）{host_note}。"
+            "请确认 Base URL 形如 https://你的中转站/v1"
+        )
+    return text.split("\n")[0][:240]
+
+
+def _is_insufficient_balance_error(text: str) -> bool:
+    lower = (text or "").lower()
+    return any(
+        token in lower
+        for token in (
+            "insufficient_balance",
+            "insufficient balance",
+            "insufficient account balance",
+            "accountoverdue",
+            "余额不足",
+            "余额不够",
+            "欠费",
+        )
+    )
+
+
 def _humanize_image_gen_http_error(
     code: int,
     body: str,
@@ -887,21 +1031,50 @@ def _humanize_image_gen_http_error(
     lower = f"{detail} {body}".lower()
     host = base_url.lower()
     size_hint = _humanize_image_gen_size_error(body, settings=settings)
+    host_note = f"（请求地址：{base_url.rstrip('/')}）" if base_url else ""
+
+    if _is_insufficient_balance_error(lower):
+        return (
+            f"生图中转账户余额不足{host_note}。"
+            "请在中转站充值，或将主地址换为有余额的备用 URL"
+        )
+
+    if _is_no_available_accounts_error(lower):
+        return (
+            f"生图中转暂无可用通道（HTTP 503）{host_note}。"
+            "请稍后重试、更换模型，或联系中转站确认是否支持当前模型"
+        )
+
+    if code == 503:
+        return f"生图中转暂不可用（HTTP 503）{host_note}，请稍后重试或更换地址"
 
     if code in {401, 403}:
         if "volces" in host:
-            return "火山方舟 API Key 无效或已过期（请使用 ark- 开头的 Key）"
-        return "生图 API Key 无效或已过期，请检查 Key 是否与当前服务商匹配"
+            return f"火山方舟 API Key 无效或已过期（请使用 ark- 开头的 Key）{host_note}"
+        if "invalid_api_key" in lower or "invalid api key" in lower:
+            return (
+                f"API Key 对当前中转无效（HTTP {code}）{host_note}。"
+                "不同中转站的 Key 通常不通用，请确认 Key 与 Base URL 来自同一服务商"
+            )
+        return (
+            f"生图 API Key 无效或已过期，请检查 Key 是否与当前服务商匹配{host_note}。"
+            "若与大模型共用中转，请确认生图 Base URL 与大模型一致"
+        )
 
-    if code == 404:
+    if code == 404 or (_is_html_api_error(lower) and "404" in lower):
         if model.startswith("ep-"):
             return (
                 f"推理接入点「{model}」不存在或当前 Key 无权访问。"
                 "请在火山方舟控制台确认 ep ID 是否正确、是否已开通图像生成"
             )
+        if "volces" in host or "ark.cn-beijing" in host:
+            return (
+                "生图接口地址不正确（HTTP 404）。"
+                "请确认 Base URL 形如 https://ark.cn-beijing.volces.com/api/v3"
+            )
         return (
-            "生图接口地址不正确（HTTP 404）。"
-            "请确认 Base URL 形如 https://ark.cn-beijing.volces.com/api/v3"
+            f"生图接口地址不存在（HTTP 404）{host_note}。"
+            "请确认 Base URL 支持 OpenAI 兼容生图，且通常需带 /v1 后缀"
         )
 
     if code in {400, 422}:
@@ -1318,7 +1491,7 @@ def _strict_test_via_images_client(
     try:
         data = _call_images_api(
             api_key=settings.image_gen_api_key.strip(),
-            base_urls=_candidate_base_urls(settings)[:1],
+            base_urls=_candidate_base_urls(settings),
             model=model,
             prompt="Friday connectivity test",
             size=size,
@@ -1328,6 +1501,10 @@ def _strict_test_via_images_client(
             test_quality_low=True,
         )
     except Exception as exc:  # noqa: BLE001
+        raw = str(exc).strip()
+        friendly = _humanize_image_gen_client_error(raw, settings=settings)
+        if friendly != raw:
+            return False, friendly
         return False, format_api_error(exc, context="api_test", service="生图 API").split("\n")[0][:240]
     if len(data) < 64:
         return False, "生图 API 返回的图片数据过小"

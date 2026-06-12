@@ -27,6 +27,11 @@ def test_status_bar_payload(tmp_appdata):
     assert data["model"] == "deepseek-chat"
     assert isinstance(data["tokens_total"], int)
     assert isinstance(data["tasks"], int)
+    assert data["context_tokens"] == 0
+    assert data["max_context"] > 0
+    assert data["context_budget"] > 0
+    assert data["compact_threshold"] > 0
+    assert data["budget_ratio"] == 0.0
 
 
 def test_status_bar_cached_only_returns_cached_without_probe(tmp_appdata, monkeypatch):
@@ -183,5 +188,38 @@ def test_status_bar_session_tokens(tmp_appdata):
         assert data["tokens_prompt"] == 120
         assert data["tokens_completion"] == 30
         assert data["tokens_total"] == 150
+        assert data["context_tokens"] > 0
+        assert data["max_context"] == 64_000
+        assert data["context_budget"] == int(64_000 * 0.85)
+        assert 0.0 < data["budget_ratio"] < 1.0
     finally:
         _agent_cache.pop(session_id, None)
+
+
+def test_status_bar_session_context_from_persisted_session(tmp_appdata):
+    from friday.sessions import create_session, save_session_fields
+
+    ws = tmp_appdata / "ws-ctx"
+    ws.mkdir()
+    settings = UserSettings(
+        api_key="sk-fake-key-for-testing1234567890",
+        model="deepseek-chat",
+        workspace=str(ws),
+    )
+    save_settings(settings)
+    from friday.api_connect import record_service_status
+
+    record_service_status("llm", settings, True, "API 可用")
+
+    session = create_session(title="上下文测试", activate=False)
+    save_session_fields(
+        session.id,
+        agent_messages=[
+            {"role": "system", "content": "你是星期五"},
+            {"role": "user", "content": "读取 E:\\Friday\\README.md 并总结"},
+        ],
+    )
+
+    data = asyncio.run(get_status_bar(session_id=session.id))
+    assert data["context_tokens"] > 0
+    assert data["budget_ratio"] > 0.0

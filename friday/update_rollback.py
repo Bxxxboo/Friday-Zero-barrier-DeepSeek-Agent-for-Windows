@@ -89,6 +89,9 @@ def confirm_startup_success() -> None:
     global _startup_confirmed
     _startup_confirmed = True
     clear_pending_update()
+    from friday.update_installer import clear_last_apply_result
+
+    clear_last_apply_result()
 
 
 def has_pending_update() -> bool:

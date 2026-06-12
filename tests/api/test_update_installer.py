@@ -12,6 +12,10 @@ from friday.update_installer import (
     _format_update_error,
     _validate_download_url,
     can_auto_update,
+    clear_last_apply_result,
+    format_last_apply_failure,
+    last_apply_result_path,
+    read_last_apply_result,
     register_quit_handler,
     request_app_quit,
     resolve_update_digest,
@@ -138,6 +142,29 @@ def test_request_app_quit_exits_even_when_handler_succeeds(monkeypatch):
     request_app_quit(delay=0.01)
     time.sleep(0.2)
     assert exits == [0]
+
+
+def test_format_last_apply_failure_after_robocopy(tmp_path, monkeypatch):
+    monkeypatch.setattr("friday.update_installer._updates_dir", lambda: tmp_path)
+    path = last_apply_result_path()
+    path.write_text(
+        '{"ok": false, "version": "1.3.5", "detail": "robocopy_failed log=x"}',
+        encoding="utf-8",
+    )
+    hint = format_last_apply_failure(current="1.3.2")
+    assert "1.3.5" in hint
+    assert "robocopy" in hint or "占用" in hint or "失败" in hint
+    clear_last_apply_result()
+    assert read_last_apply_result() == {}
+
+
+def test_format_last_apply_failure_clears_when_already_updated(tmp_path, monkeypatch):
+    monkeypatch.setattr("friday.update_installer._updates_dir", lambda: tmp_path)
+    last_apply_result_path().write_text(
+        '{"ok": false, "version": "1.3.2", "detail": "robocopy_failed"}',
+        encoding="utf-8",
+    )
+    assert format_last_apply_failure(current="1.3.5") == ""
 
 
 def test_request_app_quit_force_skips_handler(monkeypatch):

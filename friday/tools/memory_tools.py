@@ -59,3 +59,31 @@ def list_user_memory() -> str:
         return "暂无长期记忆。用户表达稳定偏好时可用 remember_user_fact 记录。"
     lines = [f"{idx}. {item['text']}" for idx, item in enumerate(facts, 1)]
     return "\n".join(lines)
+
+
+@register_tool(
+    name="append_work_note",
+    description="向当前会话工作笔记追加一条要点（会并入下次检查点）。用于记录路径、决策、中间结论。",
+    parameters={
+        "type": "object",
+        "properties": {
+            "note": {
+                "type": "string",
+                "description": "要记录的要点，简短明确",
+            },
+        },
+        "required": ["note"],
+    },
+)
+def append_work_note(note: str) -> str:
+    from friday.agent_context import current_session_id
+    from friday.checkpoint_writer import append_session_note
+
+    session_id = str(current_session_id.get() or "").strip()
+    if not session_id:
+        return "当前无活动会话，无法写入工作笔记。"
+    cleaned = str(note or "").strip()
+    if not cleaned:
+        return "笔记内容不能为空。"
+    append_session_note(session_id, cleaned)
+    return "已写入工作笔记，将在下次检查点归档。"

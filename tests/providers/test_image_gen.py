@@ -62,6 +62,34 @@ def test_default_base_url_provider(tmp_appdata):
     assert "zhima" in default_base_url(_settings(image_gen_provider="openai_compat"))
     assert "ark" in default_base_url(_settings(image_gen_provider="ark", image_gen_base_url=""))
 
+    relay = "https://relay.example.com/v1"
+    inherited = default_base_url(
+        _settings(
+            image_gen_provider="openai_compat",
+            image_gen_base_url="",
+            base_url=relay,
+        )
+    )
+    assert inherited == relay
+
+    explicit_zhima = default_base_url(
+        _settings(
+            image_gen_provider="openai_compat",
+            image_gen_base_url=UserSettings.image_gen_base_url,
+            base_url=relay,
+        )
+    )
+    assert explicit_zhima == UserSettings.image_gen_base_url.strip().rstrip("/")
+
+    explicit = default_base_url(
+        _settings(
+            image_gen_provider="openai_compat",
+            image_gen_base_url="https://other-relay.example.com/v1",
+            base_url=relay,
+        )
+    )
+    assert explicit == "https://other-relay.example.com/v1"
+
 
 def test_generate_image_not_ready(tmp_appdata):
     result = generate_image(_settings(image_gen_enabled=False), "a cat")
@@ -246,6 +274,26 @@ def test_generate_image_saves_file(tmp_appdata, monkeypatch):
     assert path.is_file()
     assert path.name == "test-cat.png"
     assert format_generate_result(result).startswith("已生成图片")
+
+
+def test_generate_image_records_service_status_on_success(tmp_appdata, monkeypatch):
+    from friday.api_connect import _auth_status_key, _read_auth_status
+
+    fake_png = _minimal_png(1024, 1024)
+    mock_response = MagicMock()
+    mock_response.data = [MagicMock(b64_json=__import__("base64").b64encode(fake_png).decode(), url=None)]
+    mock_client = MagicMock()
+    mock_client.images.generate.return_value = mock_response
+    settings = _settings()
+
+    with patch("friday.image_gen._images_client", return_value=mock_client):
+        result = generate_image(settings, "a cute cat")
+
+    assert result["ok"] is True
+    cached = _read_auth_status(_auth_status_key("image_gen", settings), service="image_gen")
+    assert cached is not None
+    assert cached[0] is True
+    assert "对话生图成功" in cached[1]
 
 
 def test_generate_image_fallback_urls(tmp_appdata, monkeypatch):
@@ -477,6 +525,80 @@ def test_test_image_gen_connection_ark_uses_client_probe(tmp_appdata, monkeypatc
     assert client_calls
     assert client_calls[0] >= 120
     assert verify_calls == []
+
+
+def test_format_image_gen_failures_multi_endpoint():
+    from friday.image_gen import _format_image_gen_failures
+
+    msg = _format_image_gen_failures(
+        [
+            (
+                "https://next.zhima.world",
+                "Error code: 503 - {'error': {'message': 'No available compatible accounts', 'type': 'api_error'}}",
+            ),
+            (
+                "https://api.iotwq.top/v1",
+                "Error code: 401 - {'code': 'INVALID_API_KEY', 'message': 'Invalid API key'}",
+            ),
+        ]
+    )
+    assert "所有生图地址均不可用" in msg
+    assert "next.zhima.world" in msg
+    assert "api.iotwq.top" in msg
+    assert "503" in msg or "通道" in msg
+    assert "Key" in msg
+    assert "生图 API Key 无效" not in msg
+
+
+def test_humanize_html_404_client_error():
+    from friday.image_gen import _humanize_image_gen_client_error
+
+    msg = _humanize_image_gen_client_error(
+        "<html><head><title>404 Not Found</title></head><body>openresty</body></html>",
+        settings=_settings(
+            image_gen_base_url="https://next.zhima.world",
+            image_gen_fallback_urls="https://api.iotwq.top/v1",
+        ),
+    )
+    assert "404" in msg
+    assert "next.zhima.world" in msg
+    assert "<html>" not in msg
+
+
+def test_humanize_insufficient_balance_not_key_invalid():
+    from friday.image_gen import _humanize_image_gen_http_error
+
+    msg = _humanize_image_gen_http_error(
+        403,
+        "{'code': 'INSUFFICIENT_BALANCE', 'message': 'Insufficient account balance'}",
+        base_url="https://api.iotwq.top/v1",
+        model="gpt-image-2",
+    )
+    assert "余额不足" in msg
+    assert "Key 无效" not in msg
+    assert "api.iotwq.top" in msg
+
+
+def test_strict_test_tries_all_candidate_base_urls(tmp_appdata, monkeypatch):
+    captured: list[list[str]] = []
+
+    def fake_call(**kwargs):
+        captured.append(kwargs["base_urls"])
+        return b"x" * 128
+
+    monkeypatch.setattr(image_gen_module, "_call_images_api", fake_call)
+    ok, _msg = image_gen_module._strict_test_via_images_client(
+        _settings(
+            image_gen_base_url="https://primary.example/v1",
+            image_gen_fallback_urls="https://backup.example/v1",
+        ),
+        timeout=60,
+    )
+    assert ok
+    assert len(captured) == 1
+    assert len(captured[0]) >= 2
+    assert "https://primary.example/v1" in captured[0]
+    assert "https://backup.example/v1" in captured[0]
 
 
 def test_humanize_image_gen_http_error_ep_404():
