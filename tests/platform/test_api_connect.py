@@ -197,6 +197,53 @@ def test_probe_image_gen_status_keeps_ok_cache_on_inconclusive_failure(monkeypat
     assert cached[0] is True
 
 
+def test_test_image_gen_service_preserves_ok_cache_on_soft_failure(monkeypatch):
+    from friday.api_connect import test_image_gen_service, record_service_status, _auth_status_key, _read_auth_status
+
+    settings = UserSettings(
+        image_gen_enabled=True,
+        image_gen_api_key="sk-test-key-12345678",
+        image_gen_model="gpt-image-2",
+        image_gen_base_url="https://next.zhima.world",
+    )
+    record_service_status("image_gen", settings, True, "生图测试通过，模型「gpt-image-2」可正常调用")
+
+    monkeypatch.setattr(
+        "friday.image_gen.test_image_gen_connection",
+        lambda *_a, **_k: (False, "生图探测超时（端点响应较慢）"),
+    )
+
+    ok, detail = test_image_gen_service(settings)
+    assert ok is True
+    assert "生图测试通过" in detail
+    cached = _read_auth_status(_auth_status_key("image_gen", settings), service="image_gen")
+    assert cached is not None
+    assert cached[0] is True
+
+
+def test_test_image_gen_service_overwrites_ok_cache_on_hard_failure(monkeypatch):
+    from friday.api_connect import test_image_gen_service, record_service_status, _auth_status_key, _read_auth_status
+
+    settings = UserSettings(
+        image_gen_enabled=True,
+        image_gen_api_key="sk-test-key-12345678",
+        image_gen_model="gpt-image-2",
+        image_gen_base_url="https://next.zhima.world",
+    )
+    record_service_status("image_gen", settings, True, "生图测试通过")
+
+    monkeypatch.setattr(
+        "friday.image_gen.test_image_gen_connection",
+        lambda *_a, **_k: (False, "Error code: 401 - Invalid API key"),
+    )
+
+    ok, _detail = test_image_gen_service(settings)
+    assert ok is False
+    cached = _read_auth_status(_auth_status_key("image_gen", settings), service="image_gen")
+    assert cached is not None
+    assert cached[0] is False
+
+
 def test_probe_image_gen_status_quick_failure_does_not_clobber_ok_cache(monkeypatch):
     from friday.api_connect import probe_image_gen_status, record_service_status, _auth_status_key, _read_auth_status
 
@@ -264,6 +311,84 @@ def test_record_service_status_skips_transient_failure():
     record_service_status("llm", settings, True, "对话成功")
     record_service_status("llm", settings, False, "API 响应超时", transient=True)
     cached = _read_auth_status(_auth_status_key("llm", settings), service="llm")
+    assert cached is not None
+    assert cached[0] is True
+
+
+def test_test_llm_service_preserves_ok_cache_on_soft_failure(monkeypatch):
+    from friday.api_connect import test_llm_service
+
+    settings = UserSettings(
+        api_key="sk-live-key-1234567890",
+        base_url="https://api.deepseek.com",
+        model="deepseek-chat",
+    )
+    record_service_status("llm", settings, True, "API 可用")
+
+    class _FailBrain:
+        def __init__(self, _settings):
+            pass
+
+        def test_connection(self):
+            return False, "API 响应超时（端点响应较慢）"
+
+    monkeypatch.setattr("friday.brain.DeepSeekBrain", _FailBrain)
+
+    ok, detail = test_llm_service(settings)
+    assert ok is True
+    assert "API 可用" in detail
+    cached = _read_auth_status(_auth_status_key("llm", settings), service="llm")
+    assert cached is not None
+    assert cached[0] is True
+
+
+def test_test_llm_service_overwrites_ok_cache_on_hard_failure(monkeypatch):
+    from friday.api_connect import test_llm_service
+
+    settings = UserSettings(
+        api_key="sk-live-key-1234567890",
+        base_url="https://api.deepseek.com",
+        model="deepseek-chat",
+    )
+    record_service_status("llm", settings, True, "API 可用")
+
+    class _FailBrain:
+        def __init__(self, _settings):
+            pass
+
+        def test_connection(self):
+            return False, "Error code: 401 - Invalid API key"
+
+    monkeypatch.setattr("friday.brain.DeepSeekBrain", _FailBrain)
+
+    ok, _detail = test_llm_service(settings)
+    assert ok is False
+    cached = _read_auth_status(_auth_status_key("llm", settings), service="llm")
+    assert cached is not None
+    assert cached[0] is False
+
+
+def test_test_vision_service_preserves_ok_cache_on_soft_failure(monkeypatch):
+    from friday.api_connect import test_vision_service
+
+    settings = UserSettings(
+        vision_enabled=True,
+        vision_api_key="ark-test-key-12345678",
+        vision_model="ep-test",
+    )
+    record_service_status("vision", settings, True, "视觉 API 可用")
+
+    monkeypatch.setattr(
+        "friday.vision.test_vision_connection",
+        lambda *_a, **_k: (False, "视觉探测超时（端点响应较慢）"),
+    )
+
+    result = test_vision_service(settings)
+    assert result is not None
+    ok, detail = result
+    assert ok is True
+    assert "视觉 API 可用" in detail
+    cached = _read_auth_status(_auth_status_key("vision", settings), service="vision")
     assert cached is not None
     assert cached[0] is True
 

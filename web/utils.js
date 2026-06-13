@@ -176,9 +176,16 @@
   function apiFetchWithTimeout(url, options = {}, timeoutMs = 15000) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
-    return apiFetch(url, { ...options, signal: controller.signal }).finally(() => {
-      clearTimeout(timer);
-    });
+    return apiFetch(url, { ...options, signal: controller.signal })
+      .catch((err) => {
+        if (err?.name === "AbortError") {
+          throw new Error(`请求超时（${Math.round(timeoutMs / 1000)}s）`);
+        }
+        throw err;
+      })
+      .finally(() => {
+        clearTimeout(timer);
+      });
   }
 
   /* ── 工具函数 ── */

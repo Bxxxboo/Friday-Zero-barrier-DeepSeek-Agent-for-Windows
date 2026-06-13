@@ -26,7 +26,7 @@ _AUTH_STATUS_CACHE: dict[str, tuple[float, bool, str]] = {}
 _PROBE_LOCK = threading.Lock()
 _PROBE_TTL = 90.0
 _AUTH_STATUS_TTL = 120.0
-_AUTH_STATUS_TTL_IMAGE_GEN_OK = 3600.0
+_AUTH_STATUS_TTL_OK = 3600.0
 
 
 def ensure_ssl_environment() -> str | None:
@@ -562,7 +562,7 @@ def _read_auth_status(cache_key: str, *, service: str = "") -> tuple[bool, str] 
         if not cached:
             return None
         ok, detail = cached[1], cached[2]
-        ttl = _AUTH_STATUS_TTL_IMAGE_GEN_OK if service == "image_gen" and ok else _AUTH_STATUS_TTL
+        ttl = _AUTH_STATUS_TTL_OK if ok else _AUTH_STATUS_TTL
         if now - cached[0] < ttl:
             return ok, detail
     return None
@@ -626,6 +626,51 @@ def is_transient_api_error(raw: Any) -> bool:
     return False
 
 
+def _peek_service_ok_cache(service: str, settings: UserSettings) -> tuple[bool, str] | None:
+    cache_key = _auth_status_key(service, settings)
+    cached = _read_auth_status(cache_key, service=service)
+    if cached and cached[0]:
+        return cached
+    return None
+
+
+def _is_hard_auth_failure(detail: str) -> bool:
+    """明确配置/鉴权错误：应覆盖此前的「在线」缓存。"""
+    lower = (detail or "").strip().lower()
+    if not lower:
+        return False
+    if any(
+        token in lower
+        for token in (
+            "invalid_api_key",
+            "invalid api key",
+            "api key 为空",
+            "模型未配置",
+            "未配置",
+            "请填写",
+            "请先勾选",
+            "key 无效",
+            "key 对此中转无效",
+            "401",
+            "403",
+            "余额不足",
+            "insufficient_balance",
+            "unauthorized",
+        )
+    ):
+        return True
+    return lower.startswith("请") and any(k in lower for k in ("填写", "勾选", "配置"))
+
+
+def _should_preserve_service_ok_cache(service: str, settings: UserSettings, detail: str) -> bool:
+    prev = _peek_service_ok_cache(service, settings)
+    if not prev:
+        return False
+    if is_transient_api_error(detail):
+        return True
+    return not _is_hard_auth_failure(detail)
+
+
 def record_service_status(
     service: str,
     settings: UserSettings,
@@ -638,6 +683,8 @@ def record_service_status(
     if not ok and transient:
         return
     cache_key = _auth_status_key(service, settings)
+    if not ok and _should_preserve_service_ok_cache(service, settings, detail):
+        return
     with _PROBE_LOCK:
         _AUTH_STATUS_CACHE[cache_key] = (time.time(), bool(ok), (detail or "")[:240])
 
@@ -655,8 +702,22 @@ def test_llm_service(settings: UserSettings) -> tuple[bool, str]:
         hint = classify_error("", context="api_key_missing")
         return False, f"{hint.detail}\n{hint.hint}"
     ok, message = DeepSeekBrain(settings).test_connection()
-    record_service_status("llm", settings, ok, message if ok else message.split("\n")[0])
-    return ok, message
+    detail = message if ok else message.split("\n")[0]
+    if ok:
+        record_service_status("llm", settings, True, detail)
+        return True, message
+    if _should_preserve_service_ok_cache("llm", settings, detail):
+        prev = _peek_service_ok_cache("llm", settings)
+        if prev:
+            return True, prev[1]
+    record_service_status(
+        "llm",
+        settings,
+        False,
+        detail,
+        transient=is_transient_api_error(detail),
+    )
+    return False, message
 
 
 def test_vision_service(settings: UserSettings) -> tuple[bool, str] | None:
@@ -666,8 +727,22 @@ def test_vision_service(settings: UserSettings) -> tuple[bool, str] | None:
     if not settings.vision_enabled or not vision_ready(settings):
         return None
     ok, message = test_vision_connection(settings)
-    record_service_status("vision", settings, ok, message if ok else message.split("\n")[0])
-    return ok, message
+    detail = message if ok else message.split("\n")[0]
+    if ok:
+        record_service_status("vision", settings, True, detail)
+        return True, message
+    if _should_preserve_service_ok_cache("vision", settings, detail):
+        prev = _peek_service_ok_cache("vision", settings)
+        if prev:
+            return True, prev[1]
+    record_service_status(
+        "vision",
+        settings,
+        False,
+        detail,
+        transient=is_transient_api_error(detail),
+    )
+    return False, message
 
 
 def test_image_gen_service(settings: UserSettings) -> tuple[bool, str] | None:
@@ -678,12 +753,15 @@ def test_image_gen_service(settings: UserSettings) -> tuple[bool, str] | None:
         return None
     ok, message = test_image_gen_connection(settings)
     detail = message if ok else message.split("\n")[0]
-    record_service_status("image_gen", settings, ok, detail)
     if ok:
-        from friday.storage import load_settings
-
-        record_service_status("image_gen", load_settings(), True, detail)
-    return ok, message
+        record_service_status("image_gen", settings, True, detail)
+        return True, message
+    if _should_preserve_service_ok_cache("image_gen", settings, detail):
+        prev = _peek_service_ok_cache("image_gen", settings)
+        if prev:
+            return True, prev[1]
+    record_service_status("image_gen", settings, False, detail)
+    return False, message
 
 
 async def run_startup_service_tests(settings: UserSettings | None = None) -> dict[str, object]:
@@ -736,6 +814,9 @@ def probe_llm_status(
     base_url = (settings.base_url or UserSettings.base_url).strip()
     host_ok, host_detail = quick_reachability(base_url, settings)
     if not host_ok:
+        prev = _peek_service_ok_cache("llm", settings)
+        if prev and _should_preserve_service_ok_cache("llm", settings, host_detail):
+            return prev
         record_service_status("llm", settings, False, host_detail)
         return False, host_detail
 
@@ -747,8 +828,14 @@ def probe_llm_status(
         read_timeout=read_timeout,
     )
     detail = step.detail if step.ok else (f"{step.detail} {step.hint}".strip())
-    record_service_status("llm", settings, step.ok, detail)
-    return step.ok, detail
+    if step.ok:
+        record_service_status("llm", settings, True, detail)
+        return True, detail
+    prev = _peek_service_ok_cache("llm", settings)
+    if prev and _should_preserve_service_ok_cache("llm", settings, detail):
+        return prev
+    record_service_status("llm", settings, False, detail)
+    return False, detail
 
 
 def probe_vision_status(settings: UserSettings, *, force: bool = False) -> tuple[bool, str]:
@@ -770,6 +857,9 @@ def probe_vision_status(settings: UserSettings, *, force: bool = False) -> tuple
     base_url = (settings.vision_base_url or UserSettings.vision_base_url).strip()
     host_ok, host_detail = quick_reachability(base_url, settings)
     if not host_ok:
+        prev = _peek_service_ok_cache("vision", settings)
+        if prev and _should_preserve_service_ok_cache("vision", settings, host_detail):
+            return prev
         record_service_status("vision", settings, False, host_detail)
         return False, host_detail
 
@@ -777,6 +867,9 @@ def probe_vision_status(settings: UserSettings, *, force: bool = False) -> tuple
     failed = next((s for s in reversed(steps) if not s.ok), None)
     if failed is not None:
         detail = failed.detail if failed.hint is None else f"{failed.detail} {failed.hint}".strip()
+        prev = _peek_service_ok_cache("vision", settings)
+        if prev and _should_preserve_service_ok_cache("vision", settings, detail):
+            return prev
         record_service_status("vision", settings, False, detail)
         return False, detail
     ok_step = steps[-1] if steps else None
@@ -801,16 +894,10 @@ def _image_gen_probe_inconclusive(message: str) -> bool:
             "connection",
             "network",
             "所有端点均无法",
+            "所有生图地址均不可用",
+            "测试未通过",
         )
     )
-
-
-def _peek_image_gen_ok_cache(settings: UserSettings) -> tuple[bool, str] | None:
-    cache_key = _auth_status_key("image_gen", settings)
-    cached = _read_auth_status(cache_key, service="image_gen")
-    if cached and cached[0]:
-        return cached
-    return None
 
 
 def _probe_image_gen_api(
@@ -869,7 +956,7 @@ def probe_image_gen_status(settings: UserSettings, *, force: bool = False, quick
         if cached is not None:
             return cached
 
-    prev_ok = _peek_image_gen_ok_cache(settings) if quick else None
+    prev_ok = _peek_service_ok_cache("image_gen", settings) if quick else None
 
     base_url = default_base_url(settings)
     host_ok, host_detail = quick_reachability(base_url, settings)

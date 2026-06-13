@@ -10,6 +10,7 @@ param(
     [switch]$SkipGithubRelease,
     [switch]$SkipGiteeRelease,
     [switch]$SkipVercel,
+    [switch]$SkipGiteePages,
     [switch]$SkipWebsiteSync
 )
 
@@ -132,8 +133,21 @@ if (-not $SkipVercel) {
     Write-Host "Skip Vercel deploy." -ForegroundColor Yellow
 }
 
+if (-not $SkipGiteePages) {
+    Write-Host ""
+    Write-Host "=== Deploy website (Gitee Pages mirror) ===" -ForegroundColor Cyan
+    if (-not $env:GITEE_TOKEN) {
+        Write-Host "GITEE_TOKEN not set; skip Gitee Pages deploy." -ForegroundColor Yellow
+    } else {
+        & (Join-Path $Root "scripts\deploy-gitee-pages.ps1") -GiteeUser $GiteeUser -RepoName $GiteeRepoName
+    }
+} else {
+    Write-Host "Skip Gitee Pages deploy." -ForegroundColor Yellow
+}
+
 Write-Host ""
 Write-Host "=== Full release complete: v$TargetVersion ===" -ForegroundColor Green
 Write-Host "  Gitee:   https://gitee.com/$GiteeUser/$GiteeRepoName/releases/tag/v$TargetVersion"
 Write-Host "  GitHub:  https://github.com/$RepoOwner/$GitHubRepoName/releases/tag/v$TargetVersion"
 Write-Host "  Website: https://fridayaiagent.vercel.app/download.json"
+Write-Host "  Mirror:  https://$GiteeUser.gitee.io/$GiteeRepoName"

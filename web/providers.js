@@ -425,25 +425,36 @@
     const meta = KIND_META[kind];
     const select = document.getElementById(meta.select);
     const id = select?.value;
-    if (!isCustomProviderId(id)) return;
-    const msg = isZh() ? "确定删除这条自定义模型？" : "Delete this custom model?";
-    if (!window.confirm(msg)) return;
-    const data = await apiSettings({
-      custom_endpoint_category: meta.category,
-      delete_custom_endpoint: true,
-      custom_endpoint_id: endpointIdFromProvider(id),
-    });
-    settingsSnapshot = data;
-    const newId = data[meta.providerField];
-    fillProviderSelect(kind, data, newId);
-    lastProvider[kind] = newId;
-    if (kind === "llm") {
-      applyLlmProvider(newId, data, { forceUrl: true });
-      syncVisionFieldsFromData(data);
-      syncImageGenFieldsFromData(data);
-    } else if (kind === "vision") {
-      syncVisionFieldsFromData(data);
-    } else applyImageGenProvider(newId, data, { forceUrl: true });
+    if (!isCustomProviderId(id)) {
+      const msg = isZh()
+        ? "请先在列表中选中要删除的自定义模型，再点「删除」。"
+        : "Select the custom model to delete, then click Delete.";
+      window.alert(msg);
+      return;
+    }
+    const confirmMsg = isZh() ? "确定删除这条自定义模型？" : "Delete this custom model?";
+    if (!window.confirm(confirmMsg)) return;
+    try {
+      const data = await apiSettings({
+        custom_endpoint_category: meta.category,
+        delete_custom_endpoint: true,
+        custom_endpoint_id: endpointIdFromProvider(id),
+      });
+      settingsSnapshot = data;
+      const newId = data[meta.providerField];
+      fillProviderSelect(kind, data, newId);
+      lastProvider[kind] = newId;
+      if (kind === "llm") {
+        applyLlmProvider(newId, data, { forceUrl: true });
+        syncVisionFieldsFromData(data);
+        syncImageGenFieldsFromData(data);
+      } else if (kind === "vision") {
+        syncVisionFieldsFromData(data);
+      } else applyImageGenProvider(newId, data, { forceUrl: true });
+    } catch (err) {
+      console.warn("deleteCustomProvider", err);
+      window.alert(isZh() ? `删除失败：${err.message || err}` : `Delete failed: ${err.message || err}`);
+    }
   }
 
   function listSavedLlmProviders(data) {

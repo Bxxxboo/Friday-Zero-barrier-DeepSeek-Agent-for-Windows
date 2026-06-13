@@ -129,11 +129,19 @@
     const pct = Math.round(ratio * 100);
     const template = F.t?.("status.context.title")
       || "上下文 {used} / {budget} tokens（{pct}%）\n达 {threshold} tokens 时将自动压缩历史";
-    return template
+    let text = template
       .replace("{used}", formatTokens(data.context_tokens))
       .replace("{budget}", formatTokens(data.context_budget))
       .replace("{pct}", String(pct))
       .replace("{threshold}", formatTokens(data.compact_threshold));
+    if (pct >= 100) {
+      const model = (els.model?.textContent || "").trim();
+      const overHint = model
+        ? `已超过当前模型「${model}」可用窗口；发送消息时会自动折叠/rebuild，或请新开对话/换更大上下文模型`
+        : "已超过当前模型可用窗口；发送消息时会自动折叠/rebuild，或请新开对话";
+      text = `${text}\n${overHint}`;
+    }
+    return text;
   }
 
   function applyContextMeter(data) {
@@ -274,56 +282,77 @@
     });
   }
 
-  function applyPayload(data) {
+  function applyPayload(data, options = {}) {
     if (!data) return;
 
-    if (!shouldSkipServiceRefresh()) {
-      applyServiceState({
-        enabled: true,
-        configured: Boolean(data.api_configured),
-        online: Boolean(data.api_online),
-        checking: Boolean(data.api_checking),
-        detail: data.api_reach_detail || "",
-        dotEl: els.apiDot,
-        textEl: els.apiText,
-        labels: resolveLabels(SERVICE_LABELS.api),
-      });
-
-      applyServiceState({
-        enabled: Boolean(data.vision_enabled),
-        configured: Boolean(data.vision_configured),
-        online: Boolean(data.vision_online),
-        checking: Boolean(data.vision_checking),
-        detail: data.vision_reach_detail || "",
-        dotEl: els.visionDot,
-        textEl: els.visionText,
-        labels: resolveLabels(SERVICE_LABELS.vision),
-      });
-
-      applyServiceState({
-        enabled: Boolean(data.image_gen_enabled),
-        configured: Boolean(data.image_gen_configured),
-        online: Boolean(data.image_gen_online),
-        checking: Boolean(data.image_gen_checking),
-        detail: data.image_gen_reach_detail || "",
-        dotEl: els.imageGenDot,
-        textEl: els.imageGenText,
-        labels: resolveLabels(SERVICE_LABELS.imageGen),
-      });
-
-      applyServiceState({
-        enabled: Boolean(data.gateway_enabled),
-        configured: Boolean(data.gateway_configured),
-        online: Boolean(data.gateway_online),
-        checking: Boolean(data.gateway_checking),
-        detail: data.gateway_reach_detail || "",
-        dotEl: els.gatewayDot,
-        textEl: els.gatewayText,
-        labels: resolveLabels(SERVICE_LABELS.gateway),
-      });
+    if (!options.force && shouldSkipServiceRefresh()) {
+      refreshStatusBarMeta(data);
+      return;
     }
 
+    applyServiceStatesFromPayload(data, options);
     refreshStatusBarMeta(data);
+  }
+
+  function applyBarServiceState(state, options = {}) {
+    const { checking, dotEl, detail, ...rest } = state;
+    const allowChecking = Boolean(options.force) || shouldSkipServiceRefresh();
+    const current = dotEl?.dataset?.state;
+    if (
+      checking
+      && !allowChecking
+      && (current === "online" || current === "offline")
+    ) {
+      if (detail && dotEl) dotEl.title = detail;
+      return;
+    }
+    applyServiceState({ ...rest, checking, detail, dotEl });
+  }
+
+  function applyServiceStatesFromPayload(data, options = {}) {
+    applyBarServiceState({
+      enabled: true,
+      configured: Boolean(data.api_configured),
+      online: Boolean(data.api_online),
+      checking: Boolean(data.api_checking),
+      detail: data.api_reach_detail || "",
+      dotEl: els.apiDot,
+      textEl: els.apiText,
+      labels: resolveLabels(SERVICE_LABELS.api),
+    }, options);
+
+    applyBarServiceState({
+      enabled: Boolean(data.vision_enabled),
+      configured: Boolean(data.vision_configured),
+      online: Boolean(data.vision_online),
+      checking: Boolean(data.vision_checking),
+      detail: data.vision_reach_detail || "",
+      dotEl: els.visionDot,
+      textEl: els.visionText,
+      labels: resolveLabels(SERVICE_LABELS.vision),
+    }, options);
+
+    applyBarServiceState({
+      enabled: Boolean(data.image_gen_enabled),
+      configured: Boolean(data.image_gen_configured),
+      online: Boolean(data.image_gen_online),
+      checking: Boolean(data.image_gen_checking),
+      detail: data.image_gen_reach_detail || "",
+      dotEl: els.imageGenDot,
+      textEl: els.imageGenText,
+      labels: resolveLabels(SERVICE_LABELS.imageGen),
+    }, options);
+
+    applyBarServiceState({
+      enabled: Boolean(data.gateway_enabled),
+      configured: Boolean(data.gateway_configured),
+      online: Boolean(data.gateway_online),
+      checking: Boolean(data.gateway_checking),
+      detail: data.gateway_reach_detail || "",
+      dotEl: els.gatewayDot,
+      textEl: els.gatewayText,
+      labels: resolveLabels(SERVICE_LABELS.gateway),
+    }, options);
   }
 
   function patchImageGenStatus(partial = {}) {
@@ -482,6 +511,12 @@
     applyContextMeter(data);
   }
 
+  function clearStartupPending(pendingKey) {
+    if (!pendingKey) return;
+    startupTestPending[pendingKey] = false;
+    finishBootIfIdle();
+  }
+
   async function runServiceStartupTest({
     pendingKey,
     enabled,
@@ -503,6 +538,7 @@
         textEl,
         labels,
       });
+      clearStartupPending(pendingKey);
       return;
     }
     if (!configured) {
@@ -516,6 +552,7 @@
         textEl,
         labels,
       });
+      clearStartupPending(pendingKey);
       return;
     }
 
@@ -570,6 +607,155 @@
     }
   }
 
+  function applyStartupTestPack(result, { dotEl, textEl, labels }) {
+    applyServiceState({
+      enabled: true,
+      configured: true,
+      online: Boolean(result?.ok),
+      checking: false,
+      detail: String(result?.message || "").split("\n")[0] || "",
+      dotEl,
+      textEl,
+      labels,
+    });
+  }
+
+  async function runStartupApiTests() {
+    if (!F.resolveApiToken?.()) return;
+    if (startupTestsStarted) return;
+    startupTestsStarted = true;
+
+    const snap = F.bootSettingsSnapshot || {};
+    const apiReady = Boolean(snap.api_ready);
+    const visionOn = Boolean(snap.vision_enabled);
+    const visionReady = Boolean(snap.vision_enabled && snap.vision_ready);
+    const imageGenOn = Boolean(snap.image_gen_enabled);
+    const imageGenReady = Boolean(snap.image_gen_enabled && snap.image_gen_ready);
+    const gatewayOn = snap.weixin_bridge_enabled !== false;
+    const needApi = apiReady;
+    const needVision = visionOn && visionReady;
+    const needImageGen = imageGenOn && imageGenReady;
+
+    if (needApi) startupTestPending.api = true;
+    if (needVision) startupTestPending.vision = true;
+    if (needImageGen) startupTestPending.imageGen = true;
+    if (gatewayOn) startupTestPending.gateway = true;
+
+    void refreshStatusBarMetaOnly();
+
+    // 快路径：读缓存（<1s），有近期成功记录则立刻显示在线
+    void (async () => {
+      try {
+        const res = await F.apiFetchWithTimeout(
+          `/api/status-bar${statusBarQuery("", { cached_only: true })}`,
+          {},
+          10000,
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        applyPayload(data, { force: true });
+        if (needApi && !data.api_checking) startupTestPending.api = false;
+        if (needVision && !data.vision_checking) startupTestPending.vision = false;
+        if (needImageGen && !data.image_gen_checking) startupTestPending.imageGen = false;
+        finishBootIfIdle();
+      } catch {
+        // 等待下方 live 检测
+      }
+    })();
+
+    void runGatewayStartupTest({
+      enabled: gatewayOn,
+      dotEl: els.gatewayDot,
+      textEl: els.gatewayText,
+      labels: resolveLabels(SERVICE_LABELS.gateway),
+    });
+
+    // Live 检测：单次请求、服务端并行，避免三个 POST 互相排队拖死
+    if (needApi || needVision || needImageGen) {
+      void (async () => {
+        const apiLabels = resolveLabels(SERVICE_LABELS.api);
+        const visionLabels = resolveLabels(SERVICE_LABELS.vision);
+        const imageGenLabels = resolveLabels(SERVICE_LABELS.imageGen);
+        try {
+          const res = await F.apiFetchWithTimeout(
+            "/api/settings/startup-tests",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: "{}",
+            },
+            180000,
+          );
+          const data = await res.json().catch(() => ({}));
+          if (needApi) {
+            applyStartupTestPack(data.llm, {
+              dotEl: els.apiDot,
+              textEl: els.apiText,
+              labels: apiLabels,
+            });
+          }
+          if (needVision) {
+            applyStartupTestPack(data.vision, {
+              dotEl: els.visionDot,
+              textEl: els.visionText,
+              labels: visionLabels,
+            });
+          }
+          if (needImageGen) {
+            applyStartupTestPack(data.image_gen, {
+              dotEl: els.imageGenDot,
+              textEl: els.imageGenText,
+              labels: imageGenLabels,
+            });
+          }
+        } catch (err) {
+          const detail = err?.message || "检测失败";
+          if (needApi) {
+            applyServiceState({
+              enabled: true,
+              configured: true,
+              online: false,
+              checking: false,
+              detail,
+              dotEl: els.apiDot,
+              textEl: els.apiText,
+              labels: apiLabels,
+            });
+          }
+          if (needVision) {
+            applyServiceState({
+              enabled: true,
+              configured: true,
+              online: false,
+              checking: false,
+              detail,
+              dotEl: els.visionDot,
+              textEl: els.visionText,
+              labels: visionLabels,
+            });
+          }
+          if (needImageGen) {
+            applyServiceState({
+              enabled: true,
+              configured: true,
+              online: false,
+              checking: false,
+              detail,
+              dotEl: els.imageGenDot,
+              textEl: els.imageGenText,
+              labels: imageGenLabels,
+            });
+          }
+        } finally {
+          if (needApi) startupTestPending.api = false;
+          if (needVision) startupTestPending.vision = false;
+          if (needImageGen) startupTestPending.imageGen = false;
+          finishBootIfIdle();
+        }
+      })();
+    }
+  }
+
   async function refreshStatusBarMetaOnly() {
     const sessionId = F.activeSessionId || "";
     try {
@@ -612,10 +798,11 @@
     });
 
     try {
+      // 仅读缓存 + 本地 Gateway 探测；全量 status-bar 会串行 LLM/视觉/生图探测（可达 50s+），15s 超时会误报离线
       const res = await F.apiFetchWithTimeout(
-        `/api/status-bar${statusBarQuery("", {})}`,
+        `/api/status-bar${statusBarQuery("", { cached_only: true })}`,
         {},
-        15000,
+        10000,
       );
       const data = await res.json().catch(() => ({}));
       applyServiceState({
@@ -645,76 +832,6 @@
     }
   }
 
-  async function runStartupApiTests() {
-    if (!F.resolveApiToken?.()) return;
-    if (startupTestsStarted) return;
-    startupTestsStarted = true;
-
-    const snap = F.bootSettingsSnapshot || {};
-    const apiReady = Boolean(snap.api_ready);
-    const visionOn = Boolean(snap.vision_enabled);
-    const visionReady = Boolean(snap.vision_enabled && snap.vision_ready);
-    const imageGenOn = Boolean(snap.image_gen_enabled);
-    const imageGenReady = Boolean(snap.image_gen_enabled && snap.image_gen_ready);
-    const gatewayOn = snap.weixin_bridge_enabled !== false;
-
-    if (apiReady) startupTestPending.api = true;
-    if (visionOn && visionReady) startupTestPending.vision = true;
-    if (imageGenOn && imageGenReady) startupTestPending.imageGen = true;
-    if (gatewayOn) startupTestPending.gateway = true;
-
-    void refreshStatusBarMetaOnly();
-
-    void runServiceStartupTest({
-      pendingKey: "api",
-      enabled: true,
-      configured: apiReady,
-      url: "/api/settings/test",
-      timeoutMs: 60000,
-      dotEl: els.apiDot,
-      textEl: els.apiText,
-      labels: resolveLabels(SERVICE_LABELS.api),
-    });
-
-    void runServiceStartupTest({
-      pendingKey: "vision",
-      enabled: visionOn,
-      configured: visionReady,
-      url: "/api/settings/test-vision",
-      timeoutMs: 60000,
-      dotEl: els.visionDot,
-      textEl: els.visionText,
-      labels: resolveLabels(SERVICE_LABELS.vision),
-    });
-
-    void runServiceStartupTest({
-      pendingKey: "imageGen",
-      enabled: imageGenOn,
-      configured: imageGenReady,
-      url: "/api/settings/test-image-gen",
-      timeoutMs: 120000,
-      dotEl: els.imageGenDot,
-      textEl: els.imageGenText,
-      labels: resolveLabels(SERVICE_LABELS.imageGen),
-    });
-
-    void runGatewayStartupTest({
-      enabled: gatewayOn,
-      dotEl: els.gatewayDot,
-      textEl: els.gatewayText,
-      labels: resolveLabels(SERVICE_LABELS.gateway),
-    });
-
-    if (
-      !startupTestPending.api
-      && !startupTestPending.vision
-      && !startupTestPending.imageGen
-      && !startupTestPending.gateway
-    ) {
-      bootPhase = false;
-    }
-  }
-
   async function refreshStatusBar(options = {}) {
     if (!F.resolveApiToken?.()) return;
     if (refreshInFlight && !options.force) return refreshInFlight;
@@ -733,7 +850,8 @@
           );
           if (quickRes.ok) {
             const data = await quickRes.json();
-            if (skipServices) refreshStatusBarMeta(data);
+            // 定时轮询只刷新 tokens/上下文，不把无缓存的 checking 写回状态点
+            if (skipServices || pollOnly) refreshStatusBarMeta(data);
             else applyPayload(data);
           }
         } catch {

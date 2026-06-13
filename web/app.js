@@ -62,7 +62,7 @@
       await F.fetchSessions();
       setBootText("正在连接服务…");
       try {
-        await F.loadSettings?.();
+        await F.loadSettings?.({ skipStartupTests: true });
       } catch (err) {
         console.warn("loadSettings", err);
       }
@@ -112,6 +112,7 @@
       hideOverlay();
       F.connectWs();
       F.updateInputState();
+      void F.runStartupApiTests?.();
       void F.checkOnboarding?.().catch((err) => console.warn("checkOnboarding", err)).finally(() => {
         void F.checkStartupUpdate?.().catch((err) => console.warn("checkStartupUpdate", err)).finally(() => {
           setTimeout(() => void F.checkReleaseNotes?.(), 400);
@@ -123,9 +124,16 @@
       F.setConnectionStatus("加载失败，请重启应用", false);
       const hint = overlay?.querySelector(".app-boot-status") || overlay?.querySelector("p");
       if (hint) {
-        hint.textContent =
-          detail.includes("401") || detail.includes("Unauthorized")
-            ? "加载失败：认证未通过，请完全关闭后重新打开"
+        const isAuth = detail.includes("401") || detail.includes("Unauthorized");
+        const isTimeout =
+          detail.includes("超时")
+          || detail.includes("timeout")
+          || err?.name === "AbortError"
+          || detail.includes("aborted");
+        hint.textContent = isAuth
+          ? "加载失败：认证未通过，请完全关闭后重新打开"
+          : isTimeout
+            ? "加载超时，请完全关闭后重新打开"
             : detail.slice(0, 100);
       }
     }

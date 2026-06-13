@@ -90,6 +90,25 @@ def resolve_account(account_id: str = "") -> WeixinAccount | None:
     return None
 
 
+def discover_account(account_id: str = "") -> WeixinAccount | None:
+    """解析微信账号：索引、显式 id，或扫描 accounts/*.json（索引缺失时）。"""
+    account = resolve_account(account_id)
+    if account is not None:
+        return account
+    if account_id.strip():
+        return None
+    accounts_dir = _weixin_state_dir() / "accounts"
+    if not accounts_dir.is_dir():
+        return None
+    for path in sorted(accounts_dir.glob("*.json")):
+        if ".context-tokens." in path.name:
+            continue
+        loaded = load_account(path.stem)
+        if loaded is not None:
+            return loaded
+    return None
+
+
 def load_context_token(account_id: str, peer_id: str) -> str:
     path = _weixin_state_dir() / "accounts" / f"{account_id}.context-tokens.json"
     if not path.is_file():

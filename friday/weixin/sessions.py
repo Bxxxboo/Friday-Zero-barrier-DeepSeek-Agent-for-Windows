@@ -36,6 +36,11 @@ def _write_mapping(mapping: dict[str, str]) -> None:
     atomic_write_json(_mapping_path(), mapping)
 
 
+def has_weixin_mappings() -> bool:
+    """侧栏「我的微信」会话映射是否存在（说明通道曾成功收发）。"""
+    return bool(_read_mapping())
+
+
 def is_weixin_session(session_id: str) -> bool:
     sid = session_id.strip()
     if not sid:

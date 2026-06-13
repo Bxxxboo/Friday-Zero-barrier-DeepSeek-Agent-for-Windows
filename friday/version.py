@@ -1,8 +1,8 @@
 ﻿"""应用版本号 —— 与 PyInstaller version_info 保持一致。"""
 
-__version__ = "1.3.6"
-__dev_version__ = "1.3.6-dev"
-__version_tuple__ = (1, 3, 6, 0)
+__version__ = "1.3.7"
+__dev_version__ = "1.3.7-dev"
+__version_tuple__ = (1, 3, 7, 0)
 
 
 def release_zip_name(version: str | None = None) -> str:
@@ -30,5 +30,8 @@ GITHUB_HOME = f"https://github.com/{GITHUB_REPO}"
 GITEE_REPO = "Bxxxboo/friday"
 GITEE_HOME = f"https://gitee.com/{GITEE_REPO}"
 
-# 官网（Vercel）。部署后填 production URL；空则应用内仍链 Gitee Releases。
+# 官网（Vercel，海外）。部署后填 production URL；空则应用内仍链 Gitee Releases。
 WEBSITE_HOME = "https://fridayaiagent.vercel.app"
+
+# Gitee Pages（国内镜像，无需 VPN）。scripts/deploy-gitee-pages.ps1 部署。
+GITEE_PAGES_HOME = "https://bxxxboo.gitee.io/friday"

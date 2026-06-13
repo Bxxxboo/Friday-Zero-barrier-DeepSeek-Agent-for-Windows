@@ -58,7 +58,7 @@ async def build_status_bar_snapshot(
             cached = read_cached_service_status("llm", cfg)
             if cached is not None:
                 return cached[0], cached[1], False
-            return False, "", False
+            return False, "", True
         cached = read_cached_service_status("llm", cfg)
         if cached is not None:
             return cached[0], cached[1], False
@@ -75,7 +75,7 @@ async def build_status_bar_snapshot(
             cached = read_cached_service_status("vision", cfg)
             if cached is not None:
                 return cached[0], cached[1], False
-            return False, "", False
+            return False, "", True
         cached = read_cached_service_status("vision", cfg)
         if cached is not None:
             return cached[0], cached[1], False
@@ -95,7 +95,7 @@ async def build_status_bar_snapshot(
             cached = read_cached_service_status("image_gen", cfg)
             if cached is not None:
                 return cached[0], cached[1], False
-            return False, "", False
+            return False, "", True
         cached = read_cached_service_status("image_gen", cfg)
         if cached is not None:
             return cached[0], cached[1], False
@@ -106,24 +106,40 @@ async def build_status_bar_snapshot(
         short = detail if online else detail.split("\n")[0]
         return online, short, False
 
-    async def _resolve_gateway() -> tuple[bool, bool, bool, str, bool]:
+    def _resolve_gateway_sync() -> tuple[bool, bool, bool, str, bool]:
         bridge_on = bool(getattr(cfg, "weixin_bridge_enabled", True))
         if not bridge_on:
             return False, False, False, "微信桥接已关闭", False
 
-        from friday.health_check import _gateway_service
+        from friday.health_check import _gateway_port
+        from friday.weixin.client import discover_account
+        from friday.weixin.gateway import cli_available, probe_gateway
+        from friday.weixin.sessions import has_weixin_mappings
 
-        svc = await asyncio.to_thread(_gateway_service)
-        cli_ok = bool(svc.get("cli_available"))
-        running = bool(svc.get("running"))
-        detail = str(svc.get("detail") or "")
-        if not cli_ok:
+        port = _gateway_port()
+        cli_ok = cli_available()
+        account_ready = discover_account() is not None
+        remote_active = has_weixin_mappings()
+        channel_ready = account_ready or remote_active
+        running = probe_gateway(port=port, timeout_sec=1.5)
+
+        if not cli_ok and not channel_ready:
             return True, False, False, "OpenClaw 未安装，请到 设置 → 微信桥接 一键配置", False
+
+        if channel_ready:
+            if running:
+                return True, True, True, "Gateway 运行中", False
+            if account_ready:
+                return True, True, True, "微信通道已登录", False
+            return True, True, True, "微信 remote 通道", False
+
         if not running:
-            port = svc.get("port")
             suffix = f"（端口 {port}）" if port else ""
             return True, True, False, f"Gateway 未响应{suffix}，请到 设置 → 微信桥接 启动", False
-        return True, True, True, detail or "Gateway 运行中", False
+        return True, True, True, "Gateway 运行中", False
+
+    async def _resolve_gateway() -> tuple[bool, bool, bool, str, bool]:
+        return await asyncio.to_thread(_resolve_gateway_sync)
 
     (llm_online, llm_reach_detail, llm_checking), (vision_online, vision_reach_detail, vision_checking), (
         image_gen_online,
@@ -139,15 +155,20 @@ async def build_status_bar_snapshot(
     from friday.brain import compute_context_meter
 
     sid = session_id.strip()
-    ctx_messages: list[dict[str, Any]] | None = None
-    ctx_tools: list[dict[str, Any]] | None = None
-    if sid and session_context is not None:
-        ctx_messages, ctx_tools = session_context(sid)
-    context_meter = compute_context_meter(
-        cfg,
-        ctx_messages,
-        tool_definitions=ctx_tools,
-    )
+
+    def _compute_meter() -> dict[str, int | float]:
+        ctx_messages: list[dict[str, Any]] | None = None
+        ctx_tools: list[dict[str, Any]] | None = None
+        if sid and session_context is not None:
+            ctx_messages, ctx_tools = session_context(sid)
+        return compute_context_meter(
+            cfg,
+            ctx_messages,
+            tool_definitions=ctx_tools,
+            session_id=sid,
+        )
+
+    context_meter = await asyncio.to_thread(_compute_meter)
 
     return {
         "api_online": llm_online,

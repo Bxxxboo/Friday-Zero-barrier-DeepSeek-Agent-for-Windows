@@ -2,6 +2,8 @@
 
 阶段 1：**Vercel 托管静态页 + Gitee Release 直链下载**。零云存储成本；下载速度取决于 Gitee（常见约 0.5～2 分钟 / 64MB）。
 
+**国内镜像**：`https://bxxxboo.gitee.io/friday`（Gitee Pages，无需 VPN）。部署脚本见下文。
+
 ## 目录
 
 | 路径 | 说明 |
@@ -54,6 +56,34 @@ npx vercel deploy --prod --yes
 ```
 
 仅推 Gitee、未跑 `publish-full-release` 时，Vercel 不会自动更新，须手动 `vercel deploy`。
+
+## Gitee Pages 国内镜像
+
+| 项 | 值 |
+|----|-----|
+| 访问地址 | `https://bxxxboo.gitee.io/friday` |
+| 源码分支 | `pages`（仅含 `website/` 静态文件，由脚本推送） |
+| 常量 | `friday/version.py` → `GITEE_PAGES_HOME` |
+
+### 首次开通（一次性）
+
+1. 完成 [Gitee 实名认证](https://gitee.com/profile/real_name)
+2. 打开 `https://gitee.com/Bxxxboo/friday/pages`
+3. 部署分支选 **`pages`**，目录留空（站点在分支根目录）
+4. 点击 **启动** / **更新**
+
+### 日常部署
+
+发版脚本已包含 Gitee Pages（`publish-full-release.ps1` 在 Vercel 之后执行）。单独更新官网：
+
+```powershell
+$env:GITEE_TOKEN='令牌'
+scripts\deploy-gitee-pages.cmd
+```
+
+步骤：将 `website/` 推送到 Gitee 的 `pages` 分支 → 调用 API 触发 Pages 构建。
+
+Gitee 免费版 Pages **不会**在 push 后自动构建，须脚本触发或网页点「更新」。
 
 ## 下载 URL 约定
 

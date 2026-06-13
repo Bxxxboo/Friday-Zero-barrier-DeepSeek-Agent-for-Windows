@@ -80,6 +80,63 @@ def test_merge_profile_maps_preserves_stored_model_and_url():
     assert merged["openai_compat"]["api_key"] == "sk-keep"
 
 
+def test_delete_custom_endpoint_persists_after_save(tmp_appdata):
+    from friday.custom_endpoints import add_blank_endpoint, delete_custom_endpoint, upsert_endpoint
+    from friday.storage import merge_settings
+
+    settings = upsert_endpoint(
+        UserSettings(),
+        "llm",
+        name="mimo-ultra-speed",
+        api_key="sk-test-endpoint-a",
+        base_url="https://api.example/v1",
+        model="model-a",
+        preserve_key_if_empty=False,
+    )
+    settings = add_blank_endpoint(settings, "llm", name="GPT")
+    save_settings(settings)
+
+    gpt_id = settings.llm_custom_endpoints[1]["id"]
+    deleted = delete_custom_endpoint(load_settings(), "llm", gpt_id)
+    save_settings(deleted)
+
+    reloaded = load_settings()
+    names = [e["name"] for e in reloaded.llm_custom_endpoints]
+    assert names == ["mimo-ultra-speed"]
+
+
+def test_merge_settings_delete_custom_endpoint_persists(tmp_appdata):
+    from friday.custom_endpoints import add_blank_endpoint, upsert_endpoint
+    from friday.storage import merge_settings
+
+    settings = upsert_endpoint(
+        UserSettings(),
+        "llm",
+        name="A",
+        api_key="sk-test-endpoint-a",
+        base_url="https://api.example/v1",
+        model="model-a",
+        preserve_key_if_empty=False,
+    )
+    settings = add_blank_endpoint(settings, "llm", name="B")
+    save_settings(settings)
+
+    gpt_id = settings.llm_custom_endpoints[1]["id"]
+    merged = merge_settings(
+        load_settings(),
+        {
+            "custom_endpoint_category": "llm",
+            "delete_custom_endpoint": True,
+            "custom_endpoint_id": gpt_id,
+        },
+    )
+    save_settings(merged)
+
+    reloaded = load_settings()
+    assert len(reloaded.llm_custom_endpoints) == 1
+    assert reloaded.llm_custom_endpoints[0]["name"] == "A"
+
+
 def test_credentials_preferred_when_settings_decrypt_fails(tmp_appdata):
     save_settings(UserSettings(api_key="sk-authoritative-key"))
     raw = load_json(tmp_appdata / "settings.json")

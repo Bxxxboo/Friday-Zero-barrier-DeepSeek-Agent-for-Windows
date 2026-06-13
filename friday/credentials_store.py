@@ -115,9 +115,8 @@ def _extract_encrypted_payload(settings_dict: dict[str, Any]) -> dict[str, Any]:
             settings_dict["image_gen_profiles"], category="image_gen"
         )
     for key in SECRET_ENDPOINT_KEYS:
-        items = settings_dict.get(key) or []
-        if items:
-            out[key] = _encrypt_custom_endpoints(items)
+        if key in settings_dict:
+            out[key] = _encrypt_custom_endpoints(settings_dict.get(key) or [])
     return out
 
 
@@ -205,9 +204,6 @@ def _merge_endpoint_lists(incoming: Any, stored: Any) -> list:
         out.append(item)
         if eid:
             seen.add(eid)
-    for eid, old_entry in old_by_id.items():
-        if eid not in seen:
-            out.append(dict(old_entry))
     return out
 
 

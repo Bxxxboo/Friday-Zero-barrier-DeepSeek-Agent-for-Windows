@@ -185,7 +185,8 @@
 
   /* ── 加载设置 ── */
 
-  async function loadSettings() {
+  async function loadSettings(options = {}) {
+    const skipStartupTests = Boolean(options.skipStartupTests);
     const res = await F.apiFetchWithTimeout("/api/settings", {}, 15000);
     if (!res.ok) throw new Error(`加载设置失败 (${res.status})`);
     const data = await res.json();
@@ -243,7 +244,9 @@
     F.bootSettingsSnapshot = data;
     F.applyStatusFromSettings?.(data);
     F.updateInputState();
-    void F.runStartupApiTests?.();
+    if (!skipStartupTests) {
+      void F.runStartupApiTests?.();
+    }
     if (Array.isArray(data.portability_notices) && data.portability_notices.length && F.settingsResult) {
       F.settingsResult.className = "settings-result error";
       F.settingsResult.textContent = data.portability_notices.join("\n");
@@ -1414,7 +1417,10 @@
       const data = await res.json();
       if (label) label.textContent = data.version || "—";
       if (sourceLink) {
-        if (data.website_home) {
+        if (data.gitee_pages_home) {
+          sourceLink.href = data.gitee_pages_home;
+          sourceLink.textContent = "官网（国内）";
+        } else if (data.website_home) {
           sourceLink.href = data.website_home;
           sourceLink.textContent = "官网下载";
         } else if (data.gitee_home) {

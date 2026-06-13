@@ -65,6 +65,32 @@ def test_status_bar_cached_only_returns_cached_without_probe(tmp_appdata, monkey
     assert data["image_gen_checking"] is False
 
 
+def test_status_bar_cached_only_image_gen_without_cache_shows_checking(tmp_appdata):
+    from friday.api_connect import _AUTH_STATUS_CACHE, _PROBE_LOCK
+
+    with _PROBE_LOCK:
+        _AUTH_STATUS_CACHE.clear()
+
+    ws = tmp_appdata / "ws-img-pending"
+    ws.mkdir()
+    settings = UserSettings(
+        api_key="sk-fake-key-for-testing1234567890",
+        model="deepseek-chat",
+        workspace=str(ws),
+        image_gen_enabled=True,
+        image_gen_api_key="sk-test-key-12345678",
+        image_gen_model="gpt-image-2",
+    )
+    save_settings(settings)
+    from friday.api_connect import record_service_status
+
+    record_service_status("llm", settings, True, "API 可用")
+
+    data = asyncio.run(get_status_bar(cached_only=True))
+    assert data["image_gen_checking"] is True
+    assert data["image_gen_online"] is False
+
+
 def test_status_bar_skips_image_gen_live_probe_when_cached_ok(tmp_appdata, monkeypatch):
     ws = tmp_appdata / "ws-img-cache"
     ws.mkdir()
@@ -113,6 +139,59 @@ def test_status_bar_gateway_disabled(tmp_appdata):
     assert "关闭" in str(data["gateway_reach_detail"])
 
 
+def test_status_bar_gateway_online_when_account_ready(tmp_appdata, monkeypatch):
+    ws = tmp_appdata / "ws-gw-account"
+    ws.mkdir()
+    settings = UserSettings(
+        api_key="sk-fake-key-for-testing1234567890",
+        model="deepseek-chat",
+        workspace=str(ws),
+        weixin_bridge_enabled=True,
+    )
+    save_settings(settings)
+    from friday.api_connect import record_service_status
+
+    record_service_status("llm", settings, True, "API 可用")
+
+    class _FakeAccount:
+        account_id = "wx-test"
+
+    monkeypatch.setattr("friday.weixin.gateway.probe_gateway", lambda **_k: False)
+    monkeypatch.setattr("friday.weixin.gateway.cli_available", lambda: True)
+    monkeypatch.setattr("friday.weixin.client.discover_account", lambda *_a, **_k: _FakeAccount())
+
+    data = asyncio.run(get_status_bar())
+    assert data["gateway_online"] is True
+    assert "微信通道已登录" in str(data["gateway_reach_detail"])
+
+
+def test_status_bar_gateway_online_when_remote_mapping_exists(tmp_appdata, monkeypatch):
+    ws = tmp_appdata / "ws-gw-remote"
+    ws.mkdir()
+    settings = UserSettings(
+        api_key="sk-fake-key-for-testing1234567890",
+        model="deepseek-chat",
+        workspace=str(ws),
+        weixin_bridge_enabled=True,
+    )
+    save_settings(settings)
+    from friday.api_connect import record_service_status
+    from friday.paths import get_appdata_dir
+
+    record_service_status("llm", settings, True, "API 可用")
+
+    mapping_path = get_appdata_dir() / "weixin_sessions.json"
+    mapping_path.write_text('{"wx-test::peer-1": "sess-remote"}', encoding="utf-8")
+
+    monkeypatch.setattr("friday.weixin.gateway.probe_gateway", lambda **_k: False)
+    monkeypatch.setattr("friday.weixin.gateway.cli_available", lambda: True)
+    monkeypatch.setattr("friday.weixin.client.discover_account", lambda *_a, **_k: None)
+
+    data = asyncio.run(get_status_bar())
+    assert data["gateway_online"] is True
+    assert "remote" in str(data["gateway_reach_detail"]).lower()
+
+
 def test_status_bar_gateway_offline_when_bridge_on(tmp_appdata, monkeypatch):
     ws = tmp_appdata / "ws-gw-offline"
     ws.mkdir()
@@ -126,16 +205,10 @@ def test_status_bar_gateway_offline_when_bridge_on(tmp_appdata, monkeypatch):
     from friday.api_connect import record_service_status
 
     record_service_status("llm", settings, True, "API 可用")
-    monkeypatch.setattr(
-        "friday.health_check._gateway_service",
-        lambda: {
-            "status": "degraded",
-            "detail": "Gateway 未响应",
-            "running": False,
-            "port": 18789,
-            "cli_available": True,
-        },
-    )
+    monkeypatch.setattr("friday.weixin.gateway.probe_gateway", lambda **_k: False)
+    monkeypatch.setattr("friday.weixin.gateway.cli_available", lambda: True)
+    monkeypatch.setattr("friday.weixin.client.discover_account", lambda *_a, **_k: None)
+    monkeypatch.setattr("friday.weixin.sessions.has_weixin_mappings", lambda: False)
 
     data = asyncio.run(get_status_bar())
     assert data["gateway_enabled"] is True
@@ -144,7 +217,12 @@ def test_status_bar_gateway_offline_when_bridge_on(tmp_appdata, monkeypatch):
     assert "Gateway" in str(data["gateway_reach_detail"])
 
 
-def test_status_bar_cached_only_without_cache_skips_checking(tmp_appdata):
+def test_status_bar_cached_only_without_cache_shows_checking(tmp_appdata):
+    from friday.api_connect import _AUTH_STATUS_CACHE, _PROBE_LOCK
+
+    with _PROBE_LOCK:
+        _AUTH_STATUS_CACHE.clear()
+
     ws = tmp_appdata / "ws-no-cache"
     ws.mkdir()
     settings = UserSettings(
@@ -152,8 +230,8 @@ def test_status_bar_cached_only_without_cache_skips_checking(tmp_appdata):
         model="deepseek-chat",
         workspace=str(ws),
         vision_enabled=True,
-        vision_api_key="sk-vision-key-12345678",
-        vision_model="gpt-4o-mini",
+        vision_api_key="ark-test-key-12345678",
+        vision_model="ep-test-vision",
         image_gen_enabled=True,
         image_gen_api_key="ark-test-key-12345678",
         image_gen_model="ep-test",
@@ -161,9 +239,29 @@ def test_status_bar_cached_only_without_cache_skips_checking(tmp_appdata):
     save_settings(settings)
 
     data = asyncio.run(get_status_bar(cached_only=True))
-    assert data["api_checking"] is False
-    assert data["vision_checking"] is False
-    assert data["image_gen_checking"] is False
+    assert data["api_checking"] is True
+    assert data["vision_checking"] is True
+    assert data["image_gen_checking"] is True
+
+
+def test_status_bar_cached_only_llm_without_cache_shows_checking(tmp_appdata):
+    from friday.api_connect import _AUTH_STATUS_CACHE, _PROBE_LOCK
+
+    with _PROBE_LOCK:
+        _AUTH_STATUS_CACHE.clear()
+
+    ws = tmp_appdata / "ws-llm-pending"
+    ws.mkdir()
+    settings = UserSettings(
+        api_key="sk-fake-key-for-testing1234567890",
+        model="deepseek-chat",
+        workspace=str(ws),
+    )
+    save_settings(settings)
+
+    data = asyncio.run(get_status_bar(cached_only=True))
+    assert data["api_checking"] is True
+    assert data["api_online"] is False
 
 
 def test_status_bar_session_tokens(tmp_appdata):

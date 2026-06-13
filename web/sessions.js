@@ -83,7 +83,9 @@
     }
     F.updateInputState();
     void F.refreshYoloUnlockState?.();
-    void F.refreshStatusBar?.();
+    if (!F.isStatusBarBooting?.()) {
+      void F.refreshStatusBar?.();
+    }
   }
 
   async function createSession(switchTo = true) {

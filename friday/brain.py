@@ -280,8 +280,7 @@ class DeepSeekBrain:
                     total += len(enc.encode(value))
                 elif isinstance(value, list):
                     total += self._count_tool_calls(value)
-        # 工具定义的开销（粗略估算，一次即可）
-        return total + 200
+        return total
 
     def _count_tool_calls(self, tool_calls: list[dict[str, Any]]) -> int:
         enc = self.encoder
@@ -603,11 +602,34 @@ class DeepSeekBrain:
             )
 
 
+def effective_context_messages_for_meter(
+    settings: UserSettings,
+    messages: list[dict[str, Any]],
+    *,
+    session_id: str = "",
+    tool_definitions: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """与真实发请求前一致：rebuild + 折叠，避免状态栏按磁盘全量历史高估。"""
+    from friday.tools.registry import get_frozen_tool_definitions
+
+    tools = tool_definitions if tool_definitions is not None else get_frozen_tool_definitions(settings)
+    msgs = list(messages or [])
+    if not msgs:
+        return []
+    if session_id:
+        from friday.context_assembler import rebuild_messages
+
+        msgs, _ = rebuild_messages(session_id, msgs, settings=settings)
+    brain = DeepSeekBrain(settings)
+    return brain.prepare_messages(msgs, tool_definitions=tools)
+
+
 def compute_context_meter(
     settings: UserSettings,
     messages: list[dict[str, Any]] | None = None,
     *,
     tool_definitions: list[dict[str, Any]] | None = None,
+    session_id: str = "",
 ) -> dict[str, int | float]:
     """估算下一轮 API 请求的上下文占用（消息 + 工具定义）。"""
     from friday.tools.registry import get_frozen_tool_definitions
@@ -617,8 +639,8 @@ def compute_context_meter(
     budget = int(max_context * _SAFETY_RATIO)
     threshold = int(budget * CONTEXT_COMPACT_RATIO)
 
-    msg_list = list(messages or [])
-    if not msg_list:
+    raw_list = list(messages or [])
+    if not raw_list:
         return {
             "context_tokens": 0,
             "max_context": max_context,
@@ -627,6 +649,12 @@ def compute_context_meter(
             "budget_ratio": 0.0,
         }
 
+    msg_list = effective_context_messages_for_meter(
+        settings,
+        raw_list,
+        session_id=session_id,
+        tool_definitions=tools,
+    )
     brain = DeepSeekBrain(settings)
     message_tokens = brain.count_tokens(msg_list)
     tool_tokens = brain._estimate_tools_tokens(tools) if tools else 200
