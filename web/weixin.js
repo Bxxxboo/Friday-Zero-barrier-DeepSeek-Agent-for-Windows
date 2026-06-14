@@ -509,6 +509,46 @@
     }
   }
 
+  async function refreshWeixinProgressToggle() {
+    const toggle = $("weixinTaskProgressEnabled");
+    const deliverToggle = $("weixinDeliverFilesEnabled");
+    try {
+      const res = await F.apiFetch("/api/settings");
+      const data = await res.json();
+      if (toggle) toggle.checked = data.weixin_task_progress_enabled !== false;
+      if (deliverToggle) deliverToggle.checked = data.weixin_deliver_files_enabled !== false;
+    } catch {
+      if (toggle) toggle.checked = true;
+      if (deliverToggle) deliverToggle.checked = true;
+    }
+  }
+
+  async function toggleWeixinTaskProgress(enabled) {
+    try {
+      await F.apiFetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ weixin_task_progress_enabled: enabled }),
+      });
+    } catch {
+      setResult(false, "切换长任务进度回传失败。");
+      void refreshWeixinProgressToggle();
+    }
+  }
+
+  async function toggleWeixinDeliverFiles(enabled) {
+    try {
+      await F.apiFetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ weixin_deliver_files_enabled: enabled }),
+      });
+    } catch {
+      setResult(false, "切换产出文件直发失败。");
+      void refreshWeixinProgressToggle();
+    }
+  }
+
   async function toggleBridge(enabled) {
     try {
       await F.apiFetch("/api/weixin/setup/toggle", {
@@ -582,9 +622,16 @@
     updateGatewayStrip(null, enabled);
     void toggleBridge(enabled);
   });
+  $("weixinTaskProgressEnabled")?.addEventListener("change", (e) => {
+    void toggleWeixinTaskProgress(!!e.target.checked);
+  });
+  $("weixinDeliverFilesEnabled")?.addEventListener("change", (e) => {
+    void toggleWeixinDeliverFiles(!!e.target.checked);
+  });
   $("openclawGatewayAutostart")?.addEventListener("change", (e) => {
     void setOpenclawAutostart(!!e.target.checked);
   });
   void refreshOpenclawAutostart();
+  void refreshWeixinProgressToggle();
   void refreshCachedLoginUrlState();
 })();

@@ -519,6 +519,14 @@
         })();
         break;
       }
+      case "schedule_completed":
+        F.onScheduleCompleted?.(data);
+        if (data?.status === "ok") {
+          F.setConnectionStatus?.(`定时任务「${data.title || ""}」已完成`, true);
+        } else if (data?.status === "error") {
+          F.setConnectionStatus?.(`定时任务「${data.title || ""}」失败`, false);
+        }
+        break;
       case "sessions_updated":
         void F.refreshSessionList?.();
         break;
@@ -1178,6 +1186,7 @@
   async function resolveApproval(approved) {
     const id = F.pendingApprovalId;
     if (!id) return;
+    F.pendingApprovalId = null;
 
     const node = pendingApprovalNode;
     const buttons = node?.querySelector(".approval-actions");
@@ -1194,6 +1203,7 @@
         body: JSON.stringify({ approval_id: id, approved }),
       });
     } catch {
+      F.pendingApprovalId = id;
       if (buttons) {
         buttons.querySelectorAll("button").forEach((btn) => {
           btn.disabled = false;
@@ -1202,7 +1212,6 @@
       return;
     }
 
-    F.pendingApprovalId = null;
     if (node) {
       node.classList.add(approved ? "approved" : "rejected");
       buttons?.remove();

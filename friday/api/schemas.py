@@ -50,6 +50,8 @@ class SettingsPayload(BaseModel):
     image_gen_fallback_urls: str = ""
     image_gen_save_dir: str = ""
     weixin_bridge_enabled: bool | None = None
+    weixin_task_progress_enabled: bool | None = None
+    weixin_deliver_files_enabled: bool | None = None
     acknowledged_changelog_version: str | None = None
     api_proxy: str = ""
     api_trust_env: bool | None = None
@@ -126,6 +128,8 @@ class SettingsResponse(BaseModel):
     image_gen_custom_endpoints: list[dict[str, object]] = []
     image_gen_custom_active: str = ""
     weixin_bridge_enabled: bool = True
+    weixin_task_progress_enabled: bool = True
+    weixin_deliver_files_enabled: bool = True
     acknowledged_changelog_version: str = ""
     portability_notices: list[str] = []
     launch_at_logon: bool = False
@@ -173,6 +177,7 @@ class PortableExportPayload(BaseModel):
 class PortableImportPayload(BaseModel):
     zip_base64: str = ""
     filename: str = "Friday-portable.zip"
+    include_sessions: bool = True
 
 
 # --- 对话 / 会话 ---

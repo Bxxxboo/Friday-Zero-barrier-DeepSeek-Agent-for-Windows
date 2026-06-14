@@ -636,6 +636,35 @@ def migrate_local_storage(
     }
 
 
+def ensure_sessions_index_after_import() -> bool:
+    """导入配置包后：index 缺失或与磁盘会话不一致时重建。"""
+    on_disk = sorted(
+        _sessions_dir().glob("*.json"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    if not on_disk:
+        return False
+
+    disk_ids = [path.stem for path in on_disk]
+    index = _read_index()
+    order = [sid for sid in index["order"] if sid in disk_ids]
+    for sid in disk_ids:
+        if sid not in order:
+            order.append(sid)
+
+    active = index["active_session_id"]
+    if active not in disk_ids:
+        active = order[0] if order else ""
+
+    if order == index["order"] and active == index["active_session_id"]:
+        return False
+
+    _write_index(active, order)
+    _log.info("已重建 sessions_index | count=%d active=%s", len(order), active)
+    return True
+
+
 def migrate_legacy_data_dir() -> None:
     """将旧版项目 data/ 目录迁移到 %APPDATA%/Friday/。"""
     import shutil

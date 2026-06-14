@@ -63,7 +63,7 @@ async def build_status_bar_snapshot(
         if cached is not None:
             return cached[0], cached[1], False
         online, detail = await asyncio.to_thread(test_llm_service, cfg)
-        short = detail if online else detail.split("\n")[0]
+        short = (detail or "").split("\n")[0].strip() or detail
         return online, short, False
 
     async def _resolve_vision() -> tuple[bool, str, bool]:
@@ -83,7 +83,7 @@ async def build_status_bar_snapshot(
         if result is None:
             return False, "未配置", False
         online, detail = result
-        short = detail if online else detail.split("\n")[0]
+        short = (detail or "").split("\n")[0].strip() or detail
         return online, short, False
 
     async def _resolve_image_gen() -> tuple[bool, str, bool]:
@@ -103,7 +103,7 @@ async def build_status_bar_snapshot(
         if result is None:
             return False, "未配置", False
         online, detail = result
-        short = detail if online else detail.split("\n")[0]
+        short = (detail or "").split("\n")[0].strip() or detail
         return online, short, False
 
     def _resolve_gateway_sync() -> tuple[bool, bool, bool, str, bool]:

@@ -140,6 +140,32 @@ def test_should_request_approval_once_per_turn():
     assert should_request_approval(settings, decision, state) is False
 
 
+def test_always_require_respects_once_per_turn_after_general():
+    from friday.safety import TurnApprovalState, ToolDecision, mark_turn_approved, should_request_approval
+
+    settings = UserSettings(approve_once_per_turn=True, require_approval_exec=True)
+    state = TurnApprovalState()
+    destructive = ToolDecision(
+        True,
+        True,
+        always_require_approval=True,
+        reuse_turn_approval=True,
+    )
+
+    assert should_request_approval(settings, destructive, state) is True
+    mark_turn_approved(state, destructive)
+    assert should_request_approval(settings, destructive, state) is False
+
+
+def test_always_require_image_gen_never_reuses_turn():
+    from friday.safety import TurnApprovalState, ToolDecision, should_request_approval
+
+    settings = UserSettings(approve_once_per_turn=True, require_approval_writes=True)
+    state = TurnApprovalState(general=True)
+    image = ToolDecision(True, True, always_require_approval=True)
+    assert should_request_approval(settings, image, state) is True
+
+
 def test_yolo_unlocked_skips_untrusted_download_confirm(monkeypatch):
     from friday.tools.web_limits import DownloadProbe
     from friday.tools.web_trust import TrustLevel, TrustReport

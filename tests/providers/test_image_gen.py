@@ -296,6 +296,27 @@ def test_generate_image_records_service_status_on_success(tmp_appdata, monkeypat
     assert "对话生图成功" in cached[1]
 
 
+def test_generate_image_preserves_existing_test_status(tmp_appdata, monkeypatch):
+    from friday.api_connect import _auth_status_key, _read_auth_status, record_service_status
+
+    fake_png = _minimal_png(1024, 1024)
+    mock_response = MagicMock()
+    mock_response.data = [MagicMock(b64_json=__import__("base64").b64encode(fake_png).decode(), url=None)]
+    mock_client = MagicMock()
+    mock_client.images.generate.return_value = mock_response
+    settings = _settings()
+    record_service_status("image_gen", settings, True, "生图测试通过，模型「gpt-image-2」可正常调用")
+
+    with patch("friday.image_gen._images_client", return_value=mock_client):
+        result = generate_image(settings, "a cute cat")
+
+    assert result["ok"] is True
+    cached = _read_auth_status(_auth_status_key("image_gen", settings), service="image_gen")
+    assert cached is not None
+    assert "测试" in cached[1]
+    assert "对话生图成功" not in cached[1]
+
+
 def test_generate_image_fallback_urls(tmp_appdata, monkeypatch):
     fake_png = _minimal_png(1024, 1024)
     calls: list[str] = []

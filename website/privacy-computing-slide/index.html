@@ -26,18 +26,31 @@
       padding: 0;
     }
 
+    html {
+      scroll-behavior: smooth;
+    }
+
     html, body {
       width: 100%;
       height: 100%;
-      overflow: hidden;
       background: #081420;
       font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
       -webkit-font-smoothing: antialiased;
     }
 
-    .viewport {
-      width: 100vw;
+    .deck {
       height: 100vh;
+      overflow-y: auto;
+      overflow-x: hidden;
+      scroll-snap-type: y mandatory;
+      scroll-behavior: smooth;
+    }
+
+    .slide-panel {
+      min-height: 100vh;
+      height: 100vh;
+      scroll-snap-align: start;
+      scroll-snap-stop: always;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -50,7 +63,7 @@
       height: min(100vh, calc(min(100vw, var(--slide-w)) * 9 / 16));
       max-height: 100vh;
       max-width: calc(100vh * 16 / 9);
-      padding: 52px 72px 48px;
+      padding: 44px 72px 40px;
       display: flex;
       flex-direction: column;
       background: linear-gradient(165deg, var(--bg-top) 0%, var(--bg-bottom) 100%);
@@ -69,11 +82,11 @@
     .header {
       flex-shrink: 0;
       text-align: center;
-      margin-bottom: 28px;
+      margin-bottom: 18px;
     }
 
     .title {
-      font-size: clamp(38px, 3.4vw, 56px);
+      font-size: clamp(36px, 3.2vw, 52px);
       font-weight: 700;
       letter-spacing: 0.06em;
       color: var(--text-primary);
@@ -81,10 +94,11 @@
     }
 
     .intro {
-      max-width: 1240px;
-      margin: 20px auto 0;
-      font-size: clamp(16px, 1.2vw, 20px);
-      line-height: 1.8;
+      flex-shrink: 0;
+      max-width: 1480px;
+      margin: 0 auto 20px;
+      font-size: clamp(17px, 1.3vw, 21px);
+      line-height: 1.85;
       font-weight: 400;
       color: var(--text-secondary);
       text-align: center;
@@ -101,70 +115,93 @@
       font-weight: 600;
     }
 
-    .platforms {
+    .hero-single {
       flex: 1;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 40px;
       min-height: 0;
-    }
-
-    .platform {
       display: flex;
-      flex-direction: column;
-      min-height: 0;
+      align-items: center;
+      justify-content: center;
     }
 
-    .platform-head {
-      margin-bottom: 14px;
-      padding-bottom: 12px;
-      border-bottom: 1px solid var(--border);
-      flex-shrink: 0;
-    }
-
-    .platform-name {
-      font-size: clamp(20px, 1.6vw, 26px);
-      font-weight: 600;
-      color: var(--text-primary);
-      letter-spacing: 0.03em;
-    }
-
-    .platform-name::before {
-      content: "";
-      display: inline-block;
-      width: 4px;
-      height: 1em;
-      margin-right: 10px;
-      vertical-align: -0.1em;
-      background: var(--accent);
-      border-radius: 2px;
-    }
-
-    .platform-sub {
-      margin-top: 6px;
-      margin-left: 14px;
-      font-size: 14px;
-      color: var(--text-muted);
-      font-weight: 400;
-    }
-
-    .platform-frame {
-      flex: 1;
-      min-height: 0;
-      border-radius: 6px;
+    .hero-frame {
+      width: 100%;
+      max-width: 1320px;
+      height: 100%;
+      border-radius: 8px;
       border: 1px solid var(--border);
       background: var(--surface);
       padding: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       overflow: hidden;
     }
 
-    .platform-frame img {
+    .hero-frame img {
       width: 100%;
       height: 100%;
-      object-fit: cover;
-      object-position: top center;
+      object-fit: contain;
+      object-position: center;
       border-radius: 4px;
       display: block;
+    }
+
+    .certificates {
+      flex: 1;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      align-items: stretch;
+      margin-top: 8px;
+    }
+
+    .cert-card {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.03);
+      padding: 8px;
+      overflow: hidden;
+    }
+
+    .cert-card img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      object-position: center;
+      border-radius: 4px;
+      display: block;
+      background: #fff;
+    }
+
+    .page-dots {
+      position: fixed;
+      right: 22px;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .page-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      border: none;
+      padding: 0;
+      background: rgba(255, 255, 255, 0.25);
+      cursor: pointer;
+      transition: background 0.2s ease, transform 0.2s ease;
+    }
+
+    .page-dot.active {
+      background: var(--accent);
+      transform: scale(1.25);
     }
 
     @media print {
@@ -172,9 +209,20 @@
         overflow: visible;
         background: white;
       }
-      .viewport {
-        width: 1920px;
+      .deck {
+        height: auto;
+        overflow: visible;
+        scroll-snap-type: none;
+      }
+      .slide-panel {
         height: 1080px;
+        min-height: 1080px;
+        page-break-after: always;
+        break-after: page;
+      }
+      .slide-panel:last-child {
+        page-break-after: auto;
+        break-after: auto;
       }
       .slide {
         width: 1920px;
@@ -182,53 +230,112 @@
         max-width: none;
         max-height: none;
       }
+      .page-dots {
+        display: none;
+      }
     }
   </style>
 </head>
 <body>
-  <div class="viewport">
-    <main class="slide" role="document" aria-label="隐私计算技术验证平台">
-      <div class="slide-bar" aria-hidden="true"></div>
+  <div class="deck" id="deck">
+    <!-- 第一页：介绍文字 + 完整配图 -->
+    <section class="slide-panel" id="page-1" aria-label="平台介绍">
+      <main class="slide">
+        <div class="slide-bar" aria-hidden="true"></div>
 
-      <header class="header">
-        <h1 class="title">隐私计算技术验证平台</h1>
+        <header class="header">
+          <h1 class="title">隐私计算技术验证平台</h1>
+        </header>
+
         <p class="intro">
           隐私计算平台融合差分隐私、安全多方计算、同态加密等多种数据安全技术，致力于实现数据流转与使用过程的<em>「可用不可见」</em>，主要包含<strong>脱敏工具集</strong>和<strong>联邦 XGBoost 训练系统</strong>两个部分。
         </p>
-      </header>
 
-      <section class="platforms">
-        <article class="platform">
-          <div class="platform-head">
-            <h2 class="platform-name">脱敏平台</h2>
-            <p class="platform-sub">个人敏感信息按需脱敏工具集</p>
-          </div>
-          <div class="platform-frame">
-            <img
-              src="assets/desensitization.png"
-              alt="脱敏平台界面截图"
-              width="800"
-              height="450"
-            />
-          </div>
-        </article>
-
-        <article class="platform">
-          <div class="platform-head">
-            <h2 class="platform-name">联邦 XGBoost 训练平台</h2>
-            <p class="platform-sub">高效隐私保护的联邦 XGBoost 训练平台</p>
-          </div>
-          <div class="platform-frame">
+        <div class="hero-single">
+          <div class="hero-frame">
             <img
               src="assets/federated-xgboost.png"
-              alt="联邦 XGBoost 训练平台界面截图"
-              width="800"
-              height="450"
+              alt="高效隐私保护的联邦 XGBoost 训练平台界面"
+              width="1320"
+              height="743"
             />
           </div>
-        </article>
-      </section>
-    </main>
+        </div>
+      </main>
+    </section>
+
+    <!-- 第二页：成果说明 + 三张证书 -->
+    <section class="slide-panel" id="page-2" aria-label="应用成果">
+      <main class="slide">
+        <div class="slide-bar" aria-hidden="true"></div>
+
+        <header class="header">
+          <h1 class="title">隐私计算技术验证平台</h1>
+        </header>
+
+        <p class="intro">
+          上述相关成果已应用于<strong>中国移动数据处理系统</strong>，获<strong>中国网络空间安全协会优秀创新成果</strong>、<strong>陕西高等学校科学技术研究优秀成果一等奖</strong>等奖励。
+        </p>
+
+        <div class="certificates">
+          <figure class="cert-card">
+            <img
+              src="assets/cert-education.png"
+              alt="陕西高等学校科学技术研究优秀成果证书"
+            />
+          </figure>
+          <figure class="cert-card">
+            <img
+              src="assets/cert-contract.png"
+              alt="教育部-中国移动科研基金研发项目任务合同书"
+            />
+          </figure>
+          <figure class="cert-card">
+            <img
+              src="assets/cert-honor.png"
+              alt="网络安全优秀创新成果荣誉证书"
+            />
+          </figure>
+        </div>
+      </main>
+    </section>
   </div>
+
+  <nav class="page-dots" aria-label="页面导航">
+    <button class="page-dot active" data-target="page-1" aria-label="第 1 页"></button>
+    <button class="page-dot" data-target="page-2" aria-label="第 2 页"></button>
+  </nav>
+  <script>
+    (function () {
+      var deck = document.getElementById("deck");
+      var panels = Array.prototype.slice.call(document.querySelectorAll(".slide-panel"));
+      var dots = Array.prototype.slice.call(document.querySelectorAll(".page-dot"));
+
+      function setActiveDot(index) {
+        dots.forEach(function (dot, i) {
+          dot.classList.toggle("active", i === index);
+        });
+      }
+
+      function panelIndex() {
+        var scrollTop = deck.scrollTop;
+        var vh = deck.clientHeight;
+        return Math.round(scrollTop / vh);
+      }
+
+      deck.addEventListener("scroll", function () {
+        setActiveDot(panelIndex());
+      }, { passive: true });
+
+      dots.forEach(function (dot) {
+        dot.addEventListener("click", function () {
+          var target = document.getElementById(dot.getAttribute("data-target"));
+          if (target) {
+            target.scrollIntoView({ behavior: "smooth" });
+          }
+        });
+      });
+    })();
+  </script>
 </body>
 </html>

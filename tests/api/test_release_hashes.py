@@ -40,6 +40,20 @@ def test_expected_sha256_for_download_from_map():
     assert found == digest
 
 
+def test_expected_sha256_fetches_sums_from_release_url(monkeypatch):
+    url = "https://gitee.com/Bxxxboo/friday/releases/download/v1.3.7/Friday-Update-1.3.7.zip"
+    digest = "b" * 64
+    sums_url = derive_sums_download_url(url)
+    assert sums_url
+
+    def fake_fetch(target: str, *, timeout: float = 30.0) -> dict[str, str]:
+        assert target == sums_url
+        return parse_sums_text(f"{digest}  Friday-Update-1.3.7.zip\n")
+
+    monkeypatch.setattr("friday.release_hashes.fetch_sums_map", fake_fetch)
+    assert expected_sha256_for_download(url) == digest
+
+
 def test_sha256_hex_file_and_verify(tmp_path: Path):
     path = tmp_path / "sample.bin"
     path.write_bytes(b"friday-update-payload")

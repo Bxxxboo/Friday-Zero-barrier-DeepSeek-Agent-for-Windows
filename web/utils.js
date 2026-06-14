@@ -141,6 +141,9 @@
     images.forEach((item) => {
       const path = typeof item === "string" ? item : item?.path;
       if (!path) return;
+      const figure = document.createElement("figure");
+      figure.className = "message-generated-image-item";
+
       const img = document.createElement("img");
       img.className = "message-image";
       img.alt = "生成的图片";
@@ -168,7 +171,25 @@
             /* ignore */
           });
       });
-      wrap.appendChild(img);
+
+      const actions = document.createElement("div");
+      actions.className = "message-generated-image-actions";
+      const folderBtn = document.createElement("button");
+      folderBtn.type = "button";
+      folderBtn.className = "ghost-btn message-image-folder-btn";
+      folderBtn.textContent = "打开所在文件夹";
+      folderBtn.addEventListener("click", () => {
+        void apiFetch("/api/open-path", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path }),
+        });
+      });
+
+      figure.appendChild(img);
+      actions.appendChild(folderBtn);
+      figure.appendChild(actions);
+      wrap.appendChild(figure);
     });
     if (wrap.childElementCount > 0) node.appendChild(wrap);
   }

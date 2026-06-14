@@ -48,12 +48,34 @@ def parse_approval_text(text: str) -> bool | None:
     return None
 
 
+def _weixin_detail_excerpt(detail: str, *, max_len: int = 120) -> str:
+    """微信审批补充说明：去掉命令原文，按词边界截断。"""
+    lines: list[str] = []
+    for line in (detail or "").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("命令摘要："):
+            continue
+        lines.append(stripped)
+    text = " ".join(lines)
+    if len(text) <= max_len:
+        return text
+    cut = text[: max_len - 1]
+    for sep in ("、", "，", " ", "·"):
+        idx = cut.rfind(sep)
+        if idx > max_len // 2:
+            return cut[:idx].rstrip() + "…"
+    space = cut.rfind(" ")
+    if space > max_len // 2:
+        return cut[:space].rstrip() + "…"
+    return cut.rstrip() + "…"
+
+
 def format_approval_prompt_weixin(summary: str, *, preview: str = "") -> str:
     """微信端精简审批卡，避免长列表刷屏。"""
     summary = summary.strip()
-    detail = (preview or "").strip()
+    detail = _weixin_detail_excerpt((preview or "").strip())
     if detail and detail != summary:
-        body = f"{summary}（{detail[:100]}）"
+        body = f"{summary}（{detail}）"
     else:
         body = summary
     return f"【需你确认】{body}\n回复「同意」执行，「拒绝」取消（5 分钟内有效）"

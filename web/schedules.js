@@ -361,4 +361,12 @@
 
   F.loadSchedules = loadSchedules;
   F.openSchedulesSettings = () => F.openSettings("schedules");
+
+  F.onScheduleCompleted = (data) => {
+    if (!data) return;
+    const ok = data.status === "ok";
+    const title = data.title || "定时任务";
+    showResult(ok ? `「${title}」已完成，可在侧栏打开会话查看结果` : `「${title}」失败：${data.message || ""}`, ok);
+    void loadSchedules();
+  };
 })();

@@ -522,6 +522,11 @@ def download_file(
     )
 
 
+def _download_software_failure(category: str, detail: str) -> str:
+    _log.info("download_software 失败 | category=%s detail=%s", category, detail[:160])
+    return f"【下载失败·{category}】{detail}"
+
+
 # 常见软件官网下载页（用于 download_software 一键下载）
 _SOFTWARE_PAGES: dict[str, str] = {
     "netease_music": "https://music.163.com/#/download",
@@ -573,15 +578,16 @@ def download_software(
     name = (software_name or "").strip()
     dest = (destination or "").strip()
     if not name or not dest:
-        return "请提供 software_name 和 destination。"
+        return _download_software_failure("参数缺失", "请提供 software_name 和 destination。")
 
     key = resolve_software_key(name) or name.lower().replace(" ", "_")
     page_url = _SOFTWARE_PAGES.get(key, "")
 
     if not page_url:
-        return (
+        return _download_software_failure(
+            "未收录",
             f"暂无「{software_name}」的预设下载页。请用 browse_webpage 打开官网，"
-            f"找到下载链接后用 download_file 下载；不要用 PowerShell。"
+            f"找到下载链接后用 download_file 下载；不要用 PowerShell。",
         )
 
     _log.info("一键下载软件 | name=%s key=%s page=%s dest=%s", name, key, page_url, dest)
@@ -589,9 +595,9 @@ def download_software(
     try:
         data, info = _fetch_bytes(page_url, max_bytes=WEB_PAGE_MAX_BYTES, timeout=25.0)
     except ValueError as exc:
-        return f"无法访问官网: {exc}"
+        return _download_software_failure("页面访问", f"无法访问官网: {exc}")
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        return f"网络请求失败: {exc}"
+        return _download_software_failure("网络", f"网络请求失败: {exc}")
 
     final_url = str(info.get("final_url") or page_url)
     html = _decode_html(data, str(info.get("content_type", "")))
@@ -599,14 +605,15 @@ def download_software(
     ranked = pick_best_download_link(parsed["download_links"], expected_software=key)
 
     if not ranked:
-        return (
+        return _download_software_failure(
+            "未找到链接",
             f"在 {final_url} 未找到下载链接。"
-            f"请用 browse_webpage 查看页面后手动指定 download_file。"
+            f"请用 browse_webpage 查看页面后手动指定 download_file。",
         )
 
     url = str(ranked[0].get("url", "")).strip()
     if not url:
-        return "未能解析下载地址。"
+        return _download_software_failure("解析失败", "未能解析下载地址。")
 
     verify_text = verify_download_source(url, expected_software=key)
     dl_result = download_file(
@@ -615,7 +622,9 @@ def download_software(
         expected_software=key,
         _allow_large=True,
     )
-    if dl_result.startswith("下载完成") and open_after:
+    if not dl_result.startswith("下载完成"):
+        return _download_software_failure("文件下载", f"{verify_text}\n\n{dl_result}".strip())
+    if open_after:
         from friday.tools.system import open_app
 
         path_line = [ln for ln in dl_result.splitlines() if ln.startswith("保存至:")]

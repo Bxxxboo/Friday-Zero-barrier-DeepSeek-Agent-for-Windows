@@ -124,6 +124,8 @@ class UserSettings:
     image_gen_fallback_urls: str = ""
     image_gen_save_dir: str = ""
     weixin_bridge_enabled: bool = True
+    weixin_task_progress_enabled: bool = True
+    weixin_deliver_files_enabled: bool = True
     acknowledged_changelog_version: str = ""
     api_proxy: str = ""
     api_trust_env: bool = True

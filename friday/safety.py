@@ -48,6 +48,7 @@ class ToolDecision:
     untrusted_download: bool = False
     trust_label: str = ""
     always_require_approval: bool = False
+    reuse_turn_approval: bool = False
 
 
 @dataclass
@@ -68,6 +69,12 @@ def should_request_approval(
     if not decision.needs_approval:
         return False
     if decision.always_require_approval:
+        if (
+            decision.reuse_turn_approval
+            and settings.approve_once_per_turn
+            and state.general
+        ):
+            return False
         return True
     if not settings.approve_once_per_turn:
         return True
@@ -349,7 +356,12 @@ def evaluate_tool(
         if safety.blocked:
             return ToolDecision(False, False, safety.block_reason)
         if safety.always_require_approval:
-            return ToolDecision(True, True, always_require_approval=True)
+            return ToolDecision(
+                True,
+                True,
+                always_require_approval=True,
+                reuse_turn_approval=True,
+            )
 
     if mode == "yolo" and yolo_unlocked and tool_name in YOLO_EXEC_REQUIRES_APPROVAL:
         return ToolDecision(True, True, always_require_approval=True)

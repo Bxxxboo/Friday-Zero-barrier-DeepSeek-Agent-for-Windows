@@ -143,8 +143,9 @@ def repair_image_gen_save_dir(settings: UserSettings) -> tuple[UserSettings, lis
     if not raw:
         return settings, notices
 
+    expanded = expand_config_path(raw)
     ok, reason = validate_workspace_path(raw)
-    if ok and Path(raw).expanduser().is_dir():
+    if ok and Path(expanded).is_dir():
         return settings, notices
 
     _log.warning("生图保存目录无效，已清空 | path=%s reason=%s", raw, reason)

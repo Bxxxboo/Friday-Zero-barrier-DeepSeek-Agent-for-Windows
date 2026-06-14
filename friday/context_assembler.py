@@ -142,7 +142,8 @@ def rebuild_messages(
     rest = messages[1:] if system else list(messages)
     tail = rest[-min_keep_recent:] if len(rest) > min_keep_recent else rest
 
-    injection = assemble_injection_blocks(session_id, messages, settings=cfg)
+    # rebuild 裁掉早期消息（含计划锚点），须基于 tail 重新注入 plan/checkpoint 层
+    injection = assemble_injection_blocks(session_id, tail, settings=cfg)
     rebuilt: list[dict[str, Any]] = []
     if system:
         rebuilt.append(system)

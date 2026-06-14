@@ -137,6 +137,51 @@ def compress_tool_message_content(content: str) -> str:
     return compress_tool_result("tool", content, aggressive=True)
 
 
+_PROBE_CODE_RE = re.compile(
+    r"(pip\s+install|pip\s+list|import\s+sys|import\s+os|getcwd|sys\.path|"
+    r"PYTHONPATH|where\s+python|python\s+--version|print\s*\(\s*sys)",
+    re.IGNORECASE,
+)
+
+
+def detect_probe_tool_thrash(
+    messages: list[dict[str, Any]],
+    *,
+    window: int = 8,
+) -> tuple[bool, str]:
+    """检测 python_env_info / 探测性 run_python 空转。"""
+    env_info_count = 0
+    probe_python_count = 0
+    scanned = 0
+    for msg in reversed(messages):
+        if msg.get("role") != "assistant":
+            continue
+        for call in msg.get("tool_calls") or []:
+            fn = call.get("function") or {}
+            name = str(fn.get("name", ""))
+            args = str(fn.get("arguments", ""))
+            if name == "python_env_info":
+                env_info_count += 1
+            elif name == "run_python" and _PROBE_CODE_RE.search(args):
+                probe_python_count += 1
+            scanned += 1
+            if scanned >= window:
+                break
+        if scanned >= window:
+            break
+    if env_info_count >= 2:
+        return (
+            True,
+            "python_env_info 本任务只需调用 1 次；请直接编写完整脚本一次 run_python 执行。",
+        )
+    if probe_python_count >= 2:
+        return (
+            True,
+            "检测到多次 run_python 环境探测，请合并为单个完整脚本一次执行，不要分步试探。",
+        )
+    return False, ""
+
+
 def detect_repeated_tool_loop(
     messages: list[dict[str, Any]],
     *,

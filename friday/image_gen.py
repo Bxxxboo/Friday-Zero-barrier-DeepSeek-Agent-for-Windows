@@ -682,9 +682,7 @@ def generate_image(
             register_generated_image(out_path)
         except Exception:
             _log.exception("登记生图文件失败")
-        from friday.api_connect import record_service_status
-
-        record_service_status("image_gen", settings, True, "对话生图成功")
+        _record_chat_image_gen_success(settings)
         return {
             "ok": True,
             "path": str(out_path).replace("\\", "/"),
@@ -705,6 +703,38 @@ def generate_image(
         return {"ok": False, "error": _format_error(exc)}
 
 
+def _record_chat_image_gen_success(settings: UserSettings) -> None:
+    """对话生图成功时更新状态栏，但不覆盖设置页「测试生图」的详细结论。"""
+    from friday.api_connect import _peek_service_ok_cache, record_service_status
+
+    prev = _peek_service_ok_cache("image_gen", settings)
+    if prev and prev[0]:
+        detail = prev[1] or ""
+        if any(token in detail for token in ("测试", "探测", "模型")):
+            return
+    record_service_status("image_gen", settings, True, "对话生图成功")
+
+
+def _image_gen_failure_category(error: str) -> str:
+    text = (error or "").strip()
+    lower = text.lower()
+    if "余额" in text or "balance" in lower:
+        return "余额不足"
+    if any(token in text for token in ("未配置", "未启用", "未就绪", "请填写")):
+        return "未配置"
+    if "503" in text or "通道" in text or "compatible accounts" in lower:
+        return "通道不可用"
+    if "401" in text or "403" in text or "invalid_api_key" in lower or "Key" in text and "无效" in text:
+        return "认证失败"
+    if "404" in text or "无生图接口" in text:
+        return "端点错误"
+    if "像素" in text or "pixel" in lower or "尺寸" in text:
+        return "尺寸限制"
+    if "超时" in text or "timeout" in lower:
+        return "超时"
+    return "调用失败"
+
+
 def _format_error(exc: Exception) -> str:
     from friday.api_connect import format_api_error
 
@@ -720,7 +750,9 @@ def _format_error(exc: Exception) -> str:
 
 def format_generate_result(result: dict[str, Any]) -> str:
     if not result.get("ok"):
-        return str(result.get("error", "生图失败"))
+        err = str(result.get("error", "生图失败"))
+        category = _image_gen_failure_category(err)
+        return f"【生图失败·{category}】{err}"
     path = result.get("path", "")
     size = result.get("size", "")
     requested = str(result.get("requested_size", "") or "").strip()

@@ -27,12 +27,14 @@ _PLUGIN_CATALOG: list[dict[str, str]] = [
         "id": "scipilot-figure-skill",
         "name": "SciPilot 科研数据可视化",
         "description": "先做数据剖析与选图判断，再产出出版级科研图表（Nature/Science/IEEE 等规范）。",
+        "capabilities": "科研图表、数据可视化、出版级配图",
         "source": "local:scipilot-figure-skill",
     },
     {
         "id": "karpathy-guidelines",
         "name": "Karpathy 编码准则",
         "description": "先思考再写码、保持简单、精准改动、目标可验证（forrestchang/andrej-karpathy-skills）。",
+        "capabilities": "编码规范、减少过度工程、外科手术式改动",
         "source": "local:karpathy-guidelines",
     },
 ]
@@ -493,6 +495,9 @@ def format_plugin_catalog(*, force_refresh: bool = False) -> str:
         for item in _PLUGIN_CATALOG:
             lines.append(f"- {item['name']}（id: {item['id']}）→ {item['source']}")
             lines.append(f"  {item.get('description', '')}")
+            caps = (item.get("capabilities") or "").strip()
+            if caps:
+                lines.append(f"  能做什么：{caps}")
         text = "\n".join(lines)
 
     _catalog_text_cache = (now, text)

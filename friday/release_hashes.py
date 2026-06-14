@@ -79,11 +79,13 @@ def expected_sha256_for_download(
     if not name:
         return ""
     mapping = sums_map
-    if mapping is None and sums_url:
-        try:
-            mapping = fetch_sums_map(sums_url)
-        except (urllib.error.URLError, TimeoutError, OSError, ValueError):
-            return ""
+    if mapping is None:
+        resolved_sums_url = (sums_url or "").strip() or derive_sums_download_url(download_url) or ""
+        if resolved_sums_url:
+            try:
+                mapping = fetch_sums_map(resolved_sums_url)
+            except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+                return ""
     if not mapping:
         return ""
     return mapping.get(name, "")

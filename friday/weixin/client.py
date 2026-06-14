@@ -8,6 +8,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from friday.logging_config import get_logger
 from friday.weixin.config import openclaw_state_dir
@@ -23,8 +24,13 @@ CHANNEL_VERSION = "2.4.4"
 from friday.version import __version__
 BOT_AGENT = f"Friday/{__version__}"
 MESSAGE_ITEM_TEXT = 1
+MESSAGE_ITEM_IMAGE = 2
+MESSAGE_ITEM_FILE = 4
 MESSAGE_TYPE_BOT = 2
 MESSAGE_STATE_FINISH = 2
+UPLOAD_MEDIA_TYPE_IMAGE = 1
+UPLOAD_MEDIA_TYPE_FILE = 3
+CDN_BASE_URL = "https://novac2c.cdn.weixin.qq.com/c2c"
 
 
 @dataclass(frozen=True)
@@ -155,9 +161,51 @@ def _build_headers(token: str) -> dict[str, str]:
     }
 
 
+def _build_base_info() -> dict[str, str]:
+    return {
+        "channel_version": CHANNEL_VERSION,
+        "bot_agent": BOT_AGENT,
+    }
+
+
+def _ilink_post_json(account: WeixinAccount, url: str, body: dict) -> str:
+    payload = {**body, "base_info": _build_base_info()}
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(url, data=data, method="POST", headers=_build_headers(account.token))
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            return resp.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        _log.warning("iLink 请求失败 | status=%s detail=%.200s", exc.code, detail)
+        raise RuntimeError(f"微信请求失败 ({exc.code})") from exc
+    except OSError as exc:
+        _log.warning("iLink 请求异常 | %s", exc)
+        raise RuntimeError("微信请求失败") from exc
+
+
 def fresh_context_token(account_id: str, peer_id: str, *, fallback: str = "") -> str:
     """每次发送前从 OpenClaw 持久化文件读取最新 context_token。"""
     return load_context_token(account_id, peer_id) or (fallback or "").strip()
+
+
+def _check_send_response(raw: str, *, peer_id: str, label: str) -> None:
+    if not raw.strip():
+        return
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return
+    if isinstance(parsed, dict) and parsed.get("ret") not in (None, 0):
+        detail = str(parsed.get("errmsg") or raw)[:200]
+        _log.warning(
+            "微信%s被拒 | peer=%s ret=%s detail=%s",
+            label,
+            peer_id,
+            parsed.get("ret"),
+            detail,
+        )
+        raise RuntimeError(f"微信发送失败 ({parsed.get('ret')})")
 
 
 def send_text(
@@ -168,10 +216,6 @@ def send_text(
     context_token: str = "",
 ) -> None:
     body = {
-        "base_info": {
-            "channel_version": CHANNEL_VERSION,
-            "bot_agent": BOT_AGENT,
-        },
         "msg": {
             "from_user_id": "",
             "to_user_id": to_user_id,
@@ -183,38 +227,128 @@ def send_text(
         },
     }
     url = f"{account.base_url}/ilink/bot/sendmessage"
-    payload = json.dumps(body, ensure_ascii=False).encode("utf-8")
-    req = urllib.request.Request(url, data=payload, method="POST", headers=_build_headers(account.token))
-    try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            raw = resp.read().decode("utf-8", errors="replace")
-        if raw.strip():
-            try:
-                parsed = json.loads(raw)
-                if isinstance(parsed, dict) and parsed.get("ret") not in (None, 0):
-                    detail = str(parsed.get("errmsg") or raw)[:200]
-                    _log.warning(
-                        "微信发送被拒 | peer=%s ret=%s detail=%s",
-                        to_user_id,
-                        parsed.get("ret"),
-                        detail,
-                    )
-                    raise RuntimeError(f"微信发送失败 ({parsed.get('ret')})")
-            except json.JSONDecodeError:
-                pass
-        _log.info(
-            "微信消息已发送 | peer=%s chars=%d token=%s",
-            to_user_id,
-            len(text),
-            "yes" if context_token else "no",
-        )
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        _log.warning("微信发送失败 | status=%s detail=%.200s", exc.code, detail)
-        raise RuntimeError(f"微信发送失败 ({exc.code})") from exc
-    except OSError as exc:
-        _log.warning("微信发送异常 | %s", exc)
-        raise RuntimeError("微信发送失败") from exc
+    raw = _ilink_post_json(account, url, body)
+    _check_send_response(raw, peer_id=to_user_id, label="消息")
+    _log.info(
+        "微信消息已发送 | peer=%s chars=%d token=%s",
+        to_user_id,
+        len(text),
+        "yes" if context_token else "no",
+    )
+
+
+def send_image(
+    account: WeixinAccount,
+    *,
+    to_user_id: str,
+    uploaded: Any,
+    context_token: str = "",
+) -> None:
+    from friday.weixin.media import UploadedMedia
+
+    if not isinstance(uploaded, UploadedMedia):
+        raise TypeError("uploaded 须为 UploadedMedia")
+    from friday.weixin.media import aes_key_b64_for_image
+
+    aes_key_b64 = aes_key_b64_for_image(uploaded.aeskey_hex)
+    body = {
+        "msg": {
+            "from_user_id": "",
+            "to_user_id": to_user_id,
+            "client_id": f"friday-{secrets.token_hex(8)}",
+            "message_type": MESSAGE_TYPE_BOT,
+            "message_state": MESSAGE_STATE_FINISH,
+            "item_list": [
+                {
+                    "type": MESSAGE_ITEM_IMAGE,
+                    "image_item": {
+                        "media": {
+                            "encrypt_query_param": uploaded.download_encrypted_query_param,
+                            "aes_key": aes_key_b64,
+                            "encrypt_type": 1,
+                        },
+                        "mid_size": uploaded.file_size_ciphertext,
+                    },
+                }
+            ],
+            "context_token": context_token or None,
+        },
+    }
+    url = f"{account.base_url}/ilink/bot/sendmessage"
+    raw = _ilink_post_json(account, url, body)
+    _check_send_response(raw, peer_id=to_user_id, label="图片")
+    _log.info(
+        "微信图片已发送 | peer=%s bytes=%d token=%s",
+        to_user_id,
+        uploaded.file_size,
+        "yes" if context_token else "no",
+    )
+
+
+def send_file(
+    account: WeixinAccount,
+    *,
+    to_user_id: str,
+    uploaded: Any,
+    file_name: str,
+    context_token: str = "",
+) -> None:
+    from friday.weixin.media import UploadedMedia
+
+    if not isinstance(uploaded, UploadedMedia):
+        raise TypeError("uploaded 须为 UploadedMedia")
+    from friday.weixin.media import aes_key_b64_for_file
+
+    aes_key_b64 = aes_key_b64_for_file(uploaded.aeskey_hex)
+    body = {
+        "msg": {
+            "from_user_id": "",
+            "to_user_id": to_user_id,
+            "client_id": f"friday-{secrets.token_hex(8)}",
+            "message_type": MESSAGE_TYPE_BOT,
+            "message_state": MESSAGE_STATE_FINISH,
+            "item_list": [
+                {
+                    "type": MESSAGE_ITEM_FILE,
+                    "file_item": {
+                        "media": {
+                            "encrypt_query_param": uploaded.download_encrypted_query_param,
+                            "aes_key": aes_key_b64,
+                            "encrypt_type": 1,
+                        },
+                        "file_name": file_name,
+                        "len": str(uploaded.file_size),
+                    },
+                }
+            ],
+            "context_token": context_token or None,
+        },
+    }
+    url = f"{account.base_url}/ilink/bot/sendmessage"
+    raw = _ilink_post_json(account, url, body)
+    _check_send_response(raw, peer_id=to_user_id, label="文件")
+    _log.info(
+        "微信文件已发送 | peer=%s name=%s bytes=%d token=%s",
+        to_user_id,
+        file_name,
+        uploaded.file_size,
+        "yes" if context_token else "no",
+    )
+
+
+def _send_caption_if_any(
+    account: WeixinAccount,
+    *,
+    peer_id: str,
+    caption: str,
+    fallback_token: str,
+    token: str,
+) -> str:
+    body = (caption or "").strip()
+    if not body:
+        return token
+    send_text(account, to_user_id=peer_id, text=body, context_token=token)
+    return fresh_context_token(account.account_id, peer_id, fallback=fallback_token)
 
 
 def send_peer_text(
@@ -246,3 +380,72 @@ def send_peer_text(
         token = fresh_context_token(account.account_id, peer_id, fallback=fallback_token)
         prefix = f"({index}/{total})\n" if total > 1 else ""
         send_text(account, to_user_id=peer_id, text=prefix + chunk, context_token=token)
+
+
+def send_peer_image(
+    account: WeixinAccount,
+    *,
+    peer_id: str,
+    file_path: str,
+    fallback_token: str = "",
+    cdn_base_url: str = CDN_BASE_URL,
+    caption: str = "",
+) -> None:
+    """上传本地图片到 CDN 并发送到微信用户。"""
+    from friday.weixin.media import upload_image_file
+
+    token = fresh_context_token(account.account_id, peer_id, fallback=fallback_token)
+    if not token:
+        _log.warning("微信发图缺少 context_token | peer=%s", peer_id)
+    token = _send_caption_if_any(
+        account,
+        peer_id=peer_id,
+        caption=caption,
+        fallback_token=fallback_token,
+        token=token,
+    )
+    uploaded = upload_image_file(
+        account,
+        file_path=file_path,
+        to_user_id=peer_id,
+        cdn_base_url=cdn_base_url,
+    )
+    send_image(account, to_user_id=peer_id, uploaded=uploaded, context_token=token)
+
+
+def send_peer_file(
+    account: WeixinAccount,
+    *,
+    peer_id: str,
+    file_path: str,
+    fallback_token: str = "",
+    cdn_base_url: str = CDN_BASE_URL,
+    caption: str = "",
+) -> None:
+    """上传本地文件到 CDN 并作为附件发送到微信用户。"""
+    from friday.weixin.media import upload_attachment_file
+
+    path = Path(file_path)
+    token = fresh_context_token(account.account_id, peer_id, fallback=fallback_token)
+    if not token:
+        _log.warning("微信发文件缺少 context_token | peer=%s", peer_id)
+    token = _send_caption_if_any(
+        account,
+        peer_id=peer_id,
+        caption=caption,
+        fallback_token=fallback_token,
+        token=token,
+    )
+    uploaded = upload_attachment_file(
+        account,
+        file_path=file_path,
+        to_user_id=peer_id,
+        cdn_base_url=cdn_base_url,
+    )
+    send_file(
+        account,
+        to_user_id=peer_id,
+        uploaded=uploaded,
+        file_name=path.name,
+        context_token=token,
+    )

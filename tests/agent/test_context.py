@@ -3,6 +3,7 @@ from __future__ import annotations
 from friday.brain import parse_api_usage
 from friday.context import (
     compress_tool_result,
+    detect_probe_tool_thrash,
     detect_repeated_tool_loop,
     sanitize_agent_messages,
     sort_tool_definitions,
@@ -64,6 +65,37 @@ def test_detect_repeated_tool_name_thrash():
     looping, hint = detect_repeated_tool_loop(messages)
     assert looping is True
     assert "search_files" in hint
+
+
+def test_detect_probe_tool_thrash_python_env():
+    messages = []
+    for _ in range(2):
+        messages.append({
+            "role": "assistant",
+            "tool_calls": [{
+                "function": {"name": "python_env_info", "arguments": "{}"},
+            }],
+        })
+    thrashing, hint = detect_probe_tool_thrash(messages)
+    assert thrashing is True
+    assert "python_env_info" in hint
+
+
+def test_detect_probe_tool_thrash_run_python():
+    messages = []
+    for _ in range(2):
+        messages.append({
+            "role": "assistant",
+            "tool_calls": [{
+                "function": {
+                    "name": "run_python",
+                    "arguments": '{"code":"import sys\\nprint(sys.path)"}',
+                },
+            }],
+        })
+    thrashing, hint = detect_probe_tool_thrash(messages)
+    assert thrashing is True
+    assert "run_python" in hint
 
 
 def test_parse_api_usage_cache_fields():

@@ -727,16 +727,14 @@
         : "尚未保存生图 API Key";
       updateImageGenStatus(saved.image_gen_ready, saved.image_gen_enabled, "", true);
       await F.initProviders?.(saved);
-      if (saved.image_gen_ready && saved.image_gen_enabled) {
-        markImageGenStatusBarOnline(data.message || "生图 API 已就绪");
-      }
       if (resultEl) {
         resultEl.className = "settings-result ok";
         resultEl.textContent = `${data.message}（已自动保存）`;
       }
       await F.refreshStatusBar?.({ force: true });
       if (saved.image_gen_ready && saved.image_gen_enabled) {
-        markImageGenStatusBarOnline(data.message || "生图 API 已就绪");
+        const statusDetail = String(data.message || "生图 API 已就绪").split("\n")[0].trim();
+        markImageGenStatusBarOnline(statusDetail || "生图 API 已就绪");
       }
     } catch (err) {
       const timedOut = err?.name === "AbortError";
@@ -1275,10 +1273,83 @@
     }
   }
 
+  function portableSessionScopeNote(includeSessions) {
+    return includeSessions
+      ? "将包含对话历史与会话顺序"
+      : "不含对话历史（侧栏会话不会迁移）";
+  }
+
+  function renderPortableAudit(items) {
+    const listEl = document.getElementById("portableAuditList");
+    if (!listEl) return;
+    listEl.innerHTML = "";
+    if (!items?.length) {
+      listEl.classList.add("hidden");
+      return;
+    }
+    listEl.classList.remove("hidden");
+    const fixPanelById = {
+      workspace: "workspace",
+      encryption: "llm",
+      "python-venv": "workspace",
+    };
+    items.forEach((item) => {
+      const li = document.createElement("li");
+      li.className = `portable-audit-item ${item.ok ? "ok" : "error"}`;
+      const label = document.createElement("strong");
+      label.textContent = item.label || item.id || "检查项";
+      const detail = document.createElement("span");
+      detail.className = "portable-audit-detail";
+      detail.textContent = item.detail || "";
+      li.appendChild(label);
+      li.appendChild(detail);
+      const panel = fixPanelById[String(item.id || "").split("-")[0]] || fixPanelById[item.id];
+      if (!item.ok && panel) {
+        const fixBtn = document.createElement("button");
+        fixBtn.type = "button";
+        fixBtn.className = "ghost-btn portable-audit-fix-btn";
+        fixBtn.textContent = "去修复";
+        fixBtn.addEventListener("click", () => switchSettingsPanel(panel));
+        li.appendChild(fixBtn);
+      }
+      listEl.appendChild(li);
+    });
+  }
+
+  async function loadPortableAudit() {
+    const btn = document.getElementById("portableAuditBtn");
+    const reportEl = document.getElementById("portableReport");
+    if (btn) btn.disabled = true;
+    if (reportEl) reportEl.textContent = "正在自检…";
+    try {
+      const res = await F.apiFetch("/api/portable/audit");
+      const data = await res.json();
+      const items = data.items || [];
+      renderPortableAudit(items);
+      const failed = items.filter((item) => !item.ok).length;
+      if (reportEl) {
+        reportEl.textContent = failed
+          ? `自检完成：${failed} 项需处理`
+          : "自检通过，可正常迁移";
+      }
+    } catch {
+      if (reportEl) reportEl.textContent = "自检失败，请稍后重试";
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
   async function exportPortableBundle() {
     const btn = document.getElementById("portableExportBtn");
     const resultEl = document.getElementById("logsResult");
+    const reportEl = document.getElementById("portableReport");
     const includeSessions = document.getElementById("portableIncludeSessions")?.checked;
+    const confirmLines = [
+      portableSessionScopeNote(!!includeSessions),
+      "不含微信扫码登录态，新机需重新配置微信端 AI",
+      "请一并拷贝默认操作文件夹（Documents/星期五 等）",
+    ];
+    if (!window.confirm(`确认导出配置包？\n\n${confirmLines.join("\n")}`)) return;
     if (btn) btn.disabled = true;
     if (resultEl) resultEl.textContent = "正在打包…";
     try {
@@ -1299,6 +1370,13 @@
         resultEl.className = "settings-result ok";
         resultEl.textContent = "配置包已下载";
       }
+      if (reportEl) {
+        reportEl.textContent = [
+          "导出完成",
+          portableSessionScopeNote(!!includeSessions),
+          "已包含：设置、技能、规则、插件、定时任务",
+        ].join("\n");
+      }
     } catch {
       if (resultEl) {
         resultEl.className = "settings-result error";
@@ -1312,7 +1390,14 @@
   async function importPortableBundle(file) {
     const resultEl = document.getElementById("logsResult");
     const reportEl = document.getElementById("portableReport");
+    const includeSessions = document.getElementById("portableIncludeSessions")?.checked;
     if (!file) return;
+    const confirmLines = [
+      "将覆盖本机 AppData 配置（失败会自动回滚，成功前会备份）",
+      portableSessionScopeNote(!!includeSessions),
+      "导入后建议重启应用",
+    ];
+    if (!window.confirm(`确认导入配置包？\n\n${confirmLines.join("\n")}`)) return;
     if (resultEl) resultEl.textContent = "正在导入…";
     try {
       const zipBase64 = await new Promise((resolve, reject) => {
@@ -1330,6 +1415,7 @@
         body: JSON.stringify({
           zip_base64: zipBase64,
           filename: file.name || "Friday-portable.zip",
+          include_sessions: !!includeSessions,
         }),
       });
       const data = await res.json();
@@ -1345,6 +1431,7 @@
         resultEl.textContent = "导入完成，建议重启应用";
       }
       await loadSettings();
+      await loadPortableAudit();
     } catch (err) {
       if (resultEl) {
         resultEl.className = "settings-result error";
@@ -1352,6 +1439,8 @@
       }
     }
   }
+
+  document.getElementById("portableAuditBtn")?.addEventListener("click", () => void loadPortableAudit());
 
   document.getElementById("portableExportBtn")?.addEventListener("click", () => void exportPortableBundle());
   document.getElementById("portableImportBtn")?.addEventListener("click", () => {

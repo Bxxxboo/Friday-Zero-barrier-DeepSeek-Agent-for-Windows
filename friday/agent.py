@@ -51,6 +51,8 @@ class FridayAgent:
         self.session_completion_tokens = 0
         self._frozen_prefix: Any = None
         self._loop_hint_injected = False
+        self._probe_hint_injected = False
+        self._python_env_info_used = False
         self._context_rebuilt = False
         self._pin_prefix(force=True)
 
@@ -406,6 +408,8 @@ class FridayAgent:
                 continue
             if "\n\n【当前任务：" in text:
                 text = text.split("\n\n【当前任务：", 1)[0].strip()
+            if "\n\n【复杂任务提示】" in text:
+                text = text.split("\n\n【复杂任务提示】", 1)[0].strip()
             return text
         return ""
 
@@ -428,6 +432,14 @@ class FridayAgent:
     ) -> str:
         """执行单个工具调用，包含安全评估和审批流程。返回工具结果文本。"""
         from friday.interaction_modes import ASK_BLOCK_REASON, normalize_mode, tool_allowed_in_mode
+
+        if name == "python_env_info" and self._python_env_info_used:
+            return (
+                "本任务已调用过 python_env_info，请根据已有环境信息编写完整脚本，"
+                "一次 run_python 或 run_python_script 执行。"
+            )
+        if name == "python_env_info":
+            self._python_env_info_used = True
 
         mode = normalize_mode(getattr(self.settings, "interaction_mode", "agent"))
         if not tool_allowed_in_mode(name, mode):
@@ -559,6 +571,16 @@ class FridayAgent:
 
             pending_old_text = read_text_if_exists(str(args.get("path", "")))
 
+        meta = self.operation_meta or {}
+        shell_deliver_snapshot: set[str] | None = None
+        if (
+            str(meta.get("trigger", "")) == "weixin"
+            and name in {"run_powershell", "run_python", "run_python_script"}
+        ):
+            from friday.weixin.deliverables import snapshot_deliverable_path_keys as _snap_keys
+
+            shell_deliver_snapshot = _snap_keys(self.settings)
+
         on_heartbeat = None
         if on_event and name in ("generate_image", "describe_image"):
             def on_heartbeat() -> None:
@@ -592,7 +614,6 @@ class FridayAgent:
             )
             self._emit(on_event, "file_change", payload)
 
-        meta = self.operation_meta or {}
         entry = log_operation(
             name, args, result,
             session_id=str(meta.get("session_id", "")),
@@ -601,12 +622,58 @@ class FridayAgent:
             approved=approved,
         )
         self._emit(on_event, "operation_logged", entry)
-        if name == "generate_image":
-            from friday.image_gen import extract_path_from_tool_result
+        from friday.weixin.deliverables import (
+            extract_copy_file_destination,
+            extract_deliverable_path,
+            extract_move_file_destination,
+            file_generated_kind_for_path,
+            is_text_file_deliverable,
+            list_deliverables_since_path_snapshot,
+            should_emit_weixin_copy_deliverable,
+        )
 
-            img_path = extract_path_from_tool_result(result)
+        def _emit_weixin_file_generated(path: str) -> None:
+            if not should_emit_weixin_copy_deliverable(path, settings=self.settings):
+                return
+            kind = file_generated_kind_for_path(path)
+            if kind:
+                self._emit(on_event, "file_generated", {"path": path, "kind": kind})
+
+        if name == "generate_image":
+            img_path = extract_deliverable_path(name, result)
             if img_path:
                 self._emit(on_event, "image_generated", {"path": img_path})
+        elif name == "screenshot":
+            shot_path = extract_deliverable_path(name, result)
+            if shot_path:
+                self._emit(on_event, "image_generated", {"path": shot_path})
+        elif name in {"create_docx", "create_pptx"}:
+            doc_path = extract_deliverable_path(name, result)
+            if doc_path:
+                self._emit(on_event, "file_generated", {"path": doc_path, "kind": "document"})
+        elif name == "write_text_file" and result.startswith("已写入"):
+            text_path = extract_deliverable_path(name, result)
+            if text_path and is_text_file_deliverable(text_path):
+                self._emit(on_event, "file_generated", {"path": text_path, "kind": "text"})
+        elif name == "copy_file" and str(meta.get("trigger", "")) == "weixin":
+            dest = extract_copy_file_destination(result)
+            if dest:
+                _emit_weixin_file_generated(dest)
+        elif name == "move_file" and str(meta.get("trigger", "")) == "weixin":
+            dest = extract_move_file_destination(result)
+            if dest:
+                _emit_weixin_file_generated(dest)
+        elif (
+            name in {"run_powershell", "run_python", "run_python_script"}
+            and str(meta.get("trigger", "")) == "weixin"
+            and shell_deliver_snapshot is not None
+            and (result or "").strip().startswith("exit=0")
+        ):
+            for delivered_path in list_deliverables_since_path_snapshot(
+                self.settings,
+                before_keys=shell_deliver_snapshot,
+            ):
+                _emit_weixin_file_generated(str(delivered_path))
         return result
 
     def _emit_plan_update(self, on_event: EventCallback | None) -> None:
@@ -750,6 +817,8 @@ class FridayAgent:
     def run(self, user_text: str, on_event: EventCallback | None = None) -> str:
         self._cancel_event.clear()
         self._loop_hint_injected = False
+        self._probe_hint_injected = False
+        self._python_env_info_used = False
         self._context_rebuilt = False
         self.brain.reset_turn_api_calls()
         from friday.agent_context import current_session_id
@@ -765,6 +834,9 @@ class FridayAgent:
                 "一次 download_software 调用即可，不要分多步试探链接。"
             )
             user_text = user_text + hint
+        from friday.plan import maybe_append_complex_task_plan_hint
+
+        user_text = maybe_append_complex_task_plan_hint(user_text, session_id)
         self.messages.append({"role": "user", "content": user_text})
 
         max_rounds = self._max_tool_rounds()
@@ -780,7 +852,7 @@ class FridayAgent:
                     "message": f"第 {self._round_count + 1} 轮：正在选择下一步…",
                 })
 
-            from friday.context import detect_repeated_tool_loop
+            from friday.context import detect_probe_tool_thrash, detect_repeated_tool_loop
 
             looping, loop_hint = detect_repeated_tool_loop(self.messages)
             if looping:
@@ -795,6 +867,19 @@ class FridayAgent:
                         "content": f"【系统提示】{loop_hint} 请立即调整策略，不要继续相同调用。",
                     })
                     self._loop_hint_injected = True
+
+            probing, probe_hint = detect_probe_tool_thrash(self.messages)
+            if probing and not self._probe_hint_injected:
+                self._emit(on_event, "progress", {
+                    "round": self._round_count + 1,
+                    "max_rounds": max_rounds,
+                    "hint": probe_hint,
+                })
+                self.messages.append({
+                    "role": "user",
+                    "content": f"【系统提示】{probe_hint}",
+                })
+                self._probe_hint_injected = True
 
             finish = self._consume_stream(on_event)
             if self._cancel_event.is_set():

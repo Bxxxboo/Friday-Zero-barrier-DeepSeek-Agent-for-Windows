@@ -32,6 +32,7 @@ DEFAULT_SCRATCH_TTL_HOURS = 24
 DEFAULT_SESSION_TTL_DAYS = 30
 DEFAULT_TRASH_TTL_DAYS = 7
 DEFAULT_SESSION_DELETE_GRACE_DAYS = 7
+DEFAULT_WEIXIN_DELIVERED_TTL_DAYS = 7
 SCRIPT_POST_RUN_GRACE_HOURS = 1
 
 
@@ -216,11 +217,78 @@ def touch_artifact(path: str | Path, *, settings: UserSettings | None = None) ->
             continue
         item["last_used_at"] = now
         lifecycle = str(item.get("lifecycle") or LIFECYCLE_SESSION)
-        item["expires_at"] = _expires_at_for(lifecycle, settings=cfg, now=now)
-        changed = True
+        if lifecycle == LIFECYCLE_DELIVERED and item.get("weixin_sent_at"):
+            changed = True
+        else:
+            item["expires_at"] = _expires_at_for(lifecycle, settings=cfg, now=now)
+            changed = True
         break
     if changed:
         _save_index(items, cfg)
+
+
+def _weixin_sent_expires_at(*, now: float | None = None) -> float:
+    ts = now if now is not None else time.time()
+    return ts + DEFAULT_WEIXIN_DELIVERED_TTL_DAYS * 86400
+
+
+def _should_skip_gc_item(item: dict[str, Any]) -> bool:
+    lifecycle = item.get("lifecycle")
+    if lifecycle == LIFECYCLE_PINNED:
+        return True
+    if lifecycle == LIFECYCLE_DELIVERED and not item.get("weixin_sent_at"):
+        return True
+    return False
+
+
+def mark_weixin_sent(path: str | Path, *, settings: UserSettings | None = None) -> None:
+    """微信附件发送成功后登记，7 天后由 run_gc 移入 trash。"""
+    cfg = settings or load_settings()
+    target = Path(path).expanduser()
+    if not target.is_file():
+        return
+    workspace = Path(resolved_workspace(cfg)).resolve()
+    try:
+        target.resolve().relative_to(workspace)
+    except ValueError:
+        return
+
+    normalized = normalize_path(target, settings=cfg)
+    now = time.time()
+    expires = _weixin_sent_expires_at(now=now)
+    items = _load_index(cfg)
+    for item in items:
+        if str(item.get("path", "")).replace("\\", "/") != normalized:
+            continue
+        if item.get("status") != STATUS_ACTIVE:
+            return
+        item["weixin_sent_at"] = now
+        item["lifecycle"] = LIFECYCLE_DELIVERED
+        item["expires_at"] = expires
+        item["last_used_at"] = now
+        _save_index(items, cfg)
+        return
+
+    suffix = target.suffix.lower()
+    kind = "image" if suffix in {".png", ".jpg", ".jpeg", ".webp", ".gif"} else "document"
+    items.append(
+        {
+            "id": uuid.uuid4().hex[:12],
+            "path": normalized,
+            "kind": kind,
+            "lifecycle": LIFECYCLE_DELIVERED,
+            "session_id": "",
+            "tool": "weixin_send",
+            "created_at": now,
+            "last_used_at": now,
+            "expires_at": expires,
+            "weixin_sent_at": now,
+            "status": STATUS_ACTIVE,
+            "trashed_at": None,
+            "size_bytes": _file_size(target.resolve()),
+        }
+    )
+    _save_index(items, cfg)
 
 
 def mark_script_consumed(path: str | Path, *, settings: UserSettings | None = None) -> None:
@@ -319,7 +387,9 @@ def sync_session_references(session_id: str, *, settings: UserSettings | None = 
             item["lifecycle"] = LIFECYCLE_SESSION
         item["session_id"] = session_id
         item["last_used_at"] = now
-        item["expires_at"] = _expires_at_for(str(item.get("lifecycle") or LIFECYCLE_SESSION), settings=cfg, now=now)
+        lifecycle = str(item.get("lifecycle") or LIFECYCLE_SESSION)
+        if not (lifecycle == LIFECYCLE_DELIVERED and item.get("weixin_sent_at")):
+            item["expires_at"] = _expires_at_for(lifecycle, settings=cfg, now=now)
         touched += 1
     if touched:
         _save_index(items, cfg)
@@ -390,7 +460,7 @@ def run_gc(*, settings: UserSettings | None = None, dry_run: bool = False) -> di
     for item in items:
         if item.get("status") != STATUS_ACTIVE:
             continue
-        if item.get("lifecycle") in {LIFECYCLE_PINNED, LIFECYCLE_DELIVERED}:
+        if _should_skip_gc_item(item):
             continue
         exp = item.get("expires_at")
         if not isinstance(exp, (int, float)) or exp > now:

@@ -43,6 +43,10 @@ def _todo_key(text: str) -> str:
     return re.sub(r"\s+", " ", str(text or "").strip().casefold())
 
 
+def todo_key(text: str) -> str:
+    return _todo_key(text)
+
+
 def extract_todos_from_plan_markdown(markdown: str) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
     for match in _CHECKBOX_RE.finditer(markdown or ""):
@@ -97,6 +101,85 @@ def get_session_plan(session_id: str) -> dict[str, Any]:
         "plan_markdown": getattr(session, "plan_markdown", "") or "",
         "todos": normalize_todos(getattr(session, "todos", None)),
     }
+
+
+_COMPLEX_KEYWORDS = (
+    "整理",
+    "排查",
+    "批量",
+    "脚本",
+    "接 api",
+    "多步",
+    "全部",
+    "整个",
+    "迁移",
+    "重构",
+    "从头到尾",
+)
+_STEP_CONNECTORS = ("然后", "接着", "之后", "并且", "还要", "第一步", "第二步", "第三步")
+_NUMBERED_STEP_RE = re.compile(r"(?:^|\n)\s*\d+[.、)]\s+\S", re.MULTILINE)
+_CHECKBOX_LINE_RE = re.compile(r"^\s*[-*]\s*\[[ xX]\]", re.MULTILINE)
+
+_COMPLEX_TASK_PLAN_HINT = (
+    "\n\n【复杂任务提示】该请求涉及多步操作。"
+    "请先调用 update_session_plan 写出可核对的 Markdown 计划（含 - [ ] 待办），"
+    "再按计划执行；信息收集阶段可并行多个只读工具，避免碎片化 run_python 试探。"
+)
+
+
+def _strip_agent_task_suffixes(user_text: str) -> str:
+    text = (user_text or "").strip()
+    for marker in ("\n\n【当前任务：", "\n\n【复杂任务提示】"):
+        if marker in text:
+            text = text.split(marker, 1)[0].strip()
+    return text
+
+
+def is_complex_task(user_text: str) -> bool:
+    """启发式判断用户请求是否属于多步复杂任务（用于计划提示，非硬拦截）。"""
+    text = _strip_agent_task_suffixes(user_text)
+    if len(text) < 12:
+        return False
+    lowered = text.casefold()
+    keyword_hits = sum(1 for kw in _COMPLEX_KEYWORDS if kw in lowered)
+    if keyword_hits >= 2:
+        return True
+    if keyword_hits >= 1 and len(text) >= 40:
+        return True
+    connector_hits = sum(1 for c in _STEP_CONNECTORS if c in lowered)
+    if connector_hits >= 2:
+        return True
+    if len(_NUMBERED_STEP_RE.findall(text)) >= 3:
+        return True
+    if len(_CHECKBOX_LINE_RE.findall(text)) >= 3:
+        return True
+    return False
+
+
+def session_has_actionable_plan(session_id: str) -> bool:
+    if not session_id:
+        return False
+    plan = get_session_plan(session_id)
+    if not plan.get("ok"):
+        return False
+    md = (plan.get("plan_markdown") or "").strip()
+    if len(md) >= 24:
+        return True
+    todos = plan.get("todos") or []
+    open_todos = [t for t in todos if not t.get("done")]
+    if len(open_todos) >= 2:
+        return True
+    return len(open_todos) == 1 and len(md) >= 8
+
+
+def maybe_append_complex_task_plan_hint(user_text: str, session_id: str) -> str:
+    if not is_complex_task(user_text):
+        return user_text
+    if session_has_actionable_plan(session_id):
+        return user_text
+    if "【复杂任务提示】" in user_text:
+        return user_text
+    return user_text + _COMPLEX_TASK_PLAN_HINT
 
 
 def update_session_plan(

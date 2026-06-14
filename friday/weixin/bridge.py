@@ -23,13 +23,29 @@ from friday.weixin.client import (
     WeixinAccount,
     resolve_account,
     save_context_token,
+    send_peer_file,
+    send_peer_image,
     send_peer_text,
 )
 from friday.weixin.sessions import resolve_session_id
+from friday.weixin.progress import collect_newly_completed_todos, format_weixin_task_progress
 
 _log = get_logger("weixin.bridge")
 
 MAX_REPLY_CHARS = 3500
+DESKTOP_CONTINUE_HINT = "完整内容已在星期五「我的微信」会话，请在电脑上打开查看。"
+IMAGE_SEND_FAIL_HINT = (
+    "图片已生成，但未能发送到微信。"
+    "完整内容（含图片）已在星期五「我的微信」会话，请在电脑上打开查看。"
+)
+FILE_SEND_FAIL_HINT = (
+    "文件已生成，但未能发送到微信。"
+    "完整内容已在星期五「我的微信」会话，请在电脑上打开查看。"
+)
+FILE_TOO_LARGE_HINT = (
+    "文件较大，无法通过微信发送。"
+    "完整内容已在星期五「我的微信」会话，请在电脑上打开查看。"
+)
 APPROVAL_TIMEOUT_SEC = 300
 
 _peer_locks: dict[str, threading.Lock] = {}
@@ -50,6 +66,7 @@ APPROVAL_INBOUND_DEDUPE_SEC = 600.0
 APPROVAL_SILENT_DEDUPE_SEC = 30.0
 ORPHAN_APPROVAL_REPLY = "当前没有待审批的操作。"
 ORPHAN_APPROVAL_HINT = "已收到，当前没有待审批的操作。"
+WEIXIN_TASK_ACK = "收到，正在处理…"
 
 _GREETING_RE = re.compile(
     r"^(你好|您好|嗨|hi|hello|hey|在吗|在不在|早上好|下午好|晚上好)[\s!?。，,~！？]*$",
@@ -214,7 +231,11 @@ def _truncate_reply(text: str) -> str:
     body = (text or "").strip()
     if len(body) <= MAX_REPLY_CHARS:
         return body or "（已完成，无文字回复）"
-    return body[: MAX_REPLY_CHARS - 20] + "\n\n…（内容过长已截断）"
+    hint = f"\n\n{DESKTOP_CONTINUE_HINT}"
+    max_body = MAX_REPLY_CHARS - len(hint)
+    if max_body < 1:
+        return DESKTOP_CONTINUE_HINT[:MAX_REPLY_CHARS]
+    return body[:max_body] + hint
 
 
 def _format_weixin_agent_error(exc: BaseException) -> str:
@@ -379,6 +400,154 @@ def _make_weixin_approval_bridge(
     return approval_bridge
 
 
+def _weixin_deliver_files_enabled(settings: UserSettings) -> bool:
+    return getattr(settings, "weixin_deliver_files_enabled", True)
+
+
+def _make_weixin_progress_handler(
+    *,
+    peer_id: str,
+    account: WeixinAccount,
+    settings: UserSettings,
+    initial_done_keys: set[str],
+    fallback_token: str = "",
+    deliver_state: dict[str, bool] | None = None,
+) -> Any:
+    done_keys = set(initial_done_keys)
+    sent = deliver_state if deliver_state is not None else {"file": False, "image": False, "paths": set()}
+    sent.setdefault("paths", set())
+
+    def _send_image_to_peer(image_path: str) -> None:
+        from friday.weixin.deliverables import format_deliverable_caption, resolve_image_path
+
+        resolved = resolve_image_path(image_path, settings)
+        send_peer_image(
+            account,
+            peer_id=peer_id,
+            file_path=str(resolved),
+            fallback_token=fallback_token,
+            caption=format_deliverable_caption(resolved),
+        )
+        from friday.artifacts import mark_weixin_sent
+
+        mark_weixin_sent(resolved, settings=settings)
+
+    def _send_file_to_peer(file_path: str) -> None:
+        from friday.weixin.deliverables import format_deliverable_caption, resolve_attachment_path
+
+        resolved = resolve_attachment_path(file_path, settings)
+        key = str(resolved)
+        if key in sent["paths"]:
+            return
+        send_peer_file(
+            account,
+            peer_id=peer_id,
+            file_path=key,
+            fallback_token=fallback_token,
+            caption=format_deliverable_caption(resolved),
+        )
+        sent["paths"].add(key)
+        from friday.artifacts import mark_weixin_sent
+
+        mark_weixin_sent(resolved, settings=settings)
+
+    def _handle_deliverable_failure(exc: BaseException, *, fallback_text: str) -> None:
+        _log.warning("微信产出物推送失败 | peer=%s err=%s", peer_id, exc)
+        try:
+            send_peer_text(
+                account,
+                peer_id=peer_id,
+                text=fallback_text,
+                fallback_token=fallback_token,
+            )
+        except RuntimeError as send_exc:
+            _log.warning("微信产出物失败兜底文案发送失败 | peer=%s err=%s", peer_id, send_exc)
+
+    def on_event(event_type: str, payload: dict[str, Any]) -> None:
+        if event_type in {"image_generated", "file_generated"}:
+            if not _weixin_deliver_files_enabled(settings):
+                return
+            raw_path = str(payload.get("path") or "").strip()
+            if not raw_path:
+                return
+            if event_type == "image_generated":
+                try:
+                    _send_image_to_peer(raw_path)
+                    sent["image"] = True
+                except ValueError as exc:
+                    if "过大" in str(exc):
+                        _handle_deliverable_failure(exc, fallback_text=FILE_TOO_LARGE_HINT)
+                    else:
+                        _handle_deliverable_failure(exc, fallback_text=IMAGE_SEND_FAIL_HINT)
+                except Exception as exc:  # noqa: BLE001
+                    _handle_deliverable_failure(exc, fallback_text=IMAGE_SEND_FAIL_HINT)
+                return
+            try:
+                _send_file_to_peer(raw_path)
+                sent["file"] = True
+            except ValueError as exc:
+                if "过大" in str(exc):
+                    _handle_deliverable_failure(exc, fallback_text=FILE_TOO_LARGE_HINT)
+                else:
+                    _handle_deliverable_failure(exc, fallback_text=FILE_SEND_FAIL_HINT)
+            except Exception as exc:  # noqa: BLE001
+                _handle_deliverable_failure(exc, fallback_text=FILE_SEND_FAIL_HINT)
+            return
+
+        if event_type != "plan_updated":
+            return
+        if not getattr(settings, "weixin_task_progress_enabled", True):
+            return
+        todos = payload.get("todos")
+        newly, done_keys_update = collect_newly_completed_todos(done_keys, todos)
+        done_keys.clear()
+        done_keys.update(done_keys_update)
+        if not newly:
+            return
+        body = format_weixin_task_progress(newly, todos)
+        try:
+            send_peer_text(account, peer_id=peer_id, text=body, fallback_token=fallback_token)
+        except RuntimeError as exc:
+            _log.warning("微信进度推送失败 | peer=%s err=%s", peer_id, exc)
+
+    return on_event
+
+
+def _initial_todo_done_keys(session: Any | None) -> set[str]:
+    from friday.plan import normalize_todos, todo_key
+
+    if session is None:
+        return set()
+    return {
+        todo_key(str(item.get("text", "")))
+        for item in normalize_todos(getattr(session, "todos", None))
+        if item.get("done") and str(item.get("text", "")).strip()
+    }
+
+
+_AGENT_FALSE_SEND_LINE_RE = re.compile(
+    r"系统正在自动发送|已复制到工作区|正在自动发送|请查收|"
+    r"本轮对话结束后|会自动发送附件|自动发送附件到微信|对话结束后自动",
+    re.I,
+)
+
+
+def _weixin_file_delivery_miss_hint() -> str:
+    return (
+        "未能自动发送附件（电脑上未定位到该文件）。"
+        "请说明文件在哪个文件夹，或打开电脑版「星期五」查看。"
+    )
+
+
+def _strip_false_send_claims(text: str) -> str:
+    lines = [
+        ln
+        for ln in (text or "").splitlines()
+        if not _AGENT_FALSE_SEND_LINE_RE.search(ln)
+    ]
+    return "\n".join(lines).strip()
+
+
 def _run_agent(
     *,
     session_id: str,
@@ -394,6 +563,12 @@ def _run_agent(
     if not settings.api_ready:
         return "请先在星期五桌面版「设置 → API 连接」中配置并保存大模型 API Key。"
 
+    import time
+
+    from friday.weixin.deliverables import snapshot_deliverable_path_keys
+
+    turn_started_at = time.time()
+    turn_deliver_snapshot = snapshot_deliverable_path_keys(settings)
     approval_gate: dict[str, bool] = {
         "stop_prompts": False,
         "user_declined": False,
@@ -412,6 +587,15 @@ def _run_agent(
         cancel_hook=_cancel_agent,
     )
     session = get_session(session_id)
+    deliver_state = {"file": False, "image": False, "paths": set()}
+    progress_handler = _make_weixin_progress_handler(
+        peer_id=peer_id,
+        account=account,
+        settings=settings,
+        initial_done_keys=_initial_todo_done_keys(session),
+        fallback_token=context_token,
+        deliver_state=deliver_state,
+    )
     try:
         agent = FridayAgent(settings, approval_bridge)
         agent_holder.append(agent)
@@ -434,10 +618,58 @@ def _run_agent(
         if plan_block:
             user_message = f"{plan_block}\n{user_message}"
     try:
-        result = agent.run(user_message)
+        result = agent.run(user_message, on_event=progress_handler)
     except Exception as exc:  # noqa: BLE001
         _log.exception("微信 Agent 执行失败 | peer=%s session=%s", peer_id, session_id)
         return _format_weixin_agent_error(exc)
+    from friday.weixin.deliverables import (
+        deliver_turn_new_attachments,
+        find_deliverable_for_weixin_request,
+        try_deliver_existing_weixin_file,
+        user_requests_weixin_file_delivery,
+    )
+
+    flushed = deliver_turn_new_attachments(
+        settings=settings,
+        on_event=progress_handler,
+        min_mtime=turn_started_at - 1.0,
+        already_sent=deliver_state.get("paths", set()),
+        before_path_keys=turn_deliver_snapshot,
+    )
+    if flushed:
+        _log.info("微信补发本轮产出物 | peer=%s count=%d", peer_id, flushed)
+
+    if try_deliver_existing_weixin_file(
+        text,
+        settings=settings,
+        on_event=progress_handler,
+        skip_if_sent=deliver_state,
+    ):
+        _log.info("微信补发已有附件 | peer=%s", peer_id)
+    elif (
+        not deliver_state.get("file")
+        and user_requests_weixin_file_delivery(text)
+        and find_deliverable_for_weixin_request(text, settings) is None
+    ):
+        _log.warning("微信补发附件未找到文件 | peer=%s preview=%s", peer_id, text[:40])
+        hint = _weixin_file_delivery_miss_hint()
+        body = (result or "").strip()
+        if body and _AGENT_FALSE_SEND_LINE_RE.search(body):
+            body = _strip_false_send_claims(body)
+        result = f"{body}\n\n{hint}".strip() if body else hint
+    elif (
+        not deliver_state.get("paths")
+        and (result or "")
+        and _AGENT_FALSE_SEND_LINE_RE.search(result)
+    ):
+        _log.warning(
+            "微信助手声称已发送附件但本轮未实际推送 | peer=%s preview=%s",
+            peer_id,
+            (result or "")[:80],
+        )
+        hint = _weixin_file_delivery_miss_hint()
+        body = _strip_false_send_claims(result)
+        result = f"{body}\n\n{hint}".strip() if body else hint
     _save_weixin_agent_state(session_id, agent, user_message=user_message)
     if approval_gate.get("user_declined") or approval_gate.get("timed_out"):
         return ""
@@ -470,7 +702,13 @@ def _deliver_weixin_reply(
         return InboundResponse(handled=True, reply=body)
 
 
-def _resolve_pending_approval(peer_id: str, text: str, account: WeixinAccount) -> InboundResponse | None:
+def _resolve_pending_approval(
+    peer_id: str,
+    text: str,
+    account: WeixinAccount,
+    *,
+    context_token: str = "",
+) -> InboundResponse | None:
     future = _approval_waiters.get(peer_id)
     if future is None or future.done():
         return None
@@ -481,19 +719,65 @@ def _resolve_pending_approval(peer_id: str, text: str, account: WeixinAccount) -
             account,
             peer_id=peer_id,
             reply="请回复「同意」或「拒绝」。",
-            context_token="",
+            context_token=context_token,
         )
 
     future.set_result(decision)
     _mark_approval_inbound_handled(peer_id, text)
     ack = "好的，已同意，继续执行。" if decision else "好的，已拒绝该操作。"
     _log.info("微信审批已回复 | peer=%s approved=%s", peer_id, decision)
-    try:
-        send_peer_text(account, peer_id=peer_id, text=ack)
-    except RuntimeError as exc:
-        _log.warning("审批确认 iLink 发送失败，改由 OpenClaw 通道回复 | peer=%s err=%s", peer_id, exc)
-        return InboundResponse(handled=True, reply=ack)
-    return InboundResponse(handled=True, reply="")
+    return _deliver_weixin_reply(
+        account,
+        peer_id=peer_id,
+        reply=ack,
+        context_token=context_token,
+    )
+
+
+def _spawn_weixin_turn(
+    *,
+    session_id: str,
+    text: str,
+    peer_id: str,
+    account: WeixinAccount,
+    context_token: str,
+    lock: threading.Lock,
+) -> None:
+    """后台执行 Agent，避免 inbound HTTP 阻塞导致审批回复无法送达。"""
+
+    def _worker() -> None:
+        try:
+            reply = _run_agent(
+                session_id=session_id,
+                text=text,
+                peer_id=peer_id,
+                account=account,
+                context_token=context_token,
+            )
+            _log.info("微信任务完成 | peer=%s chars=%d", peer_id, len(reply))
+            if (reply or "").strip():
+                _deliver_weixin_reply(
+                    account,
+                    peer_id=peer_id,
+                    reply=reply,
+                    context_token=context_token,
+                )
+        except Exception as exc:  # noqa: BLE001
+            _log.exception("微信任务执行失败 | peer=%s", peer_id)
+            _deliver_weixin_reply(
+                account,
+                peer_id=peer_id,
+                reply=_format_weixin_agent_error(exc),
+                context_token=context_token,
+            )
+        finally:
+            _finish_inbound(peer_id, text, lock)
+
+    threading.Thread(
+        target=_worker,
+        daemon=True,
+        name=f"weixin-turn-{peer_id[:12]}",
+    ).start()
 
 
 
@@ -523,11 +807,25 @@ def handle_inbound(req: InboundRequest) -> InboundResponse:
     if context_token:
         save_context_token(account.account_id, peer_id, context_token)
 
-    approval_hit = _resolve_pending_approval(peer_id, text, account)
+    approval_hit = _resolve_pending_approval(
+        peer_id,
+        text,
+        account,
+        context_token=context_token,
+    )
     if approval_hit is not None:
         return approval_hit
 
     if parse_approval_text(text) is not None:
+        if _pending_approval(peer_id):
+            approval_hit = _resolve_pending_approval(
+                peer_id,
+                text,
+                account,
+                context_token=context_token,
+            )
+            if approval_hit is not None:
+                return approval_hit
         replay = _orphan_approval_replay(peer_id, text)
         if replay == "silent":
             _log.debug("微信审批重复投递已忽略 | peer=%s text=%s", peer_id, text[:20])
@@ -553,8 +851,15 @@ def handle_inbound(req: InboundRequest) -> InboundResponse:
     if action == "busy":
         busy = _busy_reply(peer_id, pending_approval=_pending_approval(peer_id))
         if not busy:
-            _log.debug("微信并发消息已忽略 | peer=%s preview=%s", peer_id, text[:40])
-            return InboundResponse(handled=True, reply="")
+            if parse_approval_text(text) is not None:
+                busy = (
+                    "我还在等你审批上一条操作，请回复「同意」或「拒绝」。"
+                    if _pending_approval(peer_id)
+                    else ORPHAN_APPROVAL_HINT
+                )
+            else:
+                _log.debug("微信并发消息已忽略 | peer=%s preview=%s", peer_id, text[:40])
+                return InboundResponse(handled=True, reply="")
         _log.info("微信消息并发被拒 | peer=%s preview=%s", peer_id, text[:40])
         return _deliver_weixin_reply(
             account,
@@ -570,34 +875,37 @@ def handle_inbound(req: InboundRequest) -> InboundResponse:
         if greeting is not None and settings.api_ready:
             _log.info("微信问候快路径 | peer=%s session=%s", peer_id, session_id)
             _record_weixin_turn(session_id, user_text=text, assistant_text=greeting)
-            return _deliver_weixin_reply(
-                account,
-                peer_id=peer_id,
-                reply=greeting,
-                context_token=context_token,
-            )
+            try:
+                return _deliver_weixin_reply(
+                    account,
+                    peer_id=peer_id,
+                    reply=greeting,
+                    context_token=context_token,
+                )
+            finally:
+                _finish_inbound(peer_id, text, lock)
         _log.info("微信任务开始 | peer=%s session=%s", peer_id, session_id)
-        reply = _run_agent(
+        ack_response = _deliver_weixin_reply(
+            account,
+            peer_id=peer_id,
+            reply=WEIXIN_TASK_ACK,
+            context_token=context_token,
+        )
+        _spawn_weixin_turn(
             session_id=session_id,
             text=text,
             peer_id=peer_id,
             account=account,
             context_token=context_token,
+            lock=lock,
         )
-        _log.info("微信任务完成 | peer=%s chars=%d", peer_id, len(reply))
-        return _deliver_weixin_reply(
-            account,
-            peer_id=peer_id,
-            reply=reply,
-            context_token=context_token,
-        )
+        return ack_response
     except Exception as exc:  # noqa: BLE001
-        _log.exception("微信任务执行失败 | peer=%s", peer_id)
+        _log.exception("微信任务启动失败 | peer=%s", peer_id)
+        _finish_inbound(peer_id, text, lock)
         return _deliver_weixin_reply(
             account,
             peer_id=peer_id,
             reply=_format_weixin_agent_error(exc),
             context_token=context_token,
         )
-    finally:
-        _finish_inbound(peer_id, text, lock)

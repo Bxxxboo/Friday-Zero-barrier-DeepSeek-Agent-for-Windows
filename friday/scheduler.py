@@ -19,6 +19,31 @@ _gateway_health_ticks = 0
 _gc_ticks = 0
 
 
+def _notify_schedule_result(
+    *,
+    schedule_id: str,
+    session_id: str,
+    title: str,
+    status: str,
+    message: str,
+) -> None:
+    try:
+        from friday.ws_broadcast import notify_schedule_completed, notify_session_updated, notify_sessions_changed
+
+        if session_id:
+            notify_session_updated(session_id, source="schedule")
+        notify_sessions_changed()
+        notify_schedule_completed(
+            schedule_id=schedule_id,
+            session_id=session_id,
+            title=title,
+            status=status,
+            message=message,
+        )
+    except Exception:
+        _log.exception("定时任务结果通知失败 | id=%s", schedule_id)
+
+
 def _execute_task(task_id: str, title: str, prompt: str) -> None:
     with _lock:
         if task_id in _running_ids:
@@ -26,13 +51,20 @@ def _execute_task(task_id: str, title: str, prompt: str) -> None:
         _running_ids.add(task_id)
 
     try:
-        status, message = run_scheduled_prompt(
+        status, message, session_id = run_scheduled_prompt(
             prompt,
             session_title=f"[定时] {title}",
             schedule_id=task_id,
             trigger="scheduled",
         )
         mark_schedule_run(task_id, status=status, message=message)
+        _notify_schedule_result(
+            schedule_id=task_id,
+            session_id=session_id,
+            title=title,
+            status=status,
+            message=message,
+        )
         _log.info("定时任务完成 | id=%s status=%s", task_id, status)
     except Exception:
         _log.exception("定时任务异常 | id=%s", task_id)
@@ -56,13 +88,20 @@ def run_schedule_now(schedule_id: str) -> tuple[str, str]:
         _running_ids.add(schedule_id)
 
     try:
-        status, message = run_scheduled_prompt(
+        status, message, session_id = run_scheduled_prompt(
             task.prompt,
             session_title=f"[定时] {task.title}",
             schedule_id=schedule_id,
             trigger="scheduled",
         )
         mark_schedule_run(schedule_id, status=status, message=message)
+        _notify_schedule_result(
+            schedule_id=schedule_id,
+            session_id=session_id,
+            title=task.title,
+            status=status,
+            message=message,
+        )
         return status, message
     finally:
         with _lock:

@@ -219,3 +219,77 @@ def test_export_import_portable_bundle_roundtrip(tmp_appdata):
     loaded = load_json(tmp_appdata / "settings.json")
     assert isinstance(loaded, dict)
     assert "workspace" in loaded
+
+
+def test_export_includes_sessions_index_and_schedules(tmp_appdata):
+    import zipfile
+
+    from friday.portable_bundle import export_portable_bundle
+
+    (tmp_appdata / "schedules.json").write_text("[]", encoding="utf-8")
+    sessions_dir = tmp_appdata / "sessions"
+    sessions_dir.mkdir(parents=True, exist_ok=True)
+    (sessions_dir / "sess-a.json").write_text("{}", encoding="utf-8")
+    (tmp_appdata / "sessions_index.json").write_text(
+        '{"active_session_id":"sess-a","order":["sess-a"]}',
+        encoding="utf-8",
+    )
+
+    export_path = tmp_appdata / "with-sessions.zip"
+    export_portable_bundle(export_path, include_sessions=True)
+
+    with zipfile.ZipFile(export_path, "r") as zf:
+        names = set(zf.namelist())
+    assert "sessions_index.json" in names
+    assert "schedules.json" in names
+    assert "sessions/sess-a.json" in names
+
+
+def test_ensure_sessions_index_after_import_rebuilds_missing_index(tmp_appdata):
+    from friday.sessions import ensure_sessions_index_after_import, list_sessions
+
+    sessions_dir = tmp_appdata / "sessions"
+    sessions_dir.mkdir(parents=True, exist_ok=True)
+    (sessions_dir / "abc.json").write_text(
+        json.dumps(
+            {
+                "format_version": 2,
+                "id": "abc",
+                "title": "t",
+                "created_at": 1,
+                "updated_at": 2,
+                "display_messages": [],
+                "agent_messages": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert ensure_sessions_index_after_import() is True
+    summaries, _active = list_sessions()
+    assert any(item.id == "abc" for item in summaries)
+
+
+def test_import_portable_bundle_rolls_back_on_apply_error(tmp_appdata, monkeypatch):
+    import zipfile
+
+    from friday.portable_bundle import import_portable_bundle
+
+    save_settings(load_settings().merge({"workspace": "C:/FridayTest"}))
+    original = load_json(tmp_appdata / "settings.json")
+
+    good = tmp_appdata / "good.zip"
+    with zipfile.ZipFile(good, "w") as zf:
+        zf.writestr("bundle.json", '{"bundle_version": 1}')
+        zf.writestr("settings.json", '{"workspace": "broken"}')
+
+    def fail_apply(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr("friday.portable_bundle._apply_staging_to_appdata", fail_apply)
+
+    result = import_portable_bundle(good)
+    assert result["errors"]
+    assert "回滚" in result["errors"][0]
+    restored = load_json(tmp_appdata / "settings.json")
+    assert restored == original

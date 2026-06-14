@@ -59,6 +59,28 @@ _KNOWN_FOLDER_LABELS: tuple[tuple[str, str], ...] = (
 )
 
 
+def _is_plausible_shell_path(val: str) -> bool:
+    """过滤 PowerShell 格式化字符串，只保留像真实路径的引号内容。"""
+    text = (val or "").strip()
+    if not text or len(text) > 260:
+        return False
+    if any(token in text for token in ("$", "@{", "|", "{0:", "{1:", "-f ", " -f ")):
+        return False
+    if re.search(r"\$\(|\.LastWriteTime|Format-Table|Select-Object", text, re.I):
+        return False
+    if re.search(r"\{[^}]*:?\.?\d*f\}|:\.2f\}|1024\s*\*\*|/\s*1024", text, re.I):
+        return False
+    if re.match(r"^[A-Za-z]:\\", text):
+        return True
+    if text.startswith(("~/", "/")):
+        return True
+    if "\\" in text or "/" in text:
+        if re.search(r"[\d)]\s*/\s*1\s*kb", text, re.I):
+            return False
+        return True
+    return False
+
+
 def _friendly_location(path: str) -> str:
     """把路径翻译成用户能看懂的文件夹名称。"""
     raw = (path or "").strip()
@@ -80,6 +102,8 @@ def _friendly_location(path: str) -> str:
         if f"/{segment}" in lower or lower.endswith(segment):
             return label
     name = Path(raw).name
+    if any(token in name for token in ("$", "|", "(", ")", "KB", "LastWriteTime", ".2f}")):
+        return ""
     if name.lower() in {"desktop", "downloads", "documents", "pictures", "videos", "music"}:
         mapping = {
             "desktop": "桌面",
@@ -103,7 +127,7 @@ def _extract_quoted_paths(text: str) -> list[str]:
             continue
         if val.startswith(("http://", "https://")):
             continue
-        if re.match(r"^[A-Za-z]:\\", val) or val.startswith(("~/", "/")) or "\\" in val or "/" in val:
+        if _is_plausible_shell_path(val):
             paths.append(val)
     return paths
 
@@ -178,8 +202,21 @@ def _sanitize_command_preview(text: str, *, max_len: int = 120) -> str:
     if home:
         one = re.sub(re.escape(home), "~", one, flags=re.I)
     if len(one) > max_len:
-        return one[: max_len - 1].rstrip() + "…"
+        cut = one[: max_len - 1]
+        space = cut.rfind(" ")
+        if space > max_len // 2:
+            cut = cut[:space]
+        return cut.rstrip() + "…"
     return one
+
+
+def _format_target_phrase(targets: str, *, suffix: str) -> str:
+    """targets 已含「」时不再套一层引号。"""
+    if not targets:
+        return ""
+    if "「" in targets:
+        return f"查看{targets}{suffix}"
+    return f"查看「{targets}」{suffix}"
 
 
 def _describe_shell_targets(paths: list[str], *, max_items: int = 2) -> str:
@@ -235,11 +272,11 @@ def _infer_powershell_intent(command: str) -> str | None:
     if re.search(r"\b(get-childitem|gci)\b", lower):
         if "wscript.shell" in lower or "createshortcut" in lower:
             if targets:
-                return f"查看「{targets}」里的文件和软件快捷方式"
+                return _format_target_phrase(targets, suffix="里的文件和软件快捷方式")
             if "desktop" in lower or "桌面" in cmd:
                 return "查看你电脑「桌面」上有哪些文件和软件快捷方式"
         if targets:
-            return f"查看「{targets}」文件夹里有哪些文件"
+            return _format_target_phrase(targets, suffix="文件夹里有哪些文件")
         if "desktop" in lower or "桌面" in cmd:
             return "查看你电脑「桌面」上有哪些文件和软件快捷方式"
 

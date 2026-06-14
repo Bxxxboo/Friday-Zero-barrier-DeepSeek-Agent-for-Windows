@@ -50,3 +50,22 @@ def notify_session_updated(session_id: str, *, source: str = "") -> None:
 def notify_sessions_changed() -> None:
     """通知前端刷新侧边栏会话列表（新建微信会话等）。"""
     _dispatch("sessions_updated", {})
+
+
+def notify_schedule_completed(
+    *,
+    schedule_id: str,
+    session_id: str,
+    title: str,
+    status: str,
+    message: str,
+) -> None:
+    """定时任务执行结束后通知桌面端刷新会话与任务列表。"""
+    payload: dict[str, Any] = {
+        "schedule_id": (schedule_id or "").strip(),
+        "session_id": (session_id or "").strip(),
+        "title": (title or "").strip(),
+        "status": (status or "").strip(),
+        "message": (message or "")[:500],
+    }
+    _dispatch("schedule_completed", payload)

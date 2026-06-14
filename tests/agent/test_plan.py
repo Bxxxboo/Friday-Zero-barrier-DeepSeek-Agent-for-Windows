@@ -5,9 +5,12 @@ from friday.plan import (
     auto_complete_todos_from_assistant,
     auto_complete_todos_from_tool,
     extract_todos_from_plan_markdown,
+    is_complex_task,
+    maybe_append_complex_task_plan_hint,
     merge_todos_from_plan,
     normalize_todos,
     plan_prompt_block,
+    session_has_actionable_plan,
     sync_todos_from_plan,
     upsert_plan_anchor,
 )
@@ -121,3 +124,38 @@ def test_auto_complete_todos_from_assistant(tmp_path, monkeypatch):
     saved = get_session(session.id)
     assert saved is not None
     assert saved.todos[0]["done"] is True
+
+
+def test_is_complex_task_multi_step():
+    assert is_complex_task("帮我整理桌面，然后排查下载文件夹里的重复文件，最后写个汇总脚本")
+    assert is_complex_task("1. 扫描桌面\n2. 移动大文件\n3. 写报告")
+    assert not is_complex_task("你好")
+    assert not is_complex_task("打开记事本")
+
+
+def test_session_has_actionable_plan(tmp_path, monkeypatch):
+    monkeypatch.setattr("friday.sessions.get_appdata_dir", lambda: tmp_path)
+    session = create_session("计划检测")
+    assert session_has_actionable_plan(session.id) is False
+    save_session_fields(
+        session.id,
+        plan_markdown="## 步骤\n1. 整理下载文件夹\n2. 压缩旧包",
+        todos=[{"text": "整理下载文件夹", "done": False}, {"text": "压缩旧包", "done": False}],
+    )
+    assert session_has_actionable_plan(session.id) is True
+
+
+def test_maybe_append_complex_task_plan_hint(tmp_path, monkeypatch):
+    monkeypatch.setattr("friday.sessions.get_appdata_dir", lambda: tmp_path)
+    session = create_session("提示")
+    text = "请帮我批量整理下载文件夹，然后排查重复文件并写脚本汇总"
+    out = maybe_append_complex_task_plan_hint(text, session.id)
+    assert "【复杂任务提示】" in out
+    assert "update_session_plan" in out
+    save_session_fields(
+        session.id,
+        plan_markdown="## 计划\n- [ ] 整理\n- [ ] 排查",
+        todos=[{"text": "整理", "done": False}, {"text": "排查", "done": False}],
+    )
+    again = maybe_append_complex_task_plan_hint(text, session.id)
+    assert again == text

@@ -115,7 +115,7 @@
       transform: none;
     }
   </style>
-  <link rel="stylesheet" href="/static/styles.css?v=92" />
+  <link rel="stylesheet" href="/static/styles.css?v=94" />
 </head>
 <body>
   <div class="app-boot-overlay" id="appBootOverlay" aria-live="polite">
@@ -877,16 +877,27 @@
             <p class="settings-desc" data-i18n="settings.data.desc">管理任务生成物、回收策略与配置迁移。</p>
             <div class="settings-group portable-group">
               <h5 data-i18n="logs.migration">数据迁移</h5>
-              <p class="settings-hint" data-i18n="logs.migrationHint">导出/导入配置包（含设置、技能、规则、插件；可选会话）。换机时请一并拷贝默认操作文件夹。</p>
+              <p class="settings-hint" data-i18n="logs.migrationHint">导出/导入配置包（含设置、技能、规则、插件、定时任务；可选会话）。换机时请一并拷贝默认操作文件夹。</p>
+              <div class="portable-migration-guide">
+                <h6>换机三步</h6>
+                <ol class="portable-migration-steps">
+                  <li>旧电脑：导出配置包（建议勾选对话历史），并拷贝默认操作文件夹</li>
+                  <li>新电脑：安装星期五后导入配置包</li>
+                  <li>导入后点「运行自检」，按提示修复工作区或 API Key</li>
+                </ol>
+                <p class="settings-hint portable-migration-note">配置包不含微信扫码登录态；微信端 AI 需在新机重新配置。</p>
+              </div>
               <label class="settings-check">
                 <input type="checkbox" id="portableIncludeSessions" />
-                <span data-i18n="logs.includeSessions">导出时包含对话历史</span>
+                <span data-i18n="logs.includeSessions">导出/导入时包含对话历史</span>
               </label>
               <div class="settings-actions">
+                <button type="button" class="ghost-btn" id="portableAuditBtn">运行自检</button>
                 <button type="button" class="ghost-btn" id="portableExportBtn" data-i18n="logs.export">导出配置包</button>
                 <button type="button" class="ghost-btn" id="portableImportBtn" data-i18n="logs.import">导入配置包</button>
                 <input type="file" id="portableImportInput" accept=".zip,application/zip" hidden />
               </div>
+              <ul class="portable-audit-list hidden" id="portableAuditList" aria-live="polite"></ul>
               <pre class="log-preview" id="portableReport" data-i18n="logs.reportPlaceholder">（导入/导出结果将显示在此）</pre>
             </div>
             <div class="settings-group artifact-storage-group">
@@ -1112,6 +1123,14 @@
             <label class="settings-check weixin-bridge-toggle">
               <input type="checkbox" id="weixinBridgeEnabled" checked />
               <span>启用微信桥接（关闭后微信消息不再转发到星期五）</span>
+            </label>
+            <label class="settings-check weixin-task-progress-toggle">
+              <input type="checkbox" id="weixinTaskProgressEnabled" checked />
+              <span>长任务进度回传（计划待办完成时向微信推送简短进度）</span>
+            </label>
+            <label class="settings-check weixin-deliver-files-toggle">
+              <input type="checkbox" id="weixinDeliverFilesEnabled" checked />
+              <span>产出文件直发微信（生图、文档、截图等完成后发送到微信）</span>
             </label>
             <label class="settings-check weixin-gateway-autostart">
               <input type="checkbox" id="openclawGatewayAutostart" />

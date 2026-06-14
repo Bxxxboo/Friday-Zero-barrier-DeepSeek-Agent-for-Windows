@@ -345,6 +345,7 @@
         <div class="plugin-catalog-info">
           <strong>${item.name}</strong>
           <p class="plugin-catalog-desc">${item.description || ""}</p>
+          ${item.capabilities ? `<p class="plugin-catalog-caps">能做什么：${item.capabilities}</p>` : ""}
         </div>
         <div class="plugin-catalog-action">
           ${
